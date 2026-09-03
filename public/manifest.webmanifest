@@ -1,0 +1,13 @@
+{
+  "name": "LIFE — pilotage",
+  "short_name": "LIFE",
+  "description": "Outil de pilotage financier et d'activité",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FDF3EC",
+  "theme_color": "#C97F72",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
