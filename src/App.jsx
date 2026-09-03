@@ -6,20 +6,20 @@ import { supabase } from "./lib/supabaseClient";
 /* ------------------------------------------------------------------ */
 
 export const LOGOS = {
-  sabich: "/assets/sabich.svg",
-  tmsk:   "/assets/tmsk.svg",
-  riad:   "/assets/riad.svg",
-  foyer:  "/assets/foyer.png",
-  life:   "/assets/life.webp",
-  sabichBlanc:  "/assets/sabichBlanc.svg",
-  pictoDash:     "/assets/pictoDash.svg",
-  pictoReglages: "/assets/pictoReglages.svg",
-  fond:          "/assets/fond.jpg",
-  tmskBlanc:    "/assets/tmskBlanc.svg",
-  riadBlanc:    "/assets/riadBlanc.svg",
-  foyerBlanc:   "/assets/foyerBlanc.png",
-  contenuBlanc: "/assets/contenuBlanc.png",
-  contenu: "/assets/contenu.png",
+  sabich: "./assets/sabich.svg",
+  tmsk:   "./assets/tmsk.svg",
+  riad:   "./assets/riad.svg",
+  foyer:  "./assets/foyer.png",
+  life:   "./assets/life.webp",
+  sabichBlanc:  "./assets/sabichBlanc.svg",
+  pictoDash:     "./assets/pictoDash.svg",
+  pictoReglages: "./assets/pictoReglages.svg",
+  fond:          "./assets/fond.jpg",
+  tmskBlanc:    "./assets/tmskBlanc.svg",
+  riadBlanc:    "./assets/riadBlanc.svg",
+  foyerBlanc:   "./assets/foyerBlanc.png",
+  contenuBlanc: "./assets/contenuBlanc.png",
+  contenu: "./assets/contenu.png",
 };
 
 export const MAISON = { nom: "La maison", marque: "#C97F72", tint: "#FDF3EC",
@@ -35,7 +35,7 @@ export const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap');
 
 .pil * { box-sizing: border-box; }
-.pil { --fond: url("/assets/fond-texture.jpg"); }
+.pil { --fond: url("./assets/fond-texture.jpg"); }
 .pil {
   /* Les six teintes d'un univers. Elles valent le vert sauge de la maison mère
      par défaut, et chaque intercalaire les repeint aux siennes en entrant. */
