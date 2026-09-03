@@ -1,15 +1,27 @@
 import React, { useEffect, useState } from "react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import Login from "./Login";
+import SetPassword from "./SetPassword";
 import App from "./App";
 import { CSS } from "./App";
 
+function demandeDefinitionMotDePasse() {
+  const hash = window.location.hash || "";
+  const search = window.location.search || "";
+  return hash.includes("type=recovery") || hash.includes("type=invite") ||
+         search.includes("type=recovery") || search.includes("type=invite");
+}
+
 export default function AuthGate() {
   const [session, setSession] = useState(undefined); // undefined = pas encore su, null = déconnecté
+  const [needsPassword, setNeedsPassword] = useState(demandeDefinitionMotDePasse());
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      if (event === "PASSWORD_RECOVERY") setNeedsPassword(true);
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -36,6 +48,17 @@ export default function AuthGate() {
       <div className="pil"><style>{CSS}</style>
         <div className="wrap"><div className="empty">Chargement…</div></div>
       </div>
+    );
+  }
+
+  if (session && needsPassword) {
+    return (
+      <SetPassword
+        onDone={() => {
+          setNeedsPassword(false);
+          window.history.replaceState(null, "", window.location.pathname);
+        }}
+      />
     );
   }
 
