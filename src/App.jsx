@@ -218,6 +218,19 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   .hero { gap:0; }
   .hero .card { padding:14px 0; }
   .hero .card + .card { border-left:none; border-top:1px solid var(--u-bord); padding-left:0; padding-top:18px; }
+
+  /* L'en-tête (logo + mois + flèches) ne tenait pas sur la largeur d'un
+     téléphone : les flèches sortaient de l'écran et forçaient tout le site
+     à défiler horizontalement. Sur petit écran, le mois passe sur sa
+     propre ligne, pleine largeur, sous le titre. */
+  .topbar { flex-wrap: wrap; row-gap: 12px; }
+  .topbar .brand img { height: 58px; }
+  .moisNav { width: 100%; }
+  .moisNav .pill { flex: 1; padding: 12px 8px; }
+
+  /* Une ligne (libellé + valeur/actions) trop chargée pour tenir sur une
+     seule ligne passe sur deux plutôt que de déborder de l'écran. */
+  .row { flex-wrap: wrap; row-gap: 6px; }
 }
 @media (prefers-reduced-motion: reduce) { .pil * { transition:none !important; } }
 
@@ -905,12 +918,12 @@ export default function App({ session, onLogout }) {
       <style>{CSS}</style>
       <div className="wrap">
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+        <div className="topbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div className="brand" style={{ display: "flex", alignItems: "center", gap: 15 }}>
             <img src={LOGOS.life} alt="Tree of Life" style={{ height: 82, width: "auto", display: "block" }} />
             <h1 className="h1">{monthLabel(ym)}</h1>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div className="moisNav" style={{ display: "flex", gap: 6 }}>
             <button className="pill" onClick={() => setYm(shiftMonth(ym, -1))} aria-label="Mois précédent">←</button>
             <button className="pill" onClick={() => setYm(thisMonth())}>Ce mois</button>
             <button className="pill" onClick={() => setYm(shiftMonth(ym, 1))} aria-label="Mois suivant">→</button>
