@@ -32,7 +32,7 @@ const AQUARELLE = "linear-gradient(125deg,#B98FC9 0%,#E9A2C4 32%,#F3BC82 58%,#8F
 /* ------------------------------------------------------------------ */
 
 export const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;700&display=swap');
 
 .pil * { box-sizing: border-box; }
 .pil { --fond: url("./assets/fond-texture.jpg"); }
@@ -274,6 +274,8 @@ const DEFAULT_CONFIG = {
     tmsk:   { matiere: 25, variable: 30 },
     taam:   { matiere: 25, variable: 30 },
   },
+  /* En dessous, une erreur de comptage normale. Au-dessus, ça se regarde. */
+  seuilFondCaisse: { orange: 50, rouge: 100 },
   /* Les chantiers d'investissement, dans l'ordre où ils se financent */
   chantiers: [
     { id: "tmsk-coffee", nom: "Comptoir coffee shop TMSK", cible: 40000 },
@@ -612,13 +614,27 @@ const prochaine = (date, repete) => {
   return d.toISOString().slice(0, 10);
 };
 
+/* Une tâche qui repart pour un tour garde la même durée : son début avance
+   du même nombre de jours que son échéance. */
+const decaler = (t, nouvelleEcheance) => {
+  if (!t.debut) return {};
+  const delta = Math.round((new Date(nouvelleEcheance + "T12:00:00")
+                           - new Date(t.echeance + "T12:00:00")) / 86400000);
+  const d = new Date(t.debut + "T12:00:00");
+  d.setDate(d.getDate() + delta);
+  return { debut: d.toISOString().slice(0, 10) };
+};
+
 /* Au chargement, on remet à faire les tâches récurrentes dont l'heure est revenue */
 const reveiller = (liste) => liste.map((t) => {
   if (t.repete && t.etat === "fait" && joursAvant(t.echeance) <= 0) {
-    return { ...t, etat: "afaire", echeance: prochaine(t.echeance, t.repete) };
+    const echeance = prochaine(t.echeance, t.repete);
+    return { ...t, etat: "afaire", echeance, ...decaler(t, echeance) };
   }
   return t;
 });
+
+const joliDate = (date) => date ? date.slice(8, 10) + "/" + date.slice(5, 7) : "";
 
 const echeanceTexte = (date) => {
   const j = joursAvant(date);
@@ -877,7 +893,8 @@ export default function App({ session, onLogout }) {
     const t2 = { ...t, ...champs };
     /* Une tâche qui revient se replante toute seule à la prochaine échéance */
     if (champs.etat === "fait" && t.repete) {
-      return { ...t2, etat: "afaire", echeance: prochaine(t.echeance, t.repete),
+      const echeance = prochaine(t.echeance, t.repete);
+      return { ...t2, etat: "afaire", echeance, ...decaler(t, echeance),
                faitLe: aujourdhui() };
     }
     return t2;
@@ -998,7 +1015,7 @@ function calcul(config, entries, ym) {
     return num(N.ma) + (num(N.etr) - num(N.ma)) * p / 100;
   };
 
-  let napsBrut = 0, especeTotal = 0, ecartTotal = 0;
+  let napsBrut = 0, especeTotal = 0, ecartFondsTotal = 0;
   const carteParAffaire = {}, especeParAffaire = {};
   inMonth.filter((e) => e.type === "vente").forEach((v) => {
     if (!A[v.affaire]) return;
@@ -1011,10 +1028,12 @@ function calcul(config, entries, ym) {
     especeParAffaire[v.affaire] = (especeParAffaire[v.affaire] || 0) + esp;
     napsBrut += carte; especeTotal += esp;
 
-    if (v.caisse !== undefined && v.caisse !== "" && v.caisse !== null) {
-      const e = total - num(v.caisse);
-      A[v.affaire].ecart = (A[v.affaire].ecart || 0) + e;
-      ecartTotal += e;
+    /* Le fond de caisse ne pèse plus sur la recette : son écart se suit à
+       part, seulement les jours où quelqu'un l'a vérifié. */
+    if (v.fondReel !== undefined && v.fondReel !== "" && v.fondReel !== null) {
+      const e = num(v.fondSuppose) - num(v.fondReel); // positif = il manque de l'argent
+      A[v.affaire].ecartFonds = (A[v.affaire].ecartFonds || 0) + e;
+      ecartFondsTotal += e;
     }
   });
 
@@ -1066,7 +1085,7 @@ function calcul(config, entries, ym) {
     encaissements[k] = { carte, com: carte * tauxNaps(k) / 100, taux: tauxNaps(k),
                          espece: especeParAffaire[k] || 0,
                          fonds: num(config.affaires[k].fonds),
-                         ecart: A[k].ecart || 0 };
+                         ecartFonds: A[k].ecartFonds || 0 };
   });
 
   const defautHeb = (hebergeurs(config)[0] || [])[0];
@@ -1094,7 +1113,7 @@ function calcul(config, entries, ym) {
   });
 
   const naps = { brut: napsBrut, com: napsCom, net: napsBrut - napsCom, fondsCaisse,
-                 espece: especeTotal, ecart: ecartTotal, parAffaire: encaissements };
+                 espece: especeTotal, ecartFonds: ecartFondsTotal, parAffaire: encaissements };
 
   /* Chaque hébergement tient ses propres nuitées, à ses propres tarifs */
   const hebStats = {};
@@ -1437,9 +1456,18 @@ function calcul(config, entries, ym) {
     const note = (r, s) => (r <= s ? "vert" : r <= s * 1.15 ? "orange" : "rouge");
     const eMat = a.matiereReelle > 0 ? note(rMat, seuils.matiere) : "neutre";
     const eVar = note(rVar, seuils.variable);
-    const pire = [eMat, eVar].includes("rouge") ? "rouge"
-               : [eMat, eVar].includes("orange") ? "orange" : "vert";
-    return { k, type: "ratio", etat: pire, eMat, eVar, rMat, rVar, seuils, depense: reel };
+
+    /* Un manque au fond de caisse pèse aussi sur le voyant de l'activité —
+       seulement s'il a été vérifié et qu'il en manque, jamais s'il y en a trop. */
+    const ecartFonds = a.ecartFonds || 0;
+    const seuilFonds = config.seuilFondCaisse || { orange: 50, rouge: 100 };
+    const eFonds = ecartFonds >= seuilFonds.rouge ? "rouge"
+                 : ecartFonds >= seuilFonds.orange ? "orange" : "vert";
+
+    const pire = [eMat, eVar, eFonds].includes("rouge") ? "rouge"
+               : [eMat, eVar, eFonds].includes("orange") ? "orange" : "vert";
+    return { k, type: "ratio", etat: pire, eMat, eVar, eFonds, rMat, rVar,
+             ecartFonds, seuilFonds, seuils, depense: reel };
   }).filter(Boolean);
 
   const seuil = chargesDuMois / margeMoy;
@@ -1906,13 +1934,14 @@ function LigneTache({ t, config, gens, onMaj, onDel }) {
         <span style={{ width: 9, height: 9, borderRadius: 3, marginTop: 7, flex: "none",
                        background: fait ? "#D3DAC4" : prio.couleur }} title={prio.nom} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 17, lineHeight: 1.4,
+          <div style={{ fontSize: 17, lineHeight: 1.4, fontWeight: 700,
                         color: fait ? "#9AA487" : "#33402C",
                         textDecoration: fait ? "line-through" : "none" }}>{t.titre}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 7 }}>
             {a && <span className="tag" style={{ color: lisible(a.marque),
                           borderColor: "rgba(0,0,0,.08)" }}>{a.nom}</span>}
             {qui && <span className="tag">{qui.nom}</span>}
+            {t.debut && <span className="tag">Du {joliDate(t.debut)}</span>}
             <span style={{ fontSize: 14.5, color: ton.p }}>{echeanceTexte(t.echeance)}</span>
             {t.repete && <span className="tag">{
               (REPETITIONS.find((r) => r.id === t.repete) || {}).nom}</span>}
@@ -1943,13 +1972,14 @@ function NouvelleTache({ config, gens, onAdd, affaireFixe }) {
   const [titre, setTitre] = useState("");
   const [affaire, setAffaire] = useState(affaireFixe || "");
   const [responsable, setResponsable] = useState("moi");
+  const [debut, setDebut] = useState(aujourdhui());
   const [echeance, setEcheance] = useState(aujourdhui());
   const [priorite, setPriorite] = useState("normale");
   const [repete, setRepete] = useState("");
 
   const creer = () => {
     if (!titre.trim()) return;
-    onAdd({ titre: titre.trim(), affaire, responsable, echeance, priorite, repete, etat: "afaire" });
+    onAdd({ titre: titre.trim(), affaire, responsable, debut, echeance, priorite, repete, etat: "afaire" });
     setTitre(""); setPriorite("normale"); setRepete(""); setOuvert(false);
   };
 
@@ -1967,12 +1997,15 @@ function NouvelleTache({ config, gens, onAdd, affaireFixe }) {
                value={titre} onChange={(e) => setTitre(e.target.value)}
                onKeyDown={(e) => { if (e.key === "Enter") creer(); }} />
       </div>
-      <div className="grid2">
+      <div className="grid3">
         <div><label className="f">Qui s'en occupe</label>
           <select className="f" value={responsable} onChange={(e) => setResponsable(e.target.value)}>
             {gens.map((g) => <option key={g.id} value={g.id}>{g.nom}</option>)}
           </select></div>
-        <div><label className="f">Pour quand</label>
+        <div><label className="f">Début</label>
+          <input className="f" type="date" value={debut}
+                 onChange={(e) => setDebut(e.target.value)} /></div>
+        <div><label className="f">Échéance</label>
           <input className="f" type="date" value={echeance}
                  onChange={(e) => setEcheance(e.target.value)} /></div>
       </div>
@@ -2132,6 +2165,15 @@ function Coherence({ M, config, onAller }) {
                     La matière tient. Le dépassement vient d'ailleurs — coursier, emballages, dépannages.
                   </div>
                 )}
+                {x.ecartFonds !== 0 && (
+                  <div className="mini" style={{ marginTop: 9,
+                        fontWeight: x.eFonds !== "vert" ? 500 : 400,
+                        color: x.ecartFonds > 0 ? "#C9503A" : "#8B9678" }}>
+                    {x.ecartFonds > 0
+                      ? "Fond de caisse : " + fmt(x.ecartFonds) + " manquant ce mois-ci."
+                      : "Fond de caisse : " + fmt(-x.ecartFonds) + " en trop ce mois-ci."}
+                  </div>
+                )}
               </div>
             )}
 
@@ -2218,6 +2260,10 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
 
   return (
     <>
+      {/* Ce qui doit se voir en premier, sans rien cliquer : qui fait quoi */}
+      <Taches taches={taches} config={config} onAdd={onAddTache}
+              onMaj={onMajTache} onDel={onDelTache} />
+
       <div className="card bandeau" style={{ padding: "26px 24px" }}>
         <div className="heroLbl">{monthLabel(ym)}</div>
         <div className="heroNum pos" style={{ fontSize: 46 }}>{fmt(M.caTotal)}</div>
@@ -2246,32 +2292,9 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
         )}
       </div>
 
-      {/* Ligne 1 — ce qui appelle une décision aujourd'hui */}
-      <div className="board">
-        <div className="col">
-          <Coherence M={M} config={config} onAller={onAller} />
-        </div>
-        <div className="col">
-          {Math.abs(M.naps.ecart) >= 1 && (
-            <div className="card" style={{ background: M.naps.ecart < 0 ? "#FBEDEA" : "#FBF3E4",
-                                           borderColor: M.naps.ecart < 0 ? "#EFC7BE" : "#EBD6A8" }}>
-              <div className="eyebrow" style={{ marginBottom: 8,
-                    color: M.naps.ecart < 0 ? "#C9503A" : "#C98A1E" }}>Écart de caisse</div>
-              <div style={{ fontSize: 19, color: M.naps.ecart < 0 ? "#C9503A" : "#C98A1E" }}>
-                {M.naps.ecart < 0
-                  ? fmt(-M.naps.ecart) + " manquants sur le mois"
-                  : fmt(M.naps.ecart) + " en trop sur le mois"}
-              </div>
-              <div className="mini" style={{ marginTop: 7 }}>
-                Cumul des journées contrôlées. L'essentiel de ton chiffre étant en espèces,
-                c'est ici que se cachent les vraies fuites. Ouvre l'activité pour voir quels jours.
-              </div>
-            </div>
-          )}
-          <Taches taches={taches} config={config} onAdd={onAddTache}
-                  onMaj={onMajTache} onDel={onDelTache} />
-        </div>
-      </div>
+      {/* Ligne 1 — ce qui appelle une décision aujourd'hui, écarts de fond de
+          caisse compris (repère par activité juste en dessous des jauges) */}
+      <Coherence M={M} config={config} onAller={onAller} />
 
       {/* Ligne 2 — ce qui s'est passé, et qu'on peut encore corriger */}
       <div className="board">
@@ -2416,15 +2439,20 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
   const [affaire, setAffaire] = useState(fixe || (liste[0] ? liste[0][0] : ""));
   const [espece, setEspece] = useState("");
   const [carte, setCarte] = useState("");
-  const [fonds, setFonds] = useState("");
+  const [fondSuppose, setFondSuppose] = useState("");
+  const [fondReel, setFondReel] = useState("");
   const [tickets, setTickets] = useState([]);
   const [stan, setStan] = useState("");
   const [mtStan, setMtStan] = useState("");
   const c = config.affaires[affaire];
 
-  /* Le fonds proposé est celui de l'activité, corrigeable au cas par cas */
-  useEffect(() => { setFonds(String(num((config.affaires[affaire] || {}).fonds) || "")); },
-            [affaire, config]);
+  /* Le fond théorique proposé est celui de l'activité, corrigeable au cas par
+     cas. Le fond réel, lui, ne se propose jamais : il ne se remplit que si
+     quelqu'un a effectivement recompté le tiroir ce jour-là. */
+  useEffect(() => {
+    setFondSuppose(String(num((config.affaires[affaire] || {}).fonds) || ""));
+    setFondReel("");
+  }, [affaire, config]);
 
   if (!c) return <div className="card"><div className="empty">Aucune activité à créditer.</div></div>;
 
@@ -2438,10 +2466,13 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
   const doublonIci = tickets.some((t) => String(t.stan) === stan.trim());
 
   const sommeTickets = tickets.reduce((s, t) => s + num(t.montant), 0);
-  const recette = num(espece) - num(fonds);
+  /* Le cash compté EST la recette du jour : le fond de caisse ne s'en déduit
+     plus. Son propre écart se contrôle à part, plus bas. */
+  const recette = num(espece);
   const total = recette + num(carte);
   const ecartCB = tickets.length ? num(carte) - sommeTickets : 0;
-  const fondsManquant = num(fonds) > 0 && num(espece) > 0 && num(espece) < num(fonds);
+  const fondVerifie = fondReel.trim() !== "";
+  const ecartFonds = fondVerifie ? num(fondSuppose) - num(fondReel) : 0;
 
   const ajouterTicket = () => {
     if (!stan.trim() || num(mtStan) <= 0 || doublonAilleurs || doublonIci) return;
@@ -2450,13 +2481,13 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
   };
 
   const valider = () => {
-    if (total <= 0 || fondsManquant) return;
+    if (total <= 0) return;
     onAdd({ type: "vente", date, affaire, montant: total,
             espece: recette, carte: num(carte),
-            ...(num(fonds) > 0 ? { fondsRetire: num(fonds) } : {}),
+            ...(fondVerifie ? { fondReel: num(fondReel), fondSuppose: num(fondSuppose) } : {}),
             ...(tickets.length ? { tickets } : {}) });
     flash("Journée enregistrée.");
-    setEspece(""); setCarte(""); setTickets([]); setStan(""); setMtStan("");
+    setEspece(""); setCarte(""); setFondReel(""); setTickets([]); setStan(""); setMtStan("");
   };
 
   return (
@@ -2474,24 +2505,14 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
       </div>
 
       <div className="eyebrow" style={{ marginTop: 4, marginBottom: 10 }}>Ce qui a été compté</div>
-      <div className="grid3">
+      <div className="grid2">
         <div><label className="f">Cash compté</label>
           <input className="f" inputMode="decimal" placeholder="4700" value={espece}
                  onChange={(e) => setEspece(e.target.value)} /></div>
         <div><label className="f">CB compté</label>
           <input className="f" inputMode="decimal" placeholder="2000" value={carte}
                  onChange={(e) => setCarte(e.target.value)} /></div>
-        <div><label className="f">Fonds de caisse</label>
-          <input className="f" inputMode="decimal" value={fonds}
-                 onChange={(e) => setFonds(e.target.value)} /></div>
       </div>
-
-      {fondsManquant && (
-        <div className="mini" style={{ marginBottom: 14, color: "#C9503A" }}>
-          Le cash compté est inférieur au fonds de caisse lui-même. Vérifie le montant du fonds,
-          ou il manque de l'argent.
-        </div>
-      )}
 
       <div className="eyebrow" style={{ marginBottom: 10 }}>Tickets CB</div>
       {tickets.map((t, i) => (
@@ -2547,21 +2568,38 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
 
       <div style={{ background: "#F5F8EC", borderRadius: 13, padding: "15px 17px", margin: "16px 0" }}>
         <div className="row" style={{ padding: "3px 0", borderBottom: "none" }}>
-          <span className="lbl">Recette en espèces, fonds déduit</span>
-          <span className="val">{fmt(recette)}</span>
-        </div>
-        <div className="row" style={{ padding: "7px 0 2px", borderBottom: "none" }}>
           <span className="lbl">Recette du jour</span>
           <span className="val" style={{ fontSize: 20 }}>{fmt(total)}</span>
         </div>
       </div>
 
+      <div className="eyebrow" style={{ marginBottom: 10 }}>Contrôle du fond de caisse (optionnel)</div>
+      <div className="grid2">
+        <div><label className="f">Fond de caisse supposé</label>
+          <input className="f" inputMode="decimal" value={fondSuppose}
+                 onChange={(e) => setFondSuppose(e.target.value)} /></div>
+        <div><label className="f">Fond de caisse réel</label>
+          <input className="f" inputMode="decimal" placeholder="Si vérifié aujourd'hui" value={fondReel}
+                 onChange={(e) => setFondReel(e.target.value)} /></div>
+      </div>
+      {fondVerifie && (
+        <div className="mini" style={{ marginBottom: 14,
+              color: ecartFonds > 0 ? "#C9503A" : ecartFonds < 0 ? "#8B9678" : "#5E8F1E" }}>
+          {ecartFonds > 0
+            ? "Il manque " + fmt(ecartFonds) + " dans le fond de caisse."
+            : ecartFonds < 0
+              ? fmt(-ecartFonds) + " en trop dans le fond de caisse."
+              : "Le fond de caisse est conforme."}
+        </div>
+      )}
+
       <button className="btn" onClick={valider}>Enregistrer la journée</button>
       <div className="note">
-        Les trois montants réellement comptés à la fermeture, plus le détail des tickets CB.
-        Le fonds de caisse est proposé d'après l'activité et reste corrigeable. Chaque numéro
-        STAN est vérifié : s'il a déjà été saisi un autre jour, l'app le signale avant que le
-        ticket ne soit compté deux fois.
+        Le cash compté est directement la recette du jour — le fond de caisse ne s'en déduit
+        plus. Ne renseigne le contrôle du fond de caisse que les jours où tu recomptes le
+        tiroir : l'écart avec le montant théorique se suit dans Vue d'ensemble, sous chaque
+        activité. Chaque numéro STAN est vérifié : s'il a déjà été saisi un autre jour, l'app
+        le signale avant que le ticket ne soit compté deux fois.
       </div>
     </div>
   );
@@ -3128,15 +3166,17 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
   const a = M.A[k], c = config.affaires[k];
   const [sens, setSens] = useState("depot");
   const [montant, setMontant] = useState("");
+  const [motif, setMotif] = useState("");
   const [ok, setOk] = useState("");
   const defDate = ym === thisMonth() ? today() : ym + "-01";
 
   const verser = () => {
     if (num(montant) <= 0) return;
-    onAdd({ type: "reserve", affaire: k, date: defDate, sens, montant: num(montant) });
+    onAdd({ type: "reserve", affaire: k, date: defDate, sens, montant: num(montant),
+             ...(motif.trim() ? { motif: motif.trim() } : {}) });
     setOk(sens === "retrait" ? "Sorti de la réserve." : "Mis en réserve.");
     setTimeout(() => setOk(""), 2600);
-    setMontant("");
+    setMontant(""); setMotif("");
   };
 
   const dette = a.detteInterne || 0, creance = a.creanceInterne || 0;
@@ -3193,8 +3233,14 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
                  onChange={(e) => setMontant(e.target.value)}
                  onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
         </div>
-        <button className="pill" onClick={verser}>Enregistrer</button>
       </div>
+      <div style={{ marginTop: 10 }}>
+        <label className="f">Pour quoi</label>
+        <input className="f" placeholder="Réouverture après l'été, achat de matériel…"
+               value={motif} onChange={(e) => setMotif(e.target.value)}
+               onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
+      </div>
+      <button className="pill" style={{ marginTop: 10 }} onClick={verser}>Enregistrer</button>
       {ok && <div className="note" style={{ color: c.marque }}>{ok}</div>}
       <div className="note">
         Ce que tu mets de côté les bons mois sort de la trésorerie du groupe sans peser sur le
@@ -3451,9 +3497,13 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
               <div className="row"><span className="lbl">Fonds de caisse immobilisé</span>
                 <span className="val mut">{fmt(M.naps.parAffaire[k].fonds)}</span></div>
             )}
-            {Math.abs(M.naps.parAffaire[k].ecart) >= 1 && (
-              <div className="row"><span className="lbl">Écart de caisse cumulé</span>
-                <span className="val neg">{fmt(M.naps.parAffaire[k].ecart)}</span></div>
+            {Math.abs(M.naps.parAffaire[k].ecartFonds) >= 1 && (
+              <div className="row"><span className="lbl">Écart de fond de caisse cumulé</span>
+                <span className={"val " + (M.naps.parAffaire[k].ecartFonds > 0 ? "neg" : "mut")}>
+                  {M.naps.parAffaire[k].ecartFonds > 0
+                    ? "− " + fmt(M.naps.parAffaire[k].ecartFonds) + " manquant"
+                    : "+ " + fmt(-M.naps.parAffaire[k].ecartFonds) + " en trop"}
+                </span></div>
             )}
           </div>
         )}
@@ -4058,7 +4108,8 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
     if (e.type === "depense") return e.lbl + " — " + (e.affaire === "structure" ? "structure" : nom(e.affaire));
     if (e.type === "avance")  return (e.nature === "salaire" ? "Avance salaire — " : "Prélèvement — ") + e.qui;
     if (e.type === "invest")  return e.lbl + " — " + nom(e.affaire);
-    if (e.type === "reserve") return (e.sens === "retrait" ? "Sorti de la réserve — " : "Mis en réserve — ") + nom(e.affaire);
+    if (e.type === "reserve") return (e.sens === "retrait" ? "Sorti de la réserve — " : "Mis en réserve — ") + nom(e.affaire)
+      + (e.motif ? " · " + e.motif : "");
     if (e.type === "avance-interne") return "Avance interne — "
       + (e.de === "foyer" ? "La maison" : nom(e.de)) + " → " + nom(e.vers);
     if (e.type === "remboursement-interne") return "Remboursement d'avance interne — " + nom(e.affaire);
@@ -4314,7 +4365,7 @@ function ActiviteReglage({ k, a, c, maj }) {
             <div><label className="f">Coût matière</label>
               <input className="f" inputMode="decimal" value={a.matierePct ?? 0}
                      onChange={(e) => majA({ matierePct: num(e.target.value) })} /></div>
-            <div><label className="f">Fonds de caisse</label>
+            <div><label className="f">Fond de caisse théorique</label>
               <input className="f" inputMode="decimal" value={a.fonds ?? 0}
                      onChange={(e) => majA({ fonds: num(e.target.value) })} /></div>
             <div><label className="f">Part de cartes étrangères</label>
@@ -4848,6 +4899,23 @@ function Reglages({ config, onSave, session, onLogout }) {
           le voyant est donc juste dès la deuxième semaine. Le total variable comprend la
           matière, le coursier, les emballages, les dépannages — mais ni les salaires ni le loyer,
           qui ne bougent pas quand tu vends plus.
+        </div>
+
+        <div style={{ borderTop: "1px solid #EFF2E7", paddingTop: 14, marginTop: 6 }}>
+          <div style={{ fontSize: 17, marginBottom: 4 }}>Fond de caisse</div>
+          <Ligne lbl="À surveiller (orange) à partir de"
+                 value={(c.seuilFondCaisse || { orange: 50, rouge: 100 }).orange}
+                 onChange={(v) => maj({ ...c, seuilFondCaisse: {
+                   ...(c.seuilFondCaisse || { orange: 50, rouge: 100 }), orange: num(v) } })} />
+          <Ligne lbl="Au rouge à partir de"
+                 value={(c.seuilFondCaisse || { orange: 50, rouge: 100 }).rouge}
+                 onChange={(v) => maj({ ...c, seuilFondCaisse: {
+                   ...(c.seuilFondCaisse || { orange: 50, rouge: 100 }), rouge: num(v) } })} />
+        </div>
+        <div className="note">
+          Un manque en dessous du premier seuil reste une erreur de comptage normale. Au-dessus,
+          le voyant de l'activité passe orange puis rouge dans Vue d'ensemble — jamais un
+          surplus, seulement un manque.
         </div>
       </div>
 
