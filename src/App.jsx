@@ -1220,6 +1220,42 @@ function calcul(config, entries, ym) {
     A[k].resultat = A[k].ca - A[k].charges;
   });
 
+  /* La réserve : ce qu'une affaire met de côté les bons mois pour ne pas
+     rester à sec à sa réouverture. Un solde cumulé depuis toujours — pas
+     un compte en banque simulé, seulement la somme des mouvements décidés
+     et saisis un par un, exactement comme un chantier. */
+  keys.forEach((k) => { A[k].reserveSolde = 0; A[k].reserveDepotMois = 0; A[k].reserveRetraitMois = 0; });
+  entries.filter((e) => e.type === "reserve" && A[e.affaire]).forEach((e) => {
+    const m = num(e.montant);
+    A[e.affaire].reserveSolde += e.sens === "retrait" ? -m : m;
+    if ((e.date || "").startsWith(ym)) {
+      if (e.sens === "retrait") A[e.affaire].reserveRetraitMois += m;
+      else A[e.affaire].reserveDepotMois += m;
+    }
+  });
+  const reserveDepotsMoisTotal = keys.reduce((s, k) => s + A[k].reserveDepotMois, 0);
+  const reserveRetraitsMoisTotal = keys.reduce((s, k) => s + A[k].reserveRetraitMois, 0);
+
+  /* Les avances internes : quand la réserve d'une affaire ne suffit pas et
+     qu'il faut vraiment puiser ailleurs (une autre affaire, ou l'enveloppe
+     du mois suivant). Ça reste une dette tracée — qui doit quoi à qui,
+     depuis quand — jusqu'à ce qu'un remboursement vienne la solder. */
+  const rembourseDe = (id) => entries.filter((e) => e.type === "remboursement-interne" && e.ref === id)
+                                     .reduce((s, e) => s + num(e.montant), 0);
+  const avancesInternes = entries.filter((e) => e.type === "avance-interne")
+    .map((e) => {
+      const rembourse = rembourseDe(e.id);
+      return { ...e, rembourse, solde: Math.max(0, num(e.montant) - rembourse) };
+    })
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const avancesInternesOuvertes = avancesInternes.filter((a) => a.solde > 0.5);
+  keys.forEach((k) => {
+    A[k].detteInterne   = avancesInternesOuvertes.filter((a) => a.vers === k)
+                                                  .reduce((s, a) => s + a.solde, 0);
+    A[k].creanceInterne = avancesInternesOuvertes.filter((a) => a.de === k)
+                                                  .reduce((s, a) => s + a.solde, 0);
+  });
+
   const structFixe = config.structures.reduce((s, x) => s + num(x.montant), 0);
   const structure = structFixe + structExtra;
   const remus = config.foyer.remunerations || [];
@@ -1256,7 +1292,8 @@ function calcul(config, entries, ym) {
     .reduce((s, x) => s + num(x.montant), 0);
   const sorties = keys.reduce((s, k) =>
       s + A[k].matiereReelle + A[k].variable + A[k].fixes + A[k].partage + A[k].cnss, 0)
-    + structure + enveloppe + solidarite + avPerso + invests - nonReglees - reporteMontant;
+    + structure + enveloppe + solidarite + avPerso + invests - nonReglees - reporteMontant
+    + reserveDepotsMoisTotal - reserveRetraitsMoisTotal;
   const tresorerie = encaisse - sorties;
 
   /* Ce qu'il reste à couvrir : on retire tout ce qui est déjà réglé ce mois-ci. */
@@ -1480,6 +1517,7 @@ function calcul(config, entries, ym) {
            enveloppe, solidarite, soliVerse, soliCumul, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, poche, cnssTotal,
            partageTotal, posTotal,
+           reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
            naps, anDernier, jours7, hautJour, voyants, aCouvrir, chargesDuMois, seuil, avancement, joursMois, joursRestants, lignesAPayer, dejaRegle,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
@@ -1516,6 +1554,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAd
 
   const sections = [
     ["resultat",   "Vue d'ensemble"],
+    ["reserves",   "Réserves"],
     ["chantiers",  "Chantiers"],
     ["echeancier", "Échéancier"],
     ["paie",       "Paie"],
@@ -1535,6 +1574,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAd
         </div>
       </div>
 
+      {sous === "reserves"   && <ReservesConsolide M={M} config={config} ym={ym} onAdd={onAdd} />}
       {sous === "chantiers"  && <Chantiers config={config} entries={entries} ym={ym}
                                            onAdd={onAdd} onDel={onDel} />}
       {sous === "resultat"   && <Dashboard M={M} config={config} ym={ym} onAller={onAller}
@@ -3077,6 +3117,196 @@ function Fournisseurs({ config, affaire, entries, ym }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  RÉSERVE ET AVANCES INTERNES                                        */
+/* ------------------------------------------------------------------ */
+
+/* Le coussin d'une affaire : ce qu'elle a mis de côté les bons mois, pour ne
+   pas rester à sec à sa réouverture. On ne suppose rien — seulement les
+   dépôts et les retraits réellement saisis, comme un chantier. */
+function ReserveCarte({ k, M, config, ym, onAdd }) {
+  const a = M.A[k], c = config.affaires[k];
+  const [sens, setSens] = useState("depot");
+  const [montant, setMontant] = useState("");
+  const [ok, setOk] = useState("");
+  const defDate = ym === thisMonth() ? today() : ym + "-01";
+
+  const verser = () => {
+    if (num(montant) <= 0) return;
+    onAdd({ type: "reserve", affaire: k, date: defDate, sens, montant: num(montant) });
+    setOk(sens === "retrait" ? "Sorti de la réserve." : "Mis en réserve.");
+    setTimeout(() => setOk(""), 2600);
+    setMontant("");
+  };
+
+  const dette = a.detteInterne || 0, creance = a.creanceInterne || 0;
+  const anDernierCa = (M.anDernier || {})[k] || 0;
+
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between",
+                    alignItems: "baseline", marginBottom: 6 }}>
+        <span className="eyebrow">Réserve</span>
+        <span className="heroNum" style={{ fontSize: 30, marginTop: 0 }}>{fmt(a.reserveSolde)}</span>
+      </div>
+
+      {(a.reserveDepotMois > 0 || a.reserveRetraitMois > 0) && (
+        <div className="row">
+          <span className="lbl">Ce mois-ci</span>
+          <span className="val">
+            {a.reserveDepotMois > 0 && ("+ " + fmt(a.reserveDepotMois))}
+            {a.reserveDepotMois > 0 && a.reserveRetraitMois > 0 && "  ·  "}
+            {a.reserveRetraitMois > 0 && ("− " + fmt(a.reserveRetraitMois))}
+          </span>
+        </div>
+      )}
+      {dette > 0 && (
+        <div className="row">
+          <span className="lbl">Avances internes reçues, à rembourser</span>
+          <span className="val neg">{fmt(dette)}</span>
+        </div>
+      )}
+      {creance > 0 && (
+        <div className="row">
+          <span className="lbl">Avances internes faites, à récupérer</span>
+          <span className="val pos">{fmt(creance)}</span>
+        </div>
+      )}
+      {anDernierCa > 0 && (
+        <div className="mini" style={{ marginTop: dette || creance ? 8 : 2 }}>
+          Repère : l'an dernier à la même période, {c.nom} avait fait {fmt(anDernierCa)} de
+          chiffre d'affaires.
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 14 }}>
+        <div>
+          <label className="f">Mouvement</label>
+          <select className="f" value={sens} onChange={(e) => setSens(e.target.value)}>
+            <option value="depot">Mettre de côté</option>
+            <option value="retrait">Piocher dedans</option>
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label className="f">Montant</label>
+          <input className="f" inputMode="decimal" placeholder="2000" value={montant}
+                 onChange={(e) => setMontant(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
+        </div>
+        <button className="pill" onClick={verser}>Enregistrer</button>
+      </div>
+      {ok && <div className="note" style={{ color: c.marque }}>{ok}</div>}
+      <div className="note">
+        Ce que tu mets de côté les bons mois sort de la trésorerie du groupe sans peser sur le
+        résultat de {c.nom} — il attend d'être repioché quand l'affaire redémarre après une
+        fermeture ou traverse un creux, plutôt que d'entamer l'enveloppe d'un autre mois.
+      </div>
+    </div>
+  );
+}
+
+/* La vue d'ensemble des réserves et des avances internes : qui a mis quoi de
+   côté, et qui doit quoi à qui quand la réserve n'a pas suffi. */
+function ReservesConsolide({ M, config, ym, onAdd }) {
+  const keys = M.keys;
+  const totalReserve = keys.reduce((s, k) => s + (M.A[k].reserveSolde || 0), 0);
+  const ouvertes = M.avancesInternesOuvertes || [];
+  const defDate = ym === thisMonth() ? today() : ym + "-01";
+
+  const [de, setDe] = useState("foyer");
+  const [vers, setVers] = useState(keys[0]);
+  const [montant, setMontant] = useState("");
+  const [motif, setMotif] = useState("");
+  const [ok, setOk] = useState("");
+
+  const nom = (x) => x === "foyer" ? "La maison" : (config.affaires[x] ? config.affaires[x].nom : x);
+
+  const enregistrer = () => {
+    if (num(montant) <= 0 || de === vers) return;
+    onAdd({ type: "avance-interne", date: defDate, de, vers,
+             montant: num(montant), motif: motif.trim() || "—", affaire: vers });
+    setOk("Avance interne enregistrée.");
+    setTimeout(() => setOk(""), 2600);
+    setMontant(""); setMotif("");
+  };
+
+  const rembourser = (a) => {
+    onAdd({ type: "remboursement-interne", ref: a.id, date: today(),
+             montant: a.solde, affaire: a.vers });
+  };
+
+  return (
+    <>
+      <div className="card">
+        <div className="eyebrow" style={{ marginBottom: 12 }}>Réserves, affaire par affaire</div>
+        {keys.map((k) => (
+          <div className="row" key={k}>
+            <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span className="dot" style={{ margin: 0, background: teinte(config.affaires[k]) }} />
+              {config.affaires[k].nom}
+            </span>
+            <span className="val">{fmt(M.A[k].reserveSolde)}</span>
+          </div>
+        ))}
+        <div className="row rowTot">
+          <span className="lbl">Total des réserves</span>
+          <span className="val">{fmt(totalReserve)}</span>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="eyebrow" style={{ marginBottom: 12 }}>Avances internes en cours</div>
+        {ouvertes.length === 0 ? (
+          <div className="empty">Aucune avance interne ouverte pour l'instant.</div>
+        ) : ouvertes.map((a) => (
+          <div className="row" key={a.id}>
+            <span className="lbl">
+              {nom(a.de)} → {nom(a.vers)}
+              <span className="mini" style={{ display: "block" }}>
+                {a.motif}{a.motif !== "—" ? " · " : ""}depuis le {a.date}
+              </span>
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 11 }}>
+              <span className="val neg">{fmt(a.solde)}</span>
+              <button className="pill" onClick={() => rembourser(a)}>Remboursée</button>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <h2 className="h2">Enregistrer une avance interne</h2>
+        <div className="grid3">
+          <div><label className="f">Depuis</label>
+            <select className="f" value={de} onChange={(e) => setDe(e.target.value)}>
+              <option value="foyer">La maison</option>
+              {keys.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
+            </select></div>
+          <div><label className="f">Vers</label>
+            <select className="f" value={vers} onChange={(e) => setVers(e.target.value)}>
+              {keys.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
+            </select></div>
+          <div><label className="f">Montant</label>
+            <input className="f" inputMode="decimal" placeholder="15000" value={montant}
+                   onChange={(e) => setMontant(e.target.value)} /></div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label className="f">Pour quoi</label>
+          <input className="f" placeholder="Réouverture Sabich après l'été…"
+                 value={motif} onChange={(e) => setMotif(e.target.value)} />
+        </div>
+        <button className="btn" onClick={enregistrer}>Enregistrer</button>
+        {ok && <div className="note" style={{ marginTop: 10 }}>{ok}</div>}
+        <div className="note">
+          À utiliser quand la réserve d'une affaire ne suffit pas et qu'il faut vraiment puiser
+          ailleurs — une autre affaire, ou l'enveloppe du mois suivant. Ça reste affiché comme une
+          dette jusqu'à ce que tu appuies sur « Remboursée ».
+        </div>
+      </div>
+    </>
+  );
+}
+
 function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                         taches, onAddTache, onMajTache, onDelTache,
                          onRegler, onReporter, onDel, onMaj }) {
@@ -3230,6 +3460,8 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 
         <Fournisseurs config={config} affaire={k} entries={entries} ym={ym} />
       </div>
+
+      <ReserveCarte k={k} M={M} config={config} ym={ym} onAdd={onAdd} />
 
       <Taches taches={taches} config={config} affaireFixe={k}
               onAdd={onAddTache} onMaj={onMajTache} onDel={onDelTache} />
@@ -3826,6 +4058,10 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
     if (e.type === "depense") return e.lbl + " — " + (e.affaire === "structure" ? "structure" : nom(e.affaire));
     if (e.type === "avance")  return (e.nature === "salaire" ? "Avance salaire — " : "Prélèvement — ") + e.qui;
     if (e.type === "invest")  return e.lbl + " — " + nom(e.affaire);
+    if (e.type === "reserve") return (e.sens === "retrait" ? "Sorti de la réserve — " : "Mis en réserve — ") + nom(e.affaire);
+    if (e.type === "avance-interne") return "Avance interne — "
+      + (e.de === "foyer" ? "La maison" : nom(e.de)) + " → " + nom(e.vers);
+    if (e.type === "remboursement-interne") return "Remboursement d'avance interne — " + nom(e.affaire);
     return e.type;
   };
   const sousTitre = (e) => {
