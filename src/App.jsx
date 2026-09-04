@@ -213,8 +213,12 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   .card { padding:20px 18px; border-radius:16px; }
   .crest { padding:20px 18px; margin:-20px -18px 18px; min-height:92px; }
   .crest img { transform: scale(.78); transform-origin: left center; }
-  .tab { flex:0 0 auto; width:92px; height:72px; }
-  .tab img { transform: scale(.82); }
+  /* Les onglets reprenaient telles quelles leurs dimensions d'ordinateur :
+     sur un téléphone, ça ne laissait voir que 3-4 affaires à la fois et ça
+     dominait l'écran. Un gabarit spécifique, plus compact, pour le mobile. */
+  .tab { flex:0 0 auto; width:66px; height:56px; border-radius:11px 11px 0 0; }
+  .tab img { transform: scale(.58); }
+  .tab .lib { font-size:10.5px; letter-spacing:.09em; }
   .hero { gap:0; }
   .hero .card { padding:14px 0; }
   .hero .card + .card { border-left:none; border-top:1px solid var(--u-bord); padding-left:0; padding-top:18px; }
