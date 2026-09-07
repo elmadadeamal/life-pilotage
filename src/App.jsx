@@ -666,7 +666,7 @@ const trierTaches = (l) => [...l].sort((a, b) =>
 
 /* Qui peut recevoir une tâche : toi, ton mari, et tes salariés déclarés */
 const responsables = (config) => {
-  const gens = [{ id: "moi", nom: "Moi" }, { id: "mari", nom: "Mon mari" }];
+  const gens = [{ id: "moi", nom: "Amal" }, { id: "mari", nom: "Saib" }];
   config.fixes.filter((f) => f.sal).forEach((f) => {
     const nom = (f.lbl || "").replace(/^Salaire\s+/i, "").trim();
     if (nom && !gens.some((g) => g.nom.toLowerCase() === nom.toLowerCase()))
@@ -979,7 +979,9 @@ export default function App({ session, onLogout }) {
                                      onMajTache={majTache} onDelTache={delTache} />}
         {vue === "foyer"    && <FoyerComplet M={M} config={config} onAdd={addEntry} ym={ym}
                                     entries={entries} onRegler={regler} onReporter={reporter}
-                                    onDel={delEntry} onMaj={majEntry} />}
+                                    onDel={delEntry} onMaj={majEntry} deja={deja}
+                                    taches={taches} onAddTache={addTache}
+                                    onMajTache={majTache} onDelTache={delTache} />}
         {vue === "reglages" && <Reglages config={config} onSave={saveConfig}
                                           session={session} onLogout={onLogout} />}
         </div>
@@ -1110,6 +1112,11 @@ function calcul(config, entries, ym) {
                    + num(e.pdj) * px("pdj") + num(e.dej) * px("dej")
                    + num(e.diner) * px("diner");
     }
+    if (e.type === "repas") {
+      const k = (e.affaire && A[e.affaire]) ? e.affaire : defautHeb;
+      if (!k) return;
+      anDernier[k] = (anDernier[k] || 0) + (e.statut === "offert" ? 0 : num(e.montant));
+    }
   });
 
   const naps = { brut: napsBrut, com: napsCom, net: napsBrut - napsCom, fondsCaisse,
@@ -1131,9 +1138,14 @@ function calcul(config, entries, ym) {
     hebStats[k].caNuits += num(r.montant);
     if (r.source === "direct") hebStats[k].nuitsDirect += num(r.nuits);
     const sejour = num(r.montant);
+    /* Anciennes réservations : les repas étaient saisis avec le séjour.
+       Elles gardent leur CA restauration ainsi, les nouvelles passent par
+       leurs propres écritures « repas ». */
     const caEx = num(r.pdj) * px("pdj", "prix") + num(r.dej) * px("dej", "prix")
                + num(r.diner) * px("diner", "prix");
     A[k].ca += sejour + caEx;
+    A[k].caHebergement = (A[k].caHebergement || 0) + sejour;
+    A[k].caRestauration = (A[k].caRestauration || 0) + caEx;
     A[k].com += sejour * num(r.source === "direct" ? H.comDirect : H.comAirbnb) / 100;
     /* Le coût matière des extras est une estimation par couvert : il se met
        de côté, pour ne pas s'additionner aux achats réellement saisis. */
@@ -1143,9 +1155,32 @@ function calcul(config, entries, ym) {
                    + num(r.diner) * px("diner", "com");
   });
 
-  let structExtra = 0;
+  /* Les repas et extras saisis à part : ils font la restauration du riad,
+     jamais l'hébergement. Offerts, ils ne pèsent jamais sur la recette —
+     mais la matière et le temps de la house manager restent de vrais coûts. */
+  inMonth.filter((e) => e.type === "repas").forEach((r) => {
+    const k = (r.affaire && A[r.affaire]) ? r.affaire : defautHeb;
+    const H = HEB(config, k);
+    if (!k || !H) return;
+    const X = H.extras || {};
+    const tarifee = ["pdj", "dej", "diner"].includes(r.categorie);
+    const px = (champ) => (tarifee && X[r.categorie]) ? num(X[r.categorie][champ]) : 0;
+    const montantVente = r.statut === "offert" ? 0 : num(r.montant);
+    A[k].ca += montantVente;
+    A[k].caRestauration = (A[k].caRestauration || 0) + montantVente;
+    if (tarifee) {
+      A[k].matiereExtras += num(r.couverts) * px("matiere");
+      A[k].variable += num(r.couverts) * px("com");
+    }
+  });
+
+  let structExtra = 0, foyerDepenseMois = 0;
   inMonth.filter((e) => e.type === "depense").forEach((d) => {
     if (d.affaire === "structure") { structExtra += num(d.montant); return; }
+    /* Une dépense ponctuelle de la maison : elle vit de l'enveloppe déjà
+       versée par les affaires, elle ne s'ajoute pas à leurs charges — mais
+       elle se garde pour que la maison voie où part son argent. */
+    if (d.affaire === "foyer") { foyerDepenseMois += num(d.montant); return; }
     if (!A[d.affaire]) return;
     if (d.categorie === "matiere") A[d.affaire].matiereReelle += num(d.montant);
     else A[d.affaire].variable += num(d.montant);
@@ -1275,6 +1310,31 @@ function calcul(config, entries, ym) {
                                                   .reduce((s, a) => s + a.solde, 0);
   });
 
+  /* Les prêts personnels : de l'argent perso qui sort de la maison ou d'une
+     affaire (prêté à quelqu'un), ou qui y entre (emprunté à quelqu'un).
+     Une dette tracée dans les deux sens, jusqu'au remboursement. */
+  const rembourseDuPret = (id) => entries.filter((e) => e.type === "remboursement-pret" && e.ref === id)
+                                         .reduce((s, e) => s + num(e.montant), 0);
+  const pretsPerso = entries.filter((e) => e.type === "pret-perso")
+    .map((e) => {
+      const rembourse = rembourseDuPret(e.id);
+      return { ...e, rembourse, solde: Math.max(0, num(e.montant) - rembourse) };
+    })
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const pretsPersoOuverts = pretsPerso.filter((p) => p.solde > 0.5);
+  const pretsIdParSens = {};
+  pretsPerso.forEach((p) => { pretsIdParSens[p.id] = p.sens; });
+  const pretsSortieMois =
+    inMonth.filter((e) => e.type === "pret-perso" && e.sens === "prete")
+           .reduce((s, e) => s + num(e.montant), 0)
+    + inMonth.filter((e) => e.type === "remboursement-pret" && pretsIdParSens[e.ref] === "emprunte")
+             .reduce((s, e) => s + num(e.montant), 0);
+  const pretsEntreeMois =
+    inMonth.filter((e) => e.type === "pret-perso" && e.sens === "emprunte")
+           .reduce((s, e) => s + num(e.montant), 0)
+    + inMonth.filter((e) => e.type === "remboursement-pret" && pretsIdParSens[e.ref] === "prete")
+             .reduce((s, e) => s + num(e.montant), 0);
+
   const structFixe = config.structures.reduce((s, x) => s + num(x.montant), 0);
   const structure = structFixe + structExtra;
   const remus = config.foyer.remunerations || [];
@@ -1312,7 +1372,8 @@ function calcul(config, entries, ym) {
   const sorties = keys.reduce((s, k) =>
       s + A[k].matiereReelle + A[k].variable + A[k].fixes + A[k].partage + A[k].cnss, 0)
     + structure + enveloppe + solidarite + avPerso + invests - nonReglees - reporteMontant
-    + reserveDepotsMoisTotal - reserveRetraitsMoisTotal;
+    + reserveDepotsMoisTotal - reserveRetraitsMoisTotal
+    + pretsSortieMois - pretsEntreeMois;
   const tresorerie = encaisse - sorties;
 
   /* Ce qu'il reste à couvrir : on retire tout ce qui est déjà réglé ce mois-ci. */
@@ -1543,9 +1604,10 @@ function calcul(config, entries, ym) {
 
   return { A, keys, caTotal, resAffaires, structure, structFixe, structExtra,
            enveloppe, solidarite, soliVerse, soliCumul, resultatNet, encaisse, sorties, tresorerie,
-           avances, avSalaire, avPerso, invests, foyerFixes, poche, cnssTotal,
+           avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
            partageTotal, posTotal,
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
+           pretsPerso, pretsPersoOuverts,
            naps, anDernier, jours7, hautJour, voyants, aCouvrir, chargesDuMois, seuil, avancement, joursMois, joursRestants, lignesAPayer, dejaRegle,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
@@ -1583,6 +1645,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAd
   const sections = [
     ["resultat",   "Vue d'ensemble"],
     ["reserves",   "Réserves"],
+    ["prets",      "Prêts perso"],
     ["chantiers",  "Chantiers"],
     ["echeancier", "Échéancier"],
     ["paie",       "Paie"],
@@ -1603,6 +1666,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAd
       </div>
 
       {sous === "reserves"   && <ReservesConsolide M={M} config={config} ym={ym} onAdd={onAdd} />}
+      {sous === "prets"      && <PretsPersoConsolide M={M} config={config} ym={ym} onAdd={onAdd} />}
       {sous === "chantiers"  && <Chantiers config={config} entries={entries} ym={ym}
                                            onAdd={onAdd} onDel={onDel} />}
       {sous === "resultat"   && <Dashboard M={M} config={config} ym={ym} onAller={onAller}
@@ -1919,7 +1983,8 @@ const TEINTE_URGENCE = {
   faite:    { p: "#9AA487", f: "transparent", mot: "Faite" },
 };
 
-function LigneTache({ t, config, gens, onMaj, onDel }) {
+function LigneTache({ t, config, gens, onMaj, onDel, affaireFixe }) {
+  const [edit, setEdit] = useState(false);
   const u = urgence(t);
   const ton = TEINTE_URGENCE[u];
   const a = config.affaires[t.affaire];
@@ -1927,13 +1992,75 @@ function LigneTache({ t, config, gens, onMaj, onDel }) {
   const prio = PRIORITES.find((p) => p.id === (t.priorite || "normale"));
   const fait = t.etat === "fait";
 
+  const [titre, setTitre] = useState(t.titre);
+  const [responsable, setResponsable] = useState(t.responsable);
+  const [debut, setDebut] = useState(t.debut || "");
+  const [echeance, setEcheance] = useState(t.echeance || "");
+  const [priorite, setPriorite] = useState(t.priorite || "normale");
+  const [repete, setRepete] = useState(t.repete || "");
+  const [affaire, setAffaire] = useState(t.affaire || "");
+
+  const enregistrer = () => {
+    if (!titre.trim()) return;
+    onMaj(t.id, { titre: titre.trim(), responsable, debut, echeance, priorite, repete,
+                  affaire: affaireFixe || affaire });
+    setEdit(false);
+  };
+
+  if (edit) {
+    return (
+      <div style={{ background: "#F5F8EC", borderRadius: 13, padding: 15, marginTop: 9 }}>
+        <div style={{ marginBottom: 12 }}>
+          <label className="f">Quoi faire</label>
+          <input className="f" value={titre} onChange={(e) => setTitre(e.target.value)} />
+        </div>
+        <div className="grid3">
+          <div><label className="f">Qui s'en occupe</label>
+            <select className="f" value={responsable} onChange={(e) => setResponsable(e.target.value)}>
+              {gens.map((g) => <option key={g.id} value={g.id}>{g.nom}</option>)}
+            </select></div>
+          <div><label className="f">Début</label>
+            <input className="f" type="date" value={debut} onChange={(e) => setDebut(e.target.value)} /></div>
+          <div><label className="f">Échéance</label>
+            <input className="f" type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} /></div>
+        </div>
+        <div className="grid2">
+          {!affaireFixe && (
+            <div><label className="f">Quelle activité</label>
+              <select className="f" value={affaire} onChange={(e) => setAffaire(e.target.value)}>
+                <option value="">Aucune en particulier</option>
+                <option value="foyer">La maison</option>
+                {vivantes(config).map(([k, a2]) => <option key={k} value={k}>{a2.nom}</option>)}
+              </select></div>
+          )}
+          <div><label className="f">Importance</label>
+            <select className="f" value={priorite} onChange={(e) => setPriorite(e.target.value)}>
+              {PRIORITES.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+            </select></div>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label className="f">Ça revient</label>
+          <select className="f" value={repete} onChange={(e) => setRepete(e.target.value)}>
+            {REPETITIONS.map((r) => <option key={r.id} value={r.id}>{r.nom}</option>)}
+          </select>
+        </div>
+        <div style={{ display: "flex", gap: 9 }}>
+          <button className="btn" style={{ margin: 0 }} onClick={enregistrer}>Enregistrer</button>
+          <button className="pill" onClick={() => setEdit(false)}>Annuler</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: ton.f, borderRadius: 13, padding: "13px 15px", marginTop: 9,
                   border: ton.f === "transparent" ? "1px solid #F1F4E9" : "none" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
         <span style={{ width: 9, height: 9, borderRadius: 3, marginTop: 7, flex: "none",
                        background: fait ? "#D3DAC4" : prio.couleur }} title={prio.nom} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <button onClick={() => setEdit(true)}
+                style={{ flex: 1, minWidth: 0, border: "none", background: "none", cursor: "pointer",
+                         textAlign: "left", padding: 0, font: "inherit", color: "inherit" }}>
           <div style={{ fontSize: 17, lineHeight: 1.4, fontWeight: 700,
                         color: fait ? "#9AA487" : "#33402C",
                         textDecoration: fait ? "line-through" : "none" }}>{t.titre}</div>
@@ -1946,7 +2073,7 @@ function LigneTache({ t, config, gens, onMaj, onDel }) {
             {t.repete && <span className="tag">{
               (REPETITIONS.find((r) => r.id === t.repete) || {}).nom}</span>}
           </div>
-        </div>
+        </button>
         <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
       </div>
 
@@ -2014,6 +2141,7 @@ function NouvelleTache({ config, gens, onAdd, affaireFixe }) {
           <div><label className="f">Quelle activité</label>
             <select className="f" value={affaire} onChange={(e) => setAffaire(e.target.value)}>
               <option value="">Aucune en particulier</option>
+              <option value="foyer">La maison</option>
               {vivantes(config).map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
             </select></div>
         )}
@@ -2072,7 +2200,8 @@ function Taches({ taches, config, onAdd, onMaj, onDel, affaireFixe }) {
       )}
 
       {montrees.map((t) => (
-        <LigneTache key={t.id} t={t} config={config} gens={gens} onMaj={onMaj} onDel={onDel} />
+        <LigneTache key={t.id} t={t} config={config} gens={gens} onMaj={onMaj} onDel={onDel}
+                    affaireFixe={affaireFixe} />
       ))}
 
       {suite.length > 0 && (
@@ -2413,7 +2542,7 @@ function Saisie({ config, ym, onAdd, entries }) {
         <h2 className="h2">Nature de l'écriture</h2>
         <div className="navSimple" style={{ margin: 0 }}>
           {[["vente","Recette du jour"],
-            ...(hebergeurs(config).length ? [["resa","Réservation"]] : []),
+            ...(hebergeurs(config).length ? [["resa","Réservation"], ["repas","Repas & extras"]] : []),
             ["depense","Achat ou charge"],
             ["avance","Avance ou prélèvement"],["invest","Investissement"]].map(([k, l]) => (
             <button key={k} className={"pill" + (type === k ? " on" : "")} onClick={() => setType(k)}>{l}</button>
@@ -2426,6 +2555,7 @@ function Saisie({ config, ym, onAdd, entries }) {
 
       {type === "vente"   && <FVente   config={config} defDate={defDate} onAdd={onAdd} flash={flash} entries={entries} />}
       {type === "resa"    && <FResa    config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
+      {type === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
       {type === "depense" && <FDepense config={config} defDate={defDate} onAdd={onAdd} flash={flash} deja={deja} />}
       {type === "avance"  && <FAvance  defDate={defDate} onAdd={onAdd} flash={flash} config={config} />}
       {type === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
@@ -2612,23 +2742,18 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
   const [source, setSource] = useState("airbnb");
   const [nuits, setNuits] = useState("");
   const [montant, setMontant] = useState("");
-  const [pdj, setPdj] = useState("");
-  const [dej, setDej] = useState("");
-  const [diner, setDiner] = useState("");
+  const [reference, setReference] = useState("");
 
   const H = HEB(config, affaire);
   const c = config.affaires[affaire];
-  const X = (H && H.extras) || {};
-  const px = (id, champ) => (X[id] ? num(X[id][champ]) : 0);
   const com = H ? num(montant) * num(source === "direct" ? H.comDirect : H.comAirbnb) / 100 : 0;
-  const caEx = num(pdj) * px("pdj", "prix") + num(dej) * px("dej", "prix") + num(diner) * px("diner", "prix");
 
   const valider = () => {
     if (num(montant) <= 0) return;
     onAdd({ type: "resa", date, affaire, source, nuits: num(nuits), montant: num(montant),
-            pdj: num(pdj), dej: num(dej), diner: num(diner) });
+            reference: reference.trim() });
     flash("Réservation enregistrée.");
-    setNuits(""); setMontant(""); setPdj(""); setDej(""); setDiner("");
+    setNuits(""); setMontant(""); setReference("");
   };
 
   if (!H) return <div className="card"><div className="empty">Aucun hébergement configuré.</div></div>;
@@ -2660,23 +2785,128 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
         <div><label className="f">Prix du séjour</label>
           <input className="f" inputMode="decimal" placeholder="6150" value={montant}
                  onChange={(e) => setMontant(e.target.value)} /></div>
-        <div style={{ alignSelf: "end", paddingBottom: 6 }}>
-          <div className="mini">Commission : {fmt(com)} · versé sur ton compte : {fmt(num(montant) - com)}</div>
-        </div>
+        <div><label className="f">Référence de séjour</label>
+          <input className="f" placeholder="Code Airbnb" value={reference}
+                 onChange={(e) => setReference(e.target.value)} /></div>
       </div>
-      <div className="grid3">
-        <div><label className="f">Petits-déjeuners</label>
-          <input className="f" inputMode="decimal" placeholder="0" value={pdj} onChange={(e) => setPdj(e.target.value)} /></div>
-        <div><label className="f">Déjeuners</label>
-          <input className="f" inputMode="decimal" placeholder="0" value={dej} onChange={(e) => setDej(e.target.value)} /></div>
-        <div><label className="f">Dîners</label>
-          <input className="f" inputMode="decimal" placeholder="0" value={diner} onChange={(e) => setDiner(e.target.value)} /></div>
+      <div className="mini" style={{ marginBottom: 14 }}>
+        Commission : {fmt(com)} · versé sur ton compte : {fmt(num(montant) - com)}
       </div>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
-        Compte les couverts, pas les services : 6 personnes au dîner, c'est 6.
-        {caEx > 0 && <> Extras du séjour : <strong>{fmt(caEx)}</strong>.</>} La matière et la commission
-        de la house manager sont calculées toutes seules.
+        Les repas et extras du séjour (petit-déj, dîner, boisson…) se saisissent à part, dans
+        <strong> Repas &amp; extras</strong> — ils comptent dans la restauration, pas dans
+        l'hébergement. La référence de séjour (le code Airbnb) permet de les rattacher à cette
+        réservation.
+      </div>
+    </div>
+  );
+}
+
+const NATURES_REPAS = [
+  { id: "pdj",       nom: "Petit-déjeuner" },
+  { id: "dej",       nom: "Déjeuner" },
+  { id: "diner",     nom: "Dîner" },
+  { id: "boisson",   nom: "Boisson" },
+  { id: "excursion", nom: "Excursion" },
+  { id: "transport", nom: "Transport" },
+  { id: "autre",     nom: "Autre" },
+];
+
+/* Les repas et extras d'un séjour, comptés à part de la nuitée : ils
+   font la restauration du riad, pas son hébergement. Un couvert vendu suit
+   le tarif de l'activité ; un couvert offert n'entre jamais en recette,
+   mais sa matière reste un vrai coût. */
+function FRepas({ config, defDate, onAdd, flash, fixe }) {
+  const liste = hebergeurs(config);
+  const [affaire, setAffaire] = useState(fixe || (liste[0] ? liste[0][0] : ""));
+  const [date, setDate] = useState(defDate);
+  const [categorie, setCategorie] = useState("diner");
+  const [couverts, setCouverts] = useState("1");
+  const [montant, setMontant] = useState("");
+  const [statut, setStatut] = useState("paye");
+  const [motif, setMotif] = useState("");
+  const [reference, setReference] = useState("");
+
+  const H = HEB(config, affaire);
+  const c = config.affaires[affaire];
+  const X = (H && H.extras) || {};
+  const tarifee = ["pdj", "dej", "diner"].includes(categorie);
+  const prixUnitaire = tarifee && X[categorie] ? num(X[categorie].prix) : 0;
+
+  useEffect(() => {
+    if (tarifee) setMontant(String(prixUnitaire * num(couverts) || ""));
+  }, [categorie, couverts, affaire]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const valider = () => {
+    if (statut === "paye" && num(montant) <= 0) return;
+    if (statut === "offert" && !motif.trim()) return;
+    onAdd({ type: "repas", date, affaire, categorie, couverts: num(couverts),
+            statut, motif: motif.trim(), reference: reference.trim(),
+            montant: statut === "offert" ? 0 : num(montant) });
+    flash("Repas enregistré.");
+    setCouverts("1"); setMontant(""); setMotif(""); setReference("");
+  };
+
+  if (!H) return <div className="card"><div className="empty">Aucun hébergement configuré.</div></div>;
+
+  return (
+    <div className="card">
+      {!fixe && <Crest k={affaire} c={c} />}
+      {!fixe && liste.length > 1 && (
+        <div style={{ marginBottom: 4 }}>
+          <label className="f">Hébergement</label>
+          <select className="f" value={affaire} onChange={(e) => setAffaire(e.target.value)}>
+            {liste.map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="grid3">
+        <div><label className="f">Date</label>
+          <input className="f" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+        <div><label className="f">Nature</label>
+          <select className="f" value={categorie} onChange={(e) => setCategorie(e.target.value)}>
+            {NATURES_REPAS.map((n) => <option key={n.id} value={n.id}>{n.nom}</option>)}
+          </select></div>
+        <div><label className="f">Couverts</label>
+          <input className="f" inputMode="decimal" value={couverts}
+                 onChange={(e) => setCouverts(e.target.value)} /></div>
+      </div>
+
+      <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+        <button className={"pill" + (statut === "paye" ? " on" : "")}
+                onClick={() => setStatut("paye")}>Payé par le voyageur</button>
+        <button className={"pill" + (statut === "offert" ? " on" : "")}
+                onClick={() => setStatut("offert")}>Offert</button>
+      </div>
+
+      {statut === "paye" ? (
+        <div className="grid2">
+          <div><label className="f">Montant</label>
+            <input className="f" inputMode="decimal" value={montant}
+                   onChange={(e) => setMontant(e.target.value)} /></div>
+          <div><label className="f">Référence de séjour</label>
+            <input className="f" placeholder="Code Airbnb" value={reference}
+                   onChange={(e) => setReference(e.target.value)} /></div>
+        </div>
+      ) : (
+        <div className="grid2">
+          <div><label className="f">Motif de l'offre</label>
+            <input className="f" placeholder="Geste commercial, incident…" value={motif}
+                   onChange={(e) => setMotif(e.target.value)} /></div>
+          <div><label className="f">Référence de séjour</label>
+            <input className="f" placeholder="Code Airbnb" value={reference}
+                   onChange={(e) => setReference(e.target.value)} /></div>
+        </div>
+      )}
+
+      <button className="btn" onClick={valider}>Enregistrer</button>
+      <div className="note">
+        {tarifee
+          ? "Le montant se propose au tarif de l'activité (" + fmt(prixUnitaire) + " × couverts), corrigeable au cas par cas."
+          : "Boisson, excursion ou transport : le montant s'enregistre tel quel, sans matière calculée."}
+        {" "}Un repas offert n'entre jamais dans la recette, mais garde son coût matière — pour les
+        petits-déj, déjeuners et dîners.
       </div>
     </div>
   );
@@ -3008,7 +3238,7 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
   const defDate = ym === thisMonth() ? today() : ym + "-01";
 
   const choix = c.type === "hebergement"
-    ? [["resa", "Réservation"], ["depense", "Achat"], ["invest", "Investissement"]]
+    ? [["resa", "Réservation"], ["repas", "Repas & extras"], ["depense", "Achat"], ["invest", "Investissement"]]
     : [["vente", "Recette"], ["depense", "Achat"], ["invest", "Investissement"]];
 
   const ajouter = (e) => { onAdd(e); setForm(null); };
@@ -3047,6 +3277,7 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
                       marginTop: 12 }}>
           {form === "vente"   && <FVente   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} entries={entries} />}
           {form === "resa"    && <FResa    config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
+          {form === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
           {form === "depense" && <FDepense config={config} defDate={defDate} onAdd={ajouter} flash={flash} deja={deja} fixe={k} />}
           {form === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
         </div>
@@ -3353,6 +3584,113 @@ function ReservesConsolide({ M, config, ym, onAdd }) {
   );
 }
 
+/* L'argent prêté ou emprunté à titre personnel — jamais confondu avec les
+   affaires. Une seule liste, dans les deux sens : ce qu'on te doit (tu as
+   prêté) et ce que tu dois (tu as emprunté à un proche). */
+function PretsPersoConsolide({ M, config, ym, onAdd }) {
+  const keys = M.keys;
+  const ouverts = M.pretsPersoOuverts || [];
+  const onTeDoit = ouverts.filter((p) => p.sens === "prete");
+  const tuDois = ouverts.filter((p) => p.sens === "emprunte");
+  const defDate = ym === thisMonth() ? today() : ym + "-01";
+
+  const [sens, setSens] = useState("prete");
+  const [qui, setQui] = useState("");
+  const [motif, setMotif] = useState("");
+  const [montant, setMontant] = useState("");
+  const [date, setDate] = useState(defDate);
+  const [echeance, setEcheance] = useState("");
+  const [affaire, setAffaire] = useState("foyer");
+  const [ok, setOk] = useState("");
+
+  const nom = (x) => x === "foyer" ? "La maison" : (config.affaires[x] ? config.affaires[x].nom : x);
+
+  const enregistrer = () => {
+    if (num(montant) <= 0 || !qui.trim()) return;
+    onAdd({ type: "pret-perso", date, echeance, sens, qui: qui.trim(),
+             motif: motif.trim(), montant: num(montant), affaire });
+    setOk(sens === "prete" ? "Prêt enregistré." : "Emprunt enregistré.");
+    setTimeout(() => setOk(""), 2600);
+    setQui(""); setMotif(""); setMontant(""); setEcheance("");
+  };
+
+  const rembourser = (p) => {
+    onAdd({ type: "remboursement-pret", ref: p.id, date: today(), montant: p.solde });
+  };
+
+  const Liste = ({ titre, liste, vide, negatif }) => (
+    <div className="card">
+      <div className="eyebrow" style={{ marginBottom: 12 }}>{titre}</div>
+      {liste.length === 0 ? (
+        <div className="empty">{vide}</div>
+      ) : liste.map((p) => (
+        <div className="row" key={p.id}>
+          <span className="lbl">
+            {p.qui}
+            <span className="mini" style={{ display: "block" }}>
+              {p.motif ? p.motif + " · " : ""}sorti de {nom(p.affaire)} le {p.date}
+              {p.echeance ? " · échéance " + p.echeance : ""}
+            </span>
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <span className={"val " + (negatif ? "neg" : "pos")}>{fmt(p.solde)}</span>
+            <button className="pill" onClick={() => rembourser(p)}>Remboursé</button>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <>
+      <Liste titre="On te doit" liste={onTeDoit}
+             vide="Rien en cours — aucun prêt personnel ouvert." negatif={false} />
+      <Liste titre="Tu dois" liste={tuDois}
+             vide="Rien en cours — aucun emprunt personnel ouvert." negatif={true} />
+
+      <div className="card">
+        <h2 className="h2">Enregistrer un prêt personnel</h2>
+        <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+          <button className={"pill" + (sens === "prete" ? " on" : "")}
+                  onClick={() => setSens("prete")}>Tu prêtes</button>
+          <button className={"pill" + (sens === "emprunte" ? " on" : "")}
+                  onClick={() => setSens("emprunte")}>Tu empruntes</button>
+        </div>
+        <div className="grid2">
+          <div><label className="f">{sens === "prete" ? "À qui" : "À qui / de qui"}</label>
+            <input className="f" placeholder="Prénom" value={qui}
+                   onChange={(e) => setQui(e.target.value)} /></div>
+          <div><label className="f">Montant</label>
+            <input className="f" inputMode="decimal" placeholder="5000" value={montant}
+                   onChange={(e) => setMontant(e.target.value)} /></div>
+        </div>
+        <div className="grid3">
+          <div><label className="f">Date</label>
+            <input className="f" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div><label className="f">Échéance prévue</label>
+            <input className="f" type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} /></div>
+          <div><label className="f">{sens === "prete" ? "Sorti de" : "Reçu par"}</label>
+            <select className="f" value={affaire} onChange={(e) => setAffaire(e.target.value)}>
+              <option value="foyer">La maison</option>
+              {keys.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
+            </select></div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label className="f">Pour quoi</label>
+          <input className="f" placeholder="Dépannage, projet…"
+                 value={motif} onChange={(e) => setMotif(e.target.value)} />
+        </div>
+        <button className="btn" onClick={enregistrer}>Enregistrer</button>
+        {ok && <div className="note" style={{ marginTop: 10 }}>{ok}</div>}
+        <div className="note">
+          Un prêt que tu fais sort réellement de la trésorerie du groupe ce mois-ci ; un emprunt
+          y entre. Le solde reste affiché jusqu'à ce que tu appuies sur « Remboursé ».
+        </div>
+      </div>
+    </>
+  );
+}
+
 function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                         taches, onAddTache, onMajTache, onDelTache,
                          onRegler, onReporter, onDel, onMaj }) {
@@ -3401,6 +3739,14 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         </div>
 
         <div className="row"><span className="lbl">Chiffre d'affaires</span><span className="val">{fmt(a.ca)}</span></div>
+        {c.type === "hebergement" && (a.caHebergement > 0 || a.caRestauration > 0) && (
+          <>
+            <div className="row"><span className="lbl mut">— dont hébergement</span>
+              <span className="val mut">{fmt(a.caHebergement || 0)}</span></div>
+            <div className="row"><span className="lbl mut">— dont restauration</span>
+              <span className="val mut">{fmt(a.caRestauration || 0)}</span></div>
+          </>
+        )}
         {a.com > 0 && <div className="row"><span className="lbl">Commissions</span><span className="val neg">− {fmt(a.com)}</span></div>}
         {a.matiere > 0 && (
           <>
@@ -3877,10 +4223,12 @@ function Coche({ paye, onClick, retard }) {
   );
 }
 
-function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDel, onMaj }) {
+function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDel, onMaj, deja,
+                       taches, onAddTache, onMajTache, onDelTache }) {
   const [sous, setSous] = useState("resultat");
   const sections = [
     ["resultat",   "Postes"],
+    ["taches",     "Tâches"],
     ["echeancier", "Échéancier"],
     ["journal",    "Journal"],
   ];
@@ -3896,7 +4244,10 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
             ))}
           </div>
         </div>
-        {sous === "resultat"   && <Foyer M={M} config={config} onAdd={onAdd} ym={ym} onRegler={onRegler} />}
+        {sous === "resultat"   && <Foyer M={M} config={config} onAdd={onAdd} ym={ym}
+                                         onRegler={onRegler} deja={deja} entries={entries} />}
+        {sous === "taches"     && <Taches taches={taches} config={config} onAdd={onAddTache}
+                                          onMaj={onMajTache} onDel={onDelTache} affaireFixe="foyer" />}
         {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
                                           onReporter={onReporter} filtre="foyer" />}
         {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
@@ -3952,8 +4303,9 @@ function SolidariteCarte({ M, config, ym, onAdd, flash }) {
   );
 }
 
-function Foyer({ M, config, onAdd, ym, onRegler }) {
+function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
   const [ok, setOk] = useState("");
+  const [formOuvert, setFormOuvert] = useState(false);
   const flash = (m) => { setOk(m); setTimeout(() => setOk(""), 2600); };
   const defDate = ym === thisMonth() ? today() : ym + "-01";
 
@@ -4039,6 +4391,28 @@ function Foyer({ M, config, onAdd, ym, onRegler }) {
         </div>
       </div>
 
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <h2 className="h2" style={{ margin: 0 }}>Dépenses libres de la maison</h2>
+          <span className="val">{fmt(M.foyerDepenseMois || 0)}</span>
+        </div>
+        <button className="pill" style={{ marginTop: 10 }} onClick={() => setFormOuvert(!formOuvert)}>
+          {formOuvert ? "×" : "+"} Dépense
+        </button>
+        {formOuvert && (
+          <div style={{ marginTop: 14 }}>
+            <FDepense config={config} defDate={defDate}
+                      onAdd={(e) => { onAdd(e); setFormOuvert(false); }}
+                      flash={flash} deja={deja} fixe="foyer" />
+          </div>
+        )}
+        <div className="note">
+          Pour tout ce qui n'est ni un salaire ni une charge fixe — une sortie, un achat, un
+          imprévu — avec sa raison. Ça vient de l'enveloppe déjà reçue des affaires, ça ne
+          s'ajoute donc à aucune charge d'affaire.
+        </div>
+      </div>
+
       <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd} flash={flash} />
 
       {M.doubleLog > 0 && (
@@ -4085,7 +4459,7 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
                                      && (!filtre || e.affaire === filtre))
                       .sort((a, b) => (a.date < b.date ? 1 : -1));
 
-  const nom = (k) => config.affaires[k] ? config.affaires[k].nom : k;
+  const nom = (k) => k === "foyer" ? "La maison" : config.affaires[k] ? config.affaires[k].nom : k;
   const libelle = (e) => {
     if (e.type === "vente") {
       const parts = [];
@@ -4100,7 +4474,16 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
         + (Math.abs(ec) >= 1 ? " · écart " + fmt(ec) : "");
     }
     if (e.type === "resa")    return "Séjour " + (e.nuits || "?") + " nuits — " + nom(e.affaire)
-                                     + " · " + (e.source === "direct" ? "direct" : "Airbnb");
+                                     + " · " + (e.source === "direct" ? "direct" : "Airbnb")
+                                     + (e.reference ? " · réf. " + e.reference : "");
+    if (e.type === "repas") {
+      const natures = { pdj: "Petit-déjeuner", dej: "Déjeuner", diner: "Dîner",
+                         boisson: "Boisson", excursion: "Excursion", transport: "Transport", autre: "Extra" };
+      return (natures[e.categorie] || "Extra") + " — " + nom(e.affaire)
+        + (e.couverts ? " · " + e.couverts + " couvert" + (e.couverts > 1 ? "s" : "") : "")
+        + (e.statut === "offert" ? " · offert" + (e.motif ? " (" + e.motif + ")" : "") : "")
+        + (e.reference ? " · réf. " + e.reference : "");
+    }
     if (e.type === "prime")   return e.lbl || "Prime";
     if (e.type === "solidarite") return "Solidarité";
     if (e.type === "chantier") return "Mis de côté — " + ((config.chantiers || [])
@@ -4113,6 +4496,10 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
     if (e.type === "avance-interne") return "Avance interne — "
       + (e.de === "foyer" ? "La maison" : nom(e.de)) + " → " + nom(e.vers);
     if (e.type === "remboursement-interne") return "Remboursement d'avance interne — " + nom(e.affaire);
+    if (e.type === "pret-perso") return (e.sens === "emprunte" ? "Emprunt perso — " : "Prêt perso — ")
+      + (e.qui || "?") + " · " + (e.sens === "emprunte" ? "reçu par " : "sorti de ") + nom(e.affaire)
+      + (e.motif ? " · " + e.motif : "") + (e.echeance ? " · échéance " + e.echeance : "");
+    if (e.type === "remboursement-pret") return "Remboursement de prêt personnel";
     return e.type;
   };
   const sousTitre = (e) => {
@@ -4139,7 +4526,7 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
       <h2 className="h2">Journal des écritures</h2>
       {list.map((e) => (
         <MvtLigne key={e.id} e={e} libelle={libelle(e)} couleur={couleur(e)}
-                  sous={sousTitre(e)} onDel={onDel} onMaj={onMaj} />
+                  sous={sousTitre(e)} onDel={onDel} onMaj={onMaj} config={config} />
       ))}
       <div className="note">
         Clique sur un montant ou sur une date pour le corriger. La croix supprime la ligne.
@@ -4148,16 +4535,77 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
   );
 }
 
-function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj }) {
+/* Une écriture se corrige entièrement, sans jamais la supprimer et la
+   ressaisir : chaque type garde ses propres champs, initialisés depuis
+   l'écriture existante. */
+function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config }) {
   const [ouvert, setOuvert] = useState(false);
-  const [montant, setMontant] = useState(String(e.montant));
   const [date, setDate] = useState(e.date);
+  const [montant, setMontant] = useState(String(e.montant ?? ""));
   const [numero, setNumero] = useState(e.numero || "");
+  const [lbl, setLbl] = useState(e.lbl || "");
+  const [piece, setPiece] = useState(e.piece || "facture");
+  const [aPayer, setAPayer] = useState(!!e.aPayer);
+  const [affaire, setAffaire] = useState(e.affaire || "");
+  const [espece, setEspece] = useState(String(e.espece ?? ""));
+  const [carte, setCarte] = useState(String(e.carte ?? ""));
+  const [fondSuppose, setFondSuppose] = useState(String(e.fondSuppose ?? ""));
+  const [fondReel, setFondReel] = useState(e.fondReel !== undefined ? String(e.fondReel) : "");
+  const [nuits, setNuits] = useState(String(e.nuits ?? ""));
+  const [source, setSource] = useState(e.source || "airbnb");
+  const [reference, setReference] = useState(e.reference || "");
+  const [categorie, setCategorie] = useState(e.categorie || "pdj");
+  const [couverts, setCouverts] = useState(String(e.couverts ?? ""));
+  const [statut, setStatut] = useState(e.statut || "paye");
+  const [motif, setMotif] = useState(e.motif || "");
+  const [sens, setSens] = useState(e.sens || (e.type === "pret-perso" ? "prete" : "depot"));
+  const [nature, setNature] = useState(e.nature || "salaire");
+  const [qui, setQui] = useState(e.qui || "");
+  const [echeance, setEcheance] = useState(e.echeance || "");
 
-  const entrant = e.type === "vente" || e.type === "resa";
+  const entrant = e.type === "vente" || e.type === "resa" || e.type === "repas"
+                || (e.type === "pret-perso" && e.sens === "emprunte");
+  const annuler = () => setOuvert(false);
 
   const valider = () => {
-    if (num(montant) > 0) onMaj(e.id, { montant: num(montant), date, numero: numero.trim() });
+    let patch = { date };
+    if (e.type === "vente") {
+      const esp = num(espece), ct = num(carte);
+      if (esp + ct <= 0) return;
+      const verifie = fondReel.trim() !== "";
+      patch = { ...patch, espece: esp, carte: ct, montant: esp + ct,
+                fondSuppose: verifie ? num(fondSuppose) : undefined,
+                fondReel: verifie ? num(fondReel) : undefined };
+    } else if (e.type === "resa") {
+      if (num(montant) <= 0) return;
+      patch = { ...patch, montant: num(montant), nuits: num(nuits), source,
+                reference: reference.trim() };
+    } else if (e.type === "repas") {
+      patch = { ...patch, categorie, couverts: num(couverts), statut,
+                motif: motif.trim(), reference: reference.trim(),
+                montant: statut === "offert" ? 0 : num(montant) };
+    } else if (e.type === "depense") {
+      if (num(montant) <= 0) return;
+      patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl,
+                numero: numero.trim(), piece, aPayer, affaire };
+    } else if (e.type === "invest") {
+      if (num(montant) <= 0) return;
+      patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl, affaire };
+    } else if (e.type === "avance") {
+      if (num(montant) <= 0) return;
+      patch = { ...patch, montant: num(montant), nature, qui: qui.trim() || e.qui };
+    } else if (e.type === "reserve") {
+      if (num(montant) <= 0) return;
+      patch = { ...patch, montant: num(montant), sens, motif: motif.trim() };
+    } else if (e.type === "pret-perso") {
+      if (num(montant) <= 0) return;
+      patch = { ...patch, montant: num(montant), qui: qui.trim() || e.qui,
+                motif: motif.trim(), affaire, sens, echeance };
+    } else {
+      if (num(montant) <= 0) return;
+      patch = { ...patch, montant: num(montant), numero: numero.trim() };
+    }
+    onMaj(e.id, patch);
     setOuvert(false);
   };
 
@@ -4193,25 +4641,185 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj }) {
         <span className="dot" style={{ background: couleur }} />
         <span style={{ fontSize: 16.5 }}>{libelle}</span>
       </div>
+
       <div className="grid2">
         <div><label className="f">Date</label>
           <input className="f" type="date" value={date} onChange={(x) => setDate(x.target.value)} /></div>
-        <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" value={montant}
-                 onChange={(x) => setMontant(x.target.value)} /></div>
+        {e.type === "vente" ? null : e.type === "repas" && statut === "offert" ? null : (
+          <div><label className="f">Montant</label>
+            <input className="f" inputMode="decimal" value={montant}
+                   onChange={(x) => setMontant(x.target.value)} /></div>
+        )}
       </div>
-      {e.type === "depense" && (
+
+      {e.type === "vente" && (
+        <>
+          <div className="grid2">
+            <div><label className="f">Cash compté</label>
+              <input className="f" inputMode="decimal" value={espece}
+                     onChange={(x) => setEspece(x.target.value)} /></div>
+            <div><label className="f">CB compté</label>
+              <input className="f" inputMode="decimal" value={carte}
+                     onChange={(x) => setCarte(x.target.value)} /></div>
+          </div>
+          <div className="grid2">
+            <div><label className="f">Fond de caisse supposé</label>
+              <input className="f" inputMode="decimal" value={fondSuppose}
+                     onChange={(x) => setFondSuppose(x.target.value)} /></div>
+            <div><label className="f">Fond de caisse réel</label>
+              <input className="f" placeholder="Si vérifié ce jour-là" inputMode="decimal"
+                     value={fondReel} onChange={(x) => setFondReel(x.target.value)} /></div>
+          </div>
+        </>
+      )}
+
+      {e.type === "resa" && (
+        <>
+          <div className="grid3">
+            <div><label className="f">Venue par</label>
+              <select className="f" value={source} onChange={(x) => setSource(x.target.value)}>
+                <option value="airbnb">Airbnb</option>
+                <option value="direct">Réservation directe</option>
+              </select></div>
+            <div><label className="f">Nombre de nuits</label>
+              <input className="f" inputMode="decimal" value={nuits}
+                     onChange={(x) => setNuits(x.target.value)} /></div>
+            <div><label className="f">Référence de séjour</label>
+              <input className="f" placeholder="Code Airbnb" value={reference}
+                     onChange={(x) => setReference(x.target.value)} /></div>
+          </div>
+        </>
+      )}
+
+      {e.type === "repas" && (
+        <>
+          <div className="grid3">
+            <div><label className="f">Nature</label>
+              <select className="f" value={categorie} onChange={(x) => setCategorie(x.target.value)}>
+                <option value="pdj">Petit-déjeuner</option>
+                <option value="dej">Déjeuner</option>
+                <option value="diner">Dîner</option>
+                <option value="boisson">Boisson</option>
+                <option value="excursion">Excursion</option>
+                <option value="transport">Transport</option>
+                <option value="autre">Autre</option>
+              </select></div>
+            <div><label className="f">Couverts</label>
+              <input className="f" inputMode="decimal" value={couverts}
+                     onChange={(x) => setCouverts(x.target.value)} /></div>
+            <div><label className="f">Référence de séjour</label>
+              <input className="f" placeholder="Code Airbnb" value={reference}
+                     onChange={(x) => setReference(x.target.value)} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+            <button className={"pill" + (statut === "paye" ? " on" : "")}
+                    onClick={() => setStatut("paye")}>Payé par le voyageur</button>
+            <button className={"pill" + (statut === "offert" ? " on" : "")}
+                    onClick={() => setStatut("offert")}>Offert</button>
+          </div>
+          {statut === "offert" && (
+            <div style={{ marginBottom: 12 }}>
+              <label className="f">Motif de l'offre</label>
+              <input className="f" placeholder="Geste commercial, incident…" value={motif}
+                     onChange={(x) => setMotif(x.target.value)} /></div>
+          )}
+        </>
+      )}
+
+      {(e.type === "depense" || e.type === "invest") && (
         <div style={{ marginBottom: 12 }}>
-          <label className="f">{e.piece === "bon" ? "N° du bon" : "N° de facture"}</label>
-          <input className="f" value={numero} onChange={(x) => setNumero(x.target.value)} />
+          <label className="f">Intitulé</label>
+          <input className="f" value={lbl} onChange={(x) => setLbl(x.target.value)} />
         </div>
       )}
+
+      {(e.type === "depense" || e.type === "invest" || e.type === "pret-perso") && config && (
+        <div style={{ marginBottom: 12 }}>
+          <label className="f">Activité</label>
+          <select className="f" value={affaire} onChange={(x) => setAffaire(x.target.value)}>
+            {e.type === "depense" && <option value="structure">Structure (comptable, impôts…)</option>}
+            <option value="foyer">La maison</option>
+            {Object.entries(config.affaires).map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
+          </select>
+        </div>
+      )}
+
+      {e.type === "depense" && (
+        <>
+          <label className="f">Justificatif</label>
+          <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+            <button className={"pill" + (piece === "bl" ? " on" : "")}
+                    onClick={() => { setPiece("bl"); setAPayer(true); }}>Bon de livraison</button>
+            <button className={"pill" + (piece === "facture" ? " on" : "")}
+                    onClick={() => setPiece("facture")}>Facture</button>
+            <button className={"pill" + (piece === "bon" ? " on" : "")}
+                    onClick={() => setPiece("bon")}>Bon de dépense</button>
+            <input className="f" style={{ width: 170 }}
+                   placeholder="N°" value={numero} onChange={(x) => setNumero(x.target.value)} />
+          </div>
+          {piece !== "bl" && (
+            <div style={{ display: "flex", gap: 9, marginBottom: 14, flexWrap: "wrap" }}>
+              <button className={"pill" + (!aPayer ? " on" : "")}
+                      onClick={() => setAPayer(false)}>Déjà payée</button>
+              <button className={"pill" + (aPayer ? " on" : "")}
+                      onClick={() => setAPayer(true)}>À payer plus tard</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {e.type === "avance" && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <label className="f">Nature</label>
+            <select className="f" value={nature} onChange={(x) => setNature(x.target.value)}>
+              <option value="salaire">Avance sur salaire</option>
+              <option value="perso">Prélèvement exceptionnel</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="f">{nature === "salaire" ? "Qui" : "Pour quoi"}</label>
+            <input className="f" value={qui} onChange={(x) => setQui(x.target.value)} /></div>
+        </>
+      )}
+
+      {e.type === "reserve" && (
+        <>
+          <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+            <button className={"pill" + (sens === "depot" ? " on" : "")}
+                    onClick={() => setSens("depot")}>Mise en réserve</button>
+            <button className={"pill" + (sens === "retrait" ? " on" : "")}
+                    onClick={() => setSens("retrait")}>Sortie de réserve</button>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="f">Pour quoi</label>
+            <input className="f" value={motif} onChange={(x) => setMotif(x.target.value)} /></div>
+        </>
+      )}
+
+      {e.type === "pret-perso" && (
+        <>
+          <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+            <button className={"pill" + (sens === "prete" ? " on" : "")}
+                    onClick={() => setSens("prete")}>Tu prêtes</button>
+            <button className={"pill" + (sens === "emprunte" ? " on" : "")}
+                    onClick={() => setSens("emprunte")}>Tu empruntes</button>
+          </div>
+          <div className="grid2">
+            <div><label className="f">À qui / de qui</label>
+              <input className="f" value={qui} onChange={(x) => setQui(x.target.value)} /></div>
+            <div><label className="f">Échéance prévue</label>
+              <input className="f" type="date" value={echeance} onChange={(x) => setEcheance(x.target.value)} /></div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="f">Pour quoi</label>
+            <input className="f" value={motif} onChange={(x) => setMotif(x.target.value)} /></div>
+        </>
+      )}
+
       <div style={{ display: "flex", gap: 9 }}>
         <button className="btn" onClick={valider}>Corriger</button>
-        <button className="pill" onClick={() => {
-          setMontant(String(e.montant)); setDate(e.date);
-          setNumero(e.numero || ""); setOuvert(false);
-        }}>Annuler</button>
+        <button className="pill" onClick={annuler}>Annuler</button>
       </div>
     </div>
   );
