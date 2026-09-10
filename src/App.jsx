@@ -36,7 +36,6 @@ export const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;700&display=swap');
 
 .pil * { box-sizing: border-box; }
-.pil { --fond: url("./assets/fond-texture.jpg"); }
 .pil {
   /* Les six teintes d'un univers. Elles valent le vert sauge de la maison mère
      par défaut, et chaque intercalaire les repeint aux siennes en entrant. */
@@ -45,7 +44,9 @@ export const CSS = `
   font-family: 'Jost', system-ui, sans-serif;
   font-weight: 400;
   color: #33402C;
-  background: #FDF9F5 var(--fond) center top / cover no-repeat fixed;
+  /* Plus de texture beige : l'en-tête (logo + mois) reste blanc, net.
+     La couleur de l'univers ne commence qu'à l'onglet — voir .scene. */
+  background: #FFFFFF;
   min-height: 100vh;
   padding: 26px 16px 100px;
   -webkit-font-smoothing: antialiased;
@@ -421,9 +422,30 @@ const voile = (hex, a) => {
    Le vert n'appartient donc qu'à Sabich, et nulle part ailleurs. */
 const SOUCHE = { dash: "#2D6F97", foyer: "#C97F72", reglages: "#8F8478" };
 
+const baseUnivers = (vue, config) => SOUCHE[vue]
+  || (config.affaires[vue] ? config.affaires[vue].marque : null);
+
+/* L'habit de l'intercalaire courant — le même aplat que celui de sa languette
+   et de son bandeau, réutilisé ici pour le fond de page et l'en-tête. */
+const hOnglet = (vue, config) => HABIT_VUE[vue]
+  || (config.affaires[vue] ? habit(vue, config.affaires[vue]) : null);
+
+/* Le fond de page n'est plus une texture unique : chaque intercalaire teinte
+   la zone de l'onglet et de son bandeau d'un aplat plein — la couleur de sa
+   languette — qui ne bouge pas tant qu'on est encore dans l'en-tête de la
+   fiche, puis s'éteint progressivement vers le blanc, à hauteur des sous-
+   onglets (Résultat, Journal…). Des paliers en pixels, pas en pourcentage :
+   la hauteur du bandeau ne dépend pas de la longueur de la page. */
+const fondPage = (vue, config) => {
+  const h = hOnglet(vue, config);
+  if (!h) return "#FFFFFF";
+  const base = h.fond;
+  return "linear-gradient(180deg, " + base + " 0px, " + base + " 380px, "
+    + melange(base, "#FFFFFF", .7) + " 560px, #FFFFFF 820px)";
+};
+
 function univers(vue, config) {
-  const base = SOUCHE[vue]
-    || (config.affaires[vue] ? config.affaires[vue].marque : null);
+  const base = baseUnivers(vue, config);
   if (!base) return {};
   /* L'encre part de la marque assombrie jusqu'à porter sur blanc — sans quoi
      un jaune ou un beige donnerait des libellés illisibles. Les teintes
@@ -961,6 +983,10 @@ export default function App({ session, onLogout }) {
           </div>
         </div>
 
+        {/* Le dégradé de l'univers commence ici, à l'onglet — jamais plus haut,
+            l'en-tête (logo + mois) reste sur le fond neutre de la page. */}
+        <div className="scene" style={{ background: fondPage(vue, config) }}>
+
         <div className="tabs">
           {onglets(config).map((o) => (
             <button key={o.id} className={"tab" + (vue === o.id ? " on" : "")}
@@ -994,6 +1020,7 @@ export default function App({ session, onLogout }) {
                                     onMajTache={majTache} onDelTache={delTache} />}
         {vue === "reglages" && <Reglages config={config} onSave={saveConfig}
                                           session={session} onLogout={onLogout} />}
+        </div>
         </div>
       </div>
     </div>
