@@ -20,6 +20,7 @@ export const LOGOS = {
   foyerBlanc:   "./assets/foyerBlanc.png",
   contenuBlanc: "./assets/contenuBlanc.png",
   contenu: "./assets/contenu.png",
+  taamBlanc: "./assets/taamBlanc.png",
 };
 
 export const MAISON = { nom: "La maison", marque: "#C97F72", tint: "#FDF3EC",
@@ -301,7 +302,7 @@ const DEFAULT_CONFIG = {
                    diner: { nom: "Dîner",          prix: 215, matiere: 50, com: 40 },
                  },
                } },
-    taam:    { nom: "Ta'âm",    marque: "#D9701A", chip: "#E07B23", tint: "#FDF1E4", matierePct: 30, type: "vente", societe: "michui" },
+    taam:    { nom: "Ta'âm",    marque: "#F1C40D", chip: "#F3CB2A", tint: "#FEFAE9", matierePct: 30, type: "vente", societe: "michui" },
     contenu: { nom: "Le Mi-Chui", marque: "#B98FC9", chip: "#B98FC9", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui", aquarelle: true },
   },
   fixes: [
@@ -451,7 +452,7 @@ function univers(vue, config) {
 const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
                      riad: "riadBlanc", contenu: "contenuBlanc",
                      foyer: "foyerBlanc", dash: "pictoDash",
-                     reglages: "pictoReglages" };
+                     reglages: "pictoReglages", taam: "taamBlanc" };
 
 /* L'habit d'un intercalaire : le fond de la languette et l'encre qui doit s'y
    lire. Toutes les maisons portent leur logo en blanc. Une seule exception,
@@ -486,6 +487,7 @@ const TAILLE_BLANC = {
   foyer:    { width: 38, height: 34 },
   dash:     { width: 38, height: 38 },
   reglages: { width: 40, height: 44 },
+  taam:     { width: 78, height: 20 },
 };
 
 /* Les trois intercalaires qui ne sont pas un commerce se reconnaissent à leur
@@ -2513,6 +2515,7 @@ const TAILLE_CREST = {
   riad:    { width: 132, height: 89 },
   contenu: { width: 101, height: 84 },
   foyer:   { width: 78,  height: 71 },
+  taam:    { width: 155, height: 39 },
 };
 
 const HABIT_VUE = { dash: HABIT_DASH, foyer: HABIT_FOYER, reglages: HABIT_REGLAGES };
