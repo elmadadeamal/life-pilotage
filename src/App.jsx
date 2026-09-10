@@ -44,9 +44,10 @@ export const CSS = `
   font-family: 'Jost', system-ui, sans-serif;
   font-weight: 400;
   color: #33402C;
-  /* Plus de texture beige : l'en-tête (logo + mois) reste blanc, net.
-     La couleur de l'univers ne commence qu'à l'onglet — voir .scene. */
-  background: #FFFFFF;
+  /* Le fond de l'appli est un crème doux et fixe, le même partout :
+     ce n'est plus la page qui prend la couleur de l'onglet ouvert,
+     seuls l'intercalaire et son en-tête la portent (voir .card:has(> .crest)). */
+  background: #FAF6EE;
   min-height: 100vh;
   padding: 26px 16px 100px;
   -webkit-font-smoothing: antialiased;
@@ -66,7 +67,7 @@ export const CSS = `
 .h2 { font-size: 17px; font-weight: 500; margin: 0 0 20px; letter-spacing: .1em;
   text-transform: uppercase; color: var(--u-titre); }
 
-.card { background: var(--u-carte, rgba(255,255,255,.86)); border-radius: 18px; padding: 24px 26px;
+.card { background: #FFFFFF; border-radius: 18px; padding: 24px 26px;
   border: 1px solid var(--u-bord); margin-bottom: 14px;
   box-shadow: 0 1px 2px rgba(90,100,70,.04); }
 .card .card { border:none; background:transparent; padding:0; margin:0; }
@@ -104,12 +105,13 @@ export const CSS = `
   border-bottom:none; margin-top:5px; }
 
 /* ---- Les intercalaires : cinq affaires, cinq couleurs, un seul gabarit ---- */
-.tabs { display:flex; gap:5px; margin: 22px 0 0; padding: 0;
+.tabs { display:flex; gap:8px; margin: 22px 0 0; padding: 0;
   align-items:flex-end; overflow-x:auto; scrollbar-width:none; }
 .tabs::-webkit-scrollbar { display:none; }
 .tab { flex:1 1 96px; max-width:158px; height:82px; border:none; cursor:pointer;
   border-radius: 15px 15px 0 0; padding: 0 12px; position:relative;
   display:flex; align-items:center; justify-content:center; overflow:hidden;
+  box-shadow: 0 1px 2px rgba(40,30,20,.10);
   transition: filter .18s; filter: grayscale(.45) brightness(1.14); }
 .tab:hover { filter: grayscale(.15) brightness(1.05); }
 .tab.on { filter:none; }
@@ -257,6 +259,21 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   border-top:none !important; border-left:none !important; border-right:none !important;
   margin-top:0 !important; box-shadow:none !important; }
+
+/* La carte d'en-tête (celle qui porte l'intercalaire, son nom et les
+   sous-onglets) tient la couleur pleine en haut — sous le nom de la maison —
+   puis s'éteint petit à petit vers un ton très clair au fil des sous-onglets.
+   La carte suivante reprend ce ton clair et finit de blanchir sur son début :
+   la teinte ne s'arrête jamais net, elle se referme en douceur. */
+.card:has(> .crest) {
+  background: linear-gradient(180deg, var(--u-marque) 0%, var(--u-marque) 42%, var(--u-clair) 100%);
+  margin-bottom:0 !important; border-bottom:none !important;
+  border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+.card:has(> .crest) + .card {
+  background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF 70px);
+  margin-top:0 !important; border-top:none !important;
+  border-top-left-radius:0 !important; border-top-right-radius:0 !important;
+  box-shadow:none !important; }
 `;
 
 /* ------------------------------------------------------------------ */
@@ -420,29 +437,10 @@ const voile = (hex, a) => {
    à en déduire les six : c'est ce qui garantit qu'aucun univers ne bave sur
    un autre, et qu'on voit d'un coup d'œil sur quel commerce on saisit.
    Le vert n'appartient donc qu'à Sabich, et nulle part ailleurs. */
-const SOUCHE = { dash: "#2D6F97", foyer: "#C97F72", reglages: "#8F8478" };
+const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478" };
 
 const baseUnivers = (vue, config) => SOUCHE[vue]
   || (config.affaires[vue] ? config.affaires[vue].marque : null);
-
-/* L'habit de l'intercalaire courant — le même aplat que celui de sa languette
-   et de son bandeau, réutilisé ici pour le fond de page et l'en-tête. */
-const hOnglet = (vue, config) => HABIT_VUE[vue]
-  || (config.affaires[vue] ? habit(vue, config.affaires[vue]) : null);
-
-/* Le fond de page n'est plus une texture unique : chaque intercalaire teinte
-   la zone de l'onglet et de son bandeau d'un aplat plein — la couleur de sa
-   languette — qui ne bouge pas tant qu'on est encore dans l'en-tête de la
-   fiche, puis s'éteint progressivement vers le blanc, à hauteur des sous-
-   onglets (Résultat, Journal…). Des paliers en pixels, pas en pourcentage :
-   la hauteur du bandeau ne dépend pas de la longueur de la page. */
-const fondPage = (vue, config) => {
-  const h = hOnglet(vue, config);
-  if (!h) return "#FFFFFF";
-  const base = h.fond;
-  return "linear-gradient(180deg, " + base + " 0px, " + base + " 380px, "
-    + melange(base, "#FFFFFF", .7) + " 560px, #FFFFFF 820px)";
-};
 
 function univers(vue, config) {
   const base = baseUnivers(vue, config);
@@ -458,14 +456,15 @@ function univers(vue, config) {
     "--u-doux":    melange(enc, "#FFFFFF", .44),
     "--u-bord":    melange(base, "#FFFFFF", .76),
     "--u-filet":   melange(base, "#FFFFFF", .94),
+    /* La couleur pleine de la languette, et le ton très clair où elle
+       s'éteint au fil des sous-onglets — voir .card:has(> .crest). */
+    "--u-marque":  base,
+    "--u-clair":   melange(base, "#FFFFFF", .90),
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
     /* Entre les cartes, rien : le fond de l'application court d'un bord à
        l'autre sans qu'aucun panneau vienne le remplacer par un autre. */
     "--u-feuille": "transparent",
-    /* Ce sont les cartes qui portent la couleur de l'univers, et elles la
-       portent en transparence : le fond les traverse et les réchauffe. */
-    "--u-carte":   voile(melange(base, "#FFFFFF", .955), .82),
   };
 }
 
@@ -517,8 +516,8 @@ const TAILLE_BLANC = {
    les réglages en gris chaud, neutre, hors du monde des marques ; la maison en
    pot-pourri. Tous portent la même encre blanche que les commerces — une seule
    règle dans toute l'app, aucun logo noir. */
-const HABIT_DASH     = { fond: "#5FA8D3" };
-const HABIT_FOYER    = { fond: "#DFA098" };
+const HABIT_DASH     = { fond: "#A0B6A9" };
+const HABIT_FOYER    = { fond: "#E0A479" };
 const HABIT_REGLAGES = { fond: "#B3A99C" };
 
 function onglets(config) {
@@ -983,9 +982,7 @@ export default function App({ session, onLogout }) {
           </div>
         </div>
 
-        {/* Le dégradé de l'univers commence ici, à l'onglet — jamais plus haut,
-            l'en-tête (logo + mois) reste sur le fond neutre de la page. */}
-        <div className="scene" style={{ background: fondPage(vue, config) }}>
+        <div className="scene">
 
         <div className="tabs">
           {onglets(config).map((o) => (
