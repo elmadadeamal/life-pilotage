@@ -110,8 +110,8 @@ export const CSS = `
 .tab { flex:1 1 96px; max-width:158px; height:82px; border:none; cursor:pointer;
   border-radius: 15px 15px 0 0; padding: 0 12px; position:relative;
   display:flex; align-items:center; justify-content:center; overflow:hidden;
-  transition: filter .18s; filter: grayscale(.42) opacity(.55); }
-.tab:hover { filter: grayscale(.15) opacity(.85); }
+  transition: filter .18s; filter: grayscale(.45) brightness(1.14); }
+.tab:hover { filter: grayscale(.15) brightness(1.05); }
 .tab.on { filter:none; }
 .tab .lib { color:#fff; font-size:13px; font-weight:500; letter-spacing:.13em;
   text-transform:uppercase; white-space:nowrap; text-align:center; line-height:1.35; }
