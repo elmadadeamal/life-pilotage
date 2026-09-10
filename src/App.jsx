@@ -245,16 +245,16 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
    haut en bas : c'est elle, et non un titre, qui dit sur quel commerce on est
    en train de saisir. Aucun filet ni blanc au raccord — la languette et sa
    page sont la même feuille. */
-.panneau { margin-top:0; background: var(--u-feuille); }
+.panneau { margin-top:-1px; background: var(--u-feuille); }
 .panneau > :first-child {
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   border-top:none !important; border-left:none !important; border-right:none !important;
-  margin-top:0 !important; }
+  margin-top:0 !important; box-shadow:none !important; }
 /* La maison enveloppe ses cartes : la soudure doit descendre d'un cran */
 .panneau > :first-child > .card:first-child {
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   border-top:none !important; border-left:none !important; border-right:none !important;
-  margin-top:0 !important; }
+  margin-top:0 !important; box-shadow:none !important; }
 `;
 
 /* ------------------------------------------------------------------ */
@@ -418,7 +418,7 @@ const voile = (hex, a) => {
    à en déduire les six : c'est ce qui garantit qu'aucun univers ne bave sur
    un autre, et qu'on voit d'un coup d'œil sur quel commerce on saisit.
    Le vert n'appartient donc qu'à Sabich, et nulle part ailleurs. */
-const SOUCHE = { dash: "#B08410", foyer: "#C97F72", reglages: "#8F8478" };
+const SOUCHE = { dash: "#2D6F97", foyer: "#C97F72", reglages: "#8F8478" };
 
 function univers(vue, config) {
   const base = SOUCHE[vue]
@@ -493,7 +493,7 @@ const TAILLE_BLANC = {
    les réglages en gris chaud, neutre, hors du monde des marques ; la maison en
    pot-pourri. Tous portent la même encre blanche que les commerces — une seule
    règle dans toute l'app, aucun logo noir. */
-const HABIT_DASH     = { fond: "#E9B62C" };
+const HABIT_DASH     = { fond: "#5FA8D3" };
 const HABIT_FOYER    = { fond: "#DFA098" };
 const HABIT_REGLAGES = { fond: "#B3A99C" };
 
@@ -597,6 +597,14 @@ const REPETITIONS = [
 ];
 
 const aujourdhui = () => new Date().toISOString().slice(0, 10);
+
+/* Quand on choisit le début d'une tâche, l'échéance suit d'un jour — le
+   couple avance ensemble tant qu'on ne retouche pas l'échéance à la main. */
+const lendemain = (date) => {
+  const d = new Date((date || aujourdhui()) + "T12:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
 
 const joursAvant = (date) => {
   if (!date) return null;
@@ -2020,7 +2028,8 @@ function LigneTache({ t, config, gens, onMaj, onDel, affaireFixe }) {
               {gens.map((g) => <option key={g.id} value={g.id}>{g.nom}</option>)}
             </select></div>
           <div><label className="f">Début</label>
-            <input className="f" type="date" value={debut} onChange={(e) => setDebut(e.target.value)} /></div>
+            <input className="f" type="date" value={debut}
+                   onChange={(e) => { setDebut(e.target.value); setEcheance(lendemain(e.target.value)); }} /></div>
           <div><label className="f">Échéance</label>
             <input className="f" type="date" value={echeance} onChange={(e) => setEcheance(e.target.value)} /></div>
         </div>
@@ -2100,7 +2109,7 @@ function NouvelleTache({ config, gens, onAdd, affaireFixe }) {
   const [affaire, setAffaire] = useState(affaireFixe || "");
   const [responsable, setResponsable] = useState("moi");
   const [debut, setDebut] = useState(aujourdhui());
-  const [echeance, setEcheance] = useState(aujourdhui());
+  const [echeance, setEcheance] = useState(lendemain(aujourdhui()));
   const [priorite, setPriorite] = useState("normale");
   const [repete, setRepete] = useState("");
 
@@ -2131,7 +2140,7 @@ function NouvelleTache({ config, gens, onAdd, affaireFixe }) {
           </select></div>
         <div><label className="f">Début</label>
           <input className="f" type="date" value={debut}
-                 onChange={(e) => setDebut(e.target.value)} /></div>
+                 onChange={(e) => { setDebut(e.target.value); setEcheance(lendemain(e.target.value)); }} /></div>
         <div><label className="f">Échéance</label>
           <input className="f" type="date" value={echeance}
                  onChange={(e) => setEcheance(e.target.value)} /></div>
