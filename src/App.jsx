@@ -275,7 +275,8 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
    La carte suivante reprend ce ton clair et finit de blanchir sur son début :
    la teinte ne s'arrête jamais net, elle se referme en douceur. */
 .card:has(> .crest) {
-  background: linear-gradient(180deg, var(--u-marque) 0%, var(--u-marque) 42%, var(--u-clair) 100%);
+  background: var(--u-entete,
+    linear-gradient(180deg, var(--u-marque) 0%, var(--u-marque) 42%, var(--u-clair) 100%));
   margin-bottom:0 !important; border-bottom:none !important;
   border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
 /* Un libelle pose sur la couleur pleine du bandeau : il prend l'encre qui
@@ -333,7 +334,7 @@ const DEFAULT_CONFIG = {
                  },
                } },
     taam:    { nom: "Ta'âm",    marque: "#F1C40D", chip: "#F3CB2A", tint: "#FEFAE9", matierePct: 30, type: "vente", societe: "michui" },
-    contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui", aquarelle: true },
+    contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui" },
   },
   fixes: [
     { id: "f1",  lbl: "Loyer boutique médina",       montant: 8500,  affaire: "sabich"  , jour: 5 },
@@ -463,6 +464,8 @@ function univers(vue, config) {
      sans raccord visible entre les deux. */
   const habitVue = HABIT_VUE[vue] || (config.affaires[vue] ? habit(vue, config.affaires[vue]) : null);
   const marque = habitVue ? habitVue.fond : base;
+  /* La couleur pleine de la languette quand c'en est une ; null pour une aquarelle. */
+  const marqueHex = String(marque).charAt(0) === "#" ? marque : null;
   /* L'encre part de la marque assombrie jusqu'à porter sur blanc — sans quoi
      un jaune ou un beige donnerait des libellés illisibles. Les teintes
      claires, elles, partent de la marque telle quelle : mélangée à de l'encre
@@ -480,12 +483,21 @@ function univers(vue, config) {
     /* La couleur pleine de la languette, et le ton très clair où elle
        s'éteint au fil des sous-onglets — voir .card:has(> .crest). */
     "--u-marque":  marque,
-    "--u-clair":   melange(marque, "#FFFFFF", .90),
+    /* Une marque est presque toujours une couleur — le Mi-Chui, lui, porte une
+       aquarelle, donc un degrade. Un degrade ne peut pas servir d'etape a
+       l'interieur d'un autre degrade : la carte d'en-tete se retrouvait sans
+       fond. On compose donc le fond complet ici, et le voile blanc passe en
+       couche par-dessus quand la marque est une aquarelle. */
+    "--u-clair":   melange(marqueHex || base, "#FFFFFF", .90),
+    "--u-entete":  marqueHex
+      ? "linear-gradient(180deg, " + marqueHex + " 0%, " + marqueHex + " 42%, "
+        + melange(marqueHex, "#FFFFFF", .90) + " 100%)"
+      : "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 42%, "
+        + melange(base, "#FFFFFF", .90) + " 100%), " + marque,
     /* Ce qui est ecrit sur la couleur pleine du bandeau ne peut pas prendre
        le gris des textes courants, calcule pour un fond clair : blanc sur
        une marque foncee, l'encre de l'univers sur une marque claire. */
-    "--u-surMarque": (String(marque).charAt(0) !== "#"
-                      || contraste(marque, "#FFFFFF") >= 3.2)
+    "--u-surMarque": (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
                        ? "rgba(255,255,255,.88)" : enc,
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
@@ -771,6 +783,14 @@ function reprendre(saved) {
     c.affaires.tmsk = { ...c.affaires.tmsk,
                         marque: "#5E3B26", chip: "#8A5A3C", tint: "#F3E7DA",
                         bouton: "#F2E7D6" };
+  }
+
+  /* Le Mi-Chui portait une aquarelle — un dégradé, là où toutes les autres
+     marques sont un aplat. Il passe à son mauve, y compris dans une config
+     déjà en place. */
+  if (c.affaires.contenu && c.affaires.contenu.aquarelle) {
+    c.affaires.contenu = { ...c.affaires.contenu, aquarelle: false,
+                           marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8" };
   }
 
   /* Ancienne configuration : le riad avait ses réglages dans un coin à part */
