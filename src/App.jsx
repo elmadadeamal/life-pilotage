@@ -130,6 +130,7 @@ export const CSS = `
   font-size:15px; font-weight:500; color:#fff; display:inline-flex;
   align-items:center; gap:9px; min-height:52px; letter-spacing:.11em;
   text-transform:uppercase; transition:filter .15s, box-shadow .15s; }
+.btnSaisie { box-shadow:0 2px 7px rgba(30,20,10,.14); }
 .btnSaisie:hover { filter:brightness(1.09); }
 .btnSaisie.ouvert { filter:brightness(.93); }
 .btnSaisie.ouvert:hover { filter:brightness(.82); }
@@ -308,7 +309,7 @@ const DEFAULT_CONFIG = {
     { id: "gourmet", nom: "Gourmet Souk" },
   ],
   affaires: {
-    sabich:  { nom: "Sabich",   marque: "#034216", chip: "#1E7A45", tint: "#EAF3ED", matierePct: 30, type: "vente", societe: "michui", fonds: 1500 },
+    sabich:  { nom: "Sabich",   marque: "#005227", chip: "#1E7A45", tint: "#EAF3ED", matierePct: 30, type: "vente", societe: "michui", fonds: 1500 },
     tmsk:    { nom: "TMSK",     marque: "#5E3B26", chip: "#8A5A3C", tint: "#F3E7DA", bouton: "#F2E7D6", matierePct: 22, type: "vente", societe: "michui", fonds: 1000 },
     riad:    { nom: "Riad Itto", marque: "#B49A6F", chip: "#B49A6F", tint: "#F8F3EA", matierePct: 0,
                type: "hebergement", societe: "gourmet",
@@ -321,7 +322,7 @@ const DEFAULT_CONFIG = {
                  },
                } },
     taam:    { nom: "Ta'âm",    marque: "#F1C40D", chip: "#F3CB2A", tint: "#FEFAE9", matierePct: 30, type: "vente", societe: "michui" },
-    contenu: { nom: "Le Mi-Chui", marque: "#B98FC9", chip: "#B98FC9", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui", aquarelle: true },
+    contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui", aquarelle: true },
   },
   fixes: [
     { id: "f1",  lbl: "Loyer boutique médina",       montant: 8500,  affaire: "sabich"  , jour: 5 },
@@ -445,6 +446,12 @@ const baseUnivers = (vue, config) => SOUCHE[vue]
 function univers(vue, config) {
   const base = baseUnivers(vue, config);
   if (!base) return {};
+  /* La même couleur que la languette et son bandeau (voir onglets()/Crest) —
+     parfois assombrie pour porter du blanc — pour que le haut de la carte
+     d'en-tête et l'intercalaire soient rigoureusement la même matière,
+     sans raccord visible entre les deux. */
+  const habitVue = HABIT_VUE[vue] || (config.affaires[vue] ? habit(vue, config.affaires[vue]) : null);
+  const marque = habitVue ? habitVue.fond : base;
   /* L'encre part de la marque assombrie jusqu'à porter sur blanc — sans quoi
      un jaune ou un beige donnerait des libellés illisibles. Les teintes
      claires, elles, partent de la marque telle quelle : mélangée à de l'encre
@@ -458,8 +465,8 @@ function univers(vue, config) {
     "--u-filet":   melange(base, "#FFFFFF", .94),
     /* La couleur pleine de la languette, et le ton très clair où elle
        s'éteint au fil des sous-onglets — voir .card:has(> .crest). */
-    "--u-marque":  base,
-    "--u-clair":   melange(base, "#FFFFFF", .90),
+    "--u-marque":  marque,
+    "--u-clair":   melange(marque, "#FFFFFF", .90),
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
     /* Entre les cartes, rien : le fond de l'application court d'un bord à
@@ -516,9 +523,9 @@ const TAILLE_BLANC = {
    les réglages en gris chaud, neutre, hors du monde des marques ; la maison en
    pot-pourri. Tous portent la même encre blanche que les commerces — une seule
    règle dans toute l'app, aucun logo noir. */
-const HABIT_DASH     = { fond: "#A0B6A9" };
-const HABIT_FOYER    = { fond: "#E0A479" };
-const HABIT_REGLAGES = { fond: "#B3A99C" };
+const HABIT_DASH     = { fond: "#94D4DD" };
+const HABIT_FOYER    = { fond: "#F1B597" };
+const HABIT_REGLAGES = { fond: "#7B797A" };
 
 function onglets(config) {
   return [
@@ -2548,7 +2555,7 @@ function Crest({ k, c }) {
   const blanc = LOGO_BLANC[k] ? LOGOS[LOGO_BLANC[k]] : null;
   const h = HABIT_VUE[k] || habit(k, c);
   return (
-    <div className="crest" style={{ background: h.fond }}>
+    <div className="crest">
       {blanc
         ? <img src={blanc} alt={c.nom} style={{ ...TAILLE_CREST[k], ...encre(h) }} />
         : <div className="crestName" style={h.texte ? { color: h.texte } : {}}>{c.nom}</div>}
@@ -3285,10 +3292,10 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
         {choix.map(([id, lbl]) => {
           const actif = form === id;
-            /* Une affaire peut imposer la teinte de ses boutons — TMSK tient
-               à son ivoire. Sinon on part de la couleur de marque, assombrie
-               juste ce qu'il faut pour porter du blanc. */
-            const fond = c.bouton || lisible(c.marque, 4.5);
+            /* Le bouton doit rester net sur le bandeau coloré de sa page :
+               un fond nacré très clair, quelle que soit la marque, pour
+               qu'il se détache toujours — jamais la couleur du fond derrière. */
+            const fond = c.bouton || melange(c.marque, "#FFFFFF", .88);
             const clair = contraste(fond, "#FFFFFF") < 3;
             const encreBtn = clair ? lisible(c.marque, 7) : "#FFFFFF";
             return (
