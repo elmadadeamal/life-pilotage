@@ -278,6 +278,9 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   background: linear-gradient(180deg, var(--u-marque) 0%, var(--u-marque) 42%, var(--u-clair) 100%);
   margin-bottom:0 !important; border-bottom:none !important;
   border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+/* Un libelle pose sur la couleur pleine du bandeau : il prend l'encre qui
+   porte sur la marque, pas le gris des textes courants. */
+.surMarque { color: var(--u-surMarque); }
 .card:has(> .crest) + .card {
   background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF 70px);
   margin-top:0 !important; border-top:none !important;
@@ -478,6 +481,12 @@ function univers(vue, config) {
        s'éteint au fil des sous-onglets — voir .card:has(> .crest). */
     "--u-marque":  marque,
     "--u-clair":   melange(marque, "#FFFFFF", .90),
+    /* Ce qui est ecrit sur la couleur pleine du bandeau ne peut pas prendre
+       le gris des textes courants, calcule pour un fond clair : blanc sur
+       une marque foncee, l'encre de l'univers sur une marque claire. */
+    "--u-surMarque": (String(marque).charAt(0) !== "#"
+                      || contraste(marque, "#FFFFFF") >= 3.2)
+                       ? "rgba(255,255,255,.88)" : enc,
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
     /* Entre les cartes, rien : le fond de l'application court d'un bord à
@@ -3312,7 +3321,7 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <div className="eyebrow" style={{ marginBottom: 9 }}>Enregistrer</div>
+      <div className="eyebrow surMarque" style={{ marginBottom: 9 }}>Enregistrer</div>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
         {choix.map(([id, lbl]) => {
           const actif = form === id;
@@ -3539,7 +3548,7 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
                onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
       </div>
       <button className="btn" style={{ marginTop: 10 }} onClick={verser}>Enregistrer</button>
-      {ok && <div className="note" style={{ color: c.marque }}>{ok}</div>}
+      {ok && <div className="note" style={{ color: lisible(c.marque, 5) }}>{ok}</div>}
       <div className="note">
         Ce que tu mets de côté les bons mois sort de la trésorerie du groupe sans peser sur le
         résultat de {c.nom} — il attend d'être repioché quand l'affaire redémarre après une
@@ -5002,7 +5011,7 @@ function ActiviteReglage({ k, a, c, maj }) {
         <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span className="swatch" style={{ width: 15, height: 15, borderRadius: 5,
                   background: a.aquarelle ? AQUARELLE : a.chip, flex: "none" }} />
-          <span style={{ color: a.marque, opacity: a.archive ? .5 : 1 }}>{a.nom}</span>
+          <span style={{ color: lisible(a.marque, 5), opacity: a.archive ? .5 : 1 }}>{a.nom}</span>
           {a.type === "hebergement" && <span className="tag">hébergement</span>}
           {a.archive && <span className="tag">archivée</span>}
         </span>
