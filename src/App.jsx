@@ -521,6 +521,11 @@ const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
    brightness(0) les repasse à l'encre sans rien redessiner. */
 const HABIT = {
   tmsk: { fond: "#EDE3CC", sombre: true, opa: 1, texte: "#2E2822", clair: true },
+  /* Ta'am : son jaune exact, releve sur son logo officiel (#F1C40D sur le
+     nacre #FDFAF3). La regle generale l'assombrissait jusqu'a #9F8109 pour
+     qu'un blanc tienne dessus — mais c'est precisement ce que fait sa marque,
+     blanc sur jaune plein. On garde donc sa couleur telle qu'elle l'a dessinee. */
+  taam: { fond: "#F1C40D" },
 };
 
 const habit = (k, c) => HABIT[k]
