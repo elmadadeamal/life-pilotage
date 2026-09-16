@@ -1730,10 +1730,12 @@ function calcul(config, entries, ym) {
   const avances = avSalaire + avPerso;
   const invests = inMonth.filter((e) => e.type === "invest").reduce((s, e) => s + num(e.montant), 0);
   const encaisse = caTotal - keys.reduce((s, k) => s + A[k].com, 0);
-  /* Une dépense « à payer plus tard » se retire des sorties du mois — mais
-     seulement si elle y avait été ajoutée. Une dépense de la maison n'entre
-     jamais dans les charges (elle vit de l'enveloppe déjà versée) : la
-     retrancher créait de l'argent qui n'existait pas. */
+  /* Ce que le mois doit encore à ses fournisseurs. On ne le retire PLUS des
+     sorties : l'app comptait les loyers et les salaires même non payés, mais
+     retirait les factures fournisseurs en attente — prudente d'un côté,
+     généreuse de l'autre. Une seule règle désormais : le mois porte tout ce
+     qu'il doit, réglé ou non. Un bon de livraison en attente est de l'argent
+     dû, pas de l'argent gagné. Le chiffre reste affiché à part. */
   const nonReglees = inMonth
     .filter((e) => e.type === "depense" && e.aPayer
                    && (A[e.affaire] || e.affaire === "structure"))
@@ -1841,7 +1843,7 @@ function calcul(config, entries, ym) {
   const sorties = keys.reduce((s, k) =>
       s + A[k].matiereReelle + A[k].variable + A[k].fixes + A[k].partage + A[k].cnss, 0)
     + structure + enveloppe + solidarite + avPerso + invests
-    - nonReglees - reporteMontant + enRetard
+    - reporteMontant + enRetard
     + reserveDepotsMoisTotal - reserveRetraitsMoisTotal + chantiersMois
     + pretsSortieMois - pretsEntreeMois;
   const tresorerie = encaisse - sorties;
@@ -2895,23 +2897,36 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
       <div className="card bandeau" style={{ padding: "26px 24px" }}>
         <div className="heroLbl">{monthLabel(ym)}</div>
 
-        <div className="grid3" style={{ margin: "16px 0 4px" }}>
+        <div style={{ display: "grid", gap: 18, margin: "16px 0 4px",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(165px, 1fr))" }}>
           <div>
             <div className="eyebrow">Rentré</div>
-            <div className="heroNum pos" style={{ fontSize: 33 }}>{fmt(M.encaisse)}</div>
+            <div className="heroNum pos" style={{ fontSize: 31 }}>{fmt(M.encaisse)}</div>
             <div className="mini">commissions déduites</div>
           </div>
           <div>
             <div className="eyebrow">Sorti</div>
-            <div className="heroNum neg" style={{ fontSize: 33 }}>{fmt(M.sorties)}</div>
-            <div className="mini">charges du mois, réglées ou non</div>
+            <div className="heroNum neg" style={{ fontSize: 31 }}>{fmt(M.sorties)}</div>
+            <div className="mini">tout ce que le mois doit, réglé ou non</div>
+          </div>
+          {/* Sur ces sorties, ce qui n'est pas encore payé : les échéances non
+              pointées et les pièces fournisseurs en attente. C'est l'argent qui
+              va quitter la caisse dans les jours qui viennent. */}
+          <div>
+            <div className="eyebrow">Reste à régler</div>
+            <div className="heroNum" style={{ fontSize: 31, color: "#B07C1E" }}>
+              {fmt(M.aCouvrir + M.dettes)}
+            </div>
+            <div className="mini">
+              échéances non pointées{M.dettes > 0 ? " + " + fmt(M.dettes) + " aux fournisseurs" : ""}
+            </div>
           </div>
           <div>
             <div className="eyebrow">Ce qu'il reste</div>
             <div className={"heroNum " + (M.tresorerie >= 0 ? "pos" : "neg")}
-                 style={{ fontSize: 33 }}>{fmt(M.tresorerie)}</div>
+                 style={{ fontSize: 31 }}>{fmt(M.tresorerie)}</div>
             <div className="mini">
-              {M.tresorerie >= 0 ? "disponible, engagements déduits" : "il manque encore"}
+              {M.tresorerie >= 0 ? "solde de fin de mois" : "il manque encore"}
             </div>
           </div>
         </div>
@@ -3002,9 +3017,11 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
               </div>
             )}
             <div className="note">
-              Ce que le mois doit sortir compte toutes ses charges, réglées ou non — sauf
-              celles que tu as reportées et les factures fournisseurs marquées à payer.
-              C'est le solde de fin de mois si tout est honoré, pas ta caisse d'aujourd'hui.
+              Ce que le mois doit sortir compte TOUTES ses charges, réglées ou non, factures
+              fournisseurs en attente comprises — sauf celles que tu as explicitement
+              reportées sur le mois suivant. C'est le solde de fin de mois si tout est
+              honoré, pas ta caisse d'aujourd'hui.
+              {M.dettes > 0 && " Dont " + fmt(M.dettes) + " encore dus à tes fournisseurs."}
             </div>
           </div>
         </div>
