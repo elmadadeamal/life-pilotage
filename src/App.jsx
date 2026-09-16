@@ -1423,6 +1423,35 @@ function calcul(config, entries, ym) {
   const naps = { brut: napsBrut, com: napsCom, net: napsBrut - napsCom, fondsCaisse,
                  espece: especeTotal, ecartFonds: ecartFondsTotal, parAffaire: encaissements };
 
+  /* Un séjour est saisi à sa date d'ARRIVÉE, avec toutes ses nuits. Un séjour
+     de 6 nuits arrivé le 28 septembre mettait donc 6 nuitées en septembre et
+     zéro en octobre : le taux d'occupation de septembre pouvait dépasser 100 %,
+     celui d'octobre paraissait catastrophique, et le voyant « nuitées requises »
+     jugeait octobre sur des charges sans aucune recette en face.
+     L'argent, lui, reste au mois d'arrivée : c'est là qu'il est encaissé, et
+     l'app suit la caisse. On ne découpe que les NUITS. */
+  const nuitsDansLeMois = (r) => {
+    const n = num(r.nuits);
+    if (n <= 0 || !r.date) return 0;
+    const debut = new Date(r.date + "T12:00:00");
+    let dedans = 0;
+    for (let i = 0; i < n; i++) {
+      const j = new Date(debut);
+      j.setDate(j.getDate() + i);
+      if (j.toISOString().slice(0, 7) === ym) dedans++;
+    }
+    return dedans;
+  };
+
+  /* Les repas d'un séjour pouvaient être comptés DEUX fois : par les champs
+     pdj/dej/diner portés par d'anciennes réservations, et par les écritures
+     « repas » saisies à part depuis. Le code de la réservation rattache les
+     deux : si un repas porte la même référence de séjour, la réservation
+     n'apporte plus ses extras. */
+  const refsAvecRepas = new Set(entries
+    .filter((e) => e.type === "repas" && (e.reference || "").trim())
+    .map((e) => (e.reference || "").trim().toLowerCase()));
+
   /* Chaque hébergement tient ses propres nuitées, à ses propres tarifs */
   const hebStats = {};
   keys.filter((k) => config.affaires[k].type === "hebergement").forEach((k) => {
@@ -1435,26 +1464,45 @@ function calcul(config, entries, ym) {
     if (!hebStats[k]) hebStats[k] = { nuits: 0, caNuits: 0, nuitsDirect: 0 };
     const X = H.extras || {};
     const px = (id, champ) => (X[id] ? num(X[id][champ]) : 0);
-    hebStats[k].nuits += num(r.nuits);
+    const nDansMois = nuitsDansLeMois(r);
+    hebStats[k].nuits += nDansMois;
     hebStats[k].caNuits += num(r.montant);
-    if (r.source === "direct") hebStats[k].nuitsDirect += num(r.nuits);
+    hebStats[k].nuitsSejours = (hebStats[k].nuitsSejours || 0) + num(r.nuits);
+    if (r.source === "direct") hebStats[k].nuitsDirect += nDansMois;
     const sejour = num(r.montant);
     /* Anciennes réservations : les repas étaient saisis avec le séjour.
        Elles gardent leur CA restauration ainsi, les nouvelles passent par
        leurs propres écritures « repas ». */
-    const caEx = num(r.pdj) * px("pdj", "prix") + num(r.dej) * px("dej", "prix")
-               + num(r.diner) * px("diner", "prix");
+    const extrasAilleurs = (r.reference || "").trim()
+      && refsAvecRepas.has((r.reference || "").trim().toLowerCase());
+    const q = (champ) => extrasAilleurs ? 0 : num(r[champ]);
+    const caEx = q("pdj") * px("pdj", "prix") + q("dej") * px("dej", "prix")
+               + q("diner") * px("diner", "prix");
     A[k].ca += sejour + caEx;
     A[k].caHebergement = (A[k].caHebergement || 0) + sejour;
     A[k].caRestauration = (A[k].caRestauration || 0) + caEx;
     A[k].com += sejour * num(r.source === "direct" ? H.comDirect : H.comAirbnb) / 100;
     /* Le coût matière des extras est une estimation par couvert : il se met
        de côté, pour ne pas s'additionner aux achats réellement saisis. */
-    A[k].matiereExtras += num(r.pdj) * px("pdj", "matiere") + num(r.dej) * px("dej", "matiere")
-                        + num(r.diner) * px("diner", "matiere");
-    A[k].variable += num(r.pdj) * px("pdj", "com") + num(r.dej) * px("dej", "com")
-                   + num(r.diner) * px("diner", "com");
+    A[k].matiereExtras += q("pdj") * px("pdj", "matiere") + q("dej") * px("dej", "matiere")
+                        + q("diner") * px("diner", "matiere");
+    A[k].variable += q("pdj") * px("pdj", "com") + q("dej") * px("dej", "com")
+                   + q("diner") * px("diner", "com");
   });
+
+  /* L'autre bout du même problème : un séjour arrivé fin du mois précédent
+     occupe encore des nuits de celui-ci. Son argent reste au mois d'arrivée,
+     mais ses nuits comptent ici — sinon un début de mois paraît vide alors que
+     le riad était plein. */
+  entries.filter((e) => e.type === "resa" && (e.date || "").startsWith(shiftMonth(ym, -1)))
+    .forEach((r) => {
+      const k = (r.affaire && A[r.affaire]) ? r.affaire : defautHeb;
+      if (!k || !hebStats[k]) return;
+      const n = nuitsDansLeMois(r);
+      if (n <= 0) return;
+      hebStats[k].nuits += n;
+      if (r.source === "direct") hebStats[k].nuitsDirect += n;
+    });
 
   /* Les repas et extras saisis à part : ils font la restauration du riad,
      jamais l'hébergement. Offerts, ils ne pèsent jamais sur la recette —
@@ -1979,8 +2027,12 @@ function calcul(config, entries, ym) {
                  const lots = Math.max(1, num((config.affaires[k] || {}).logements || 1));
                  const dispo = joursMois * lots;
                  return [k, { ...s,
-                   prixMoyen: s.nuits > 0 ? s.caNuits / s.nuits : 0,
-                   occupation: (s.nuits / dispo) * 100,
+                   /* Le prix moyen rapporte le CA encaissé aux nuits VENDUES ;
+                      le taux d'occupation, lui, ne compte que les nuits
+                      réellement passées dans le mois affiché. */
+                   prixMoyen: s.nuitsSejours > 0 ? s.caNuits / s.nuitsSejours : 0,
+                   nuitsSejours: s.nuitsSejours || 0,
+                   occupation: Math.min(100, (s.nuits / dispo) * 100),
                    dispo, joursMois }];
                })) };
 }
@@ -4385,8 +4437,8 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         {c.type === "hebergement" && M.heb[k] && M.heb[k].nuits > 0 && (
           <div style={{ marginTop: 20 }}>
             <div className="eyebrow" style={{ marginBottom: 10 }}>Taux de remplissage</div>
-            <div className="row"><span className="lbl">Nuitées vendues</span>
-              <span className="val">{M.heb[k].nuits} / {M.heb[k].joursMois}</span></div>
+            <div className="row"><span className="lbl">Nuitées occupées ce mois-ci</span>
+              <span className="val">{M.heb[k].nuits} / {M.heb[k].dispo}</span></div>
             <div className="row"><span className="lbl">Taux d'occupation</span>
               <span className="val">{Math.round(M.heb[k].occupation)} %</span></div>
             <div className="row"><span className="lbl">Prix moyen par nuitée</span>
@@ -4395,6 +4447,11 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
               <span className="val">{M.heb[k].nuitsDirect} nuitées</span></div>
             <div className="mini" style={{ marginTop: 8 }}>
               Une nuitée en direct rapporte environ 15 % de plus qu'une nuitée Airbnb.
+              {M.heb[k].nuitsSejours !== M.heb[k].nuits && (
+                <> Les séjours saisis ce mois-ci totalisent {M.heb[k].nuitsSejours} nuits :
+                  celles qui débordent sur le mois suivant y sont comptées, et celles d'un
+                  séjour arrivé le mois dernier sont comptées ici.</>
+              )}
             </div>
           </div>
         )}
