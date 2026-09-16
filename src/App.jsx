@@ -1848,6 +1848,26 @@ function calcul(config, entries, ym) {
     + pretsSortieMois - pretsEntreeMois;
   const tresorerie = encaisse - sorties;
 
+  /* Le détail, ligne par ligne, de ce que le mois coûte. La somme de ces lignes
+     fait exactement `sorties` : c'est fait pour être vérifié à la main, pas pour
+     être cru sur parole. */
+  const detailSorties = [
+    ["Achats et matière",                keys.reduce((s, k) => s + A[k].matiereReelle, 0)],
+    ["Commissions et charges variables", keys.reduce((s, k) => s + A[k].variable, 0)],
+    ["Charges fixes des activités",      keys.reduce((s, k) => s + A[k].fixes + A[k].partage, 0)],
+    ["CNSS",                             keys.reduce((s, k) => s + A[k].cnss, 0)],
+    ["Structure (société, comptable)",   structure],
+    ["La maison et vos rémunérations",   enveloppe],
+    ["Solidarité",                       solidarite],
+    ["Investissements",                  invests],
+    ["Prélèvements exceptionnels",       avPerso],
+    ["Mis en réserve",                   reserveDepotsMoisTotal - reserveRetraitsMoisTotal],
+    ["Mis de côté pour un chantier",     chantiersMois],
+    ["Prêts personnels",                 pretsSortieMois - pretsEntreeMois],
+    ["Retards des mois passés",          enRetard],
+    ["Reporté sur le mois suivant",     -reporteMontant],
+  ].filter(([, v]) => Math.abs(v) >= 1);
+
   /* Ce que le mois doit porter, payé ou non (les reports sont déjà exclus).
      Les frais de structure ponctuels — un acompte d'impôts, une facture du
      comptable — sortent de la caisse mais n'étaient dans aucun catalogue :
@@ -2023,7 +2043,7 @@ function calcul(config, entries, ym) {
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
   return { A, keys, caTotal, resAffaires, structure, structFixe, structExtra,
-           enveloppe, solidarite, soliVerse, soliReste, soliCumul, resultatNet, encaisse, sorties, tresorerie,
+           enveloppe, solidarite, soliVerse, soliReste, soliCumul, detailSorties, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
            partageTotal, posTotal,
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
@@ -2905,9 +2925,9 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
             <div className="mini">commissions déduites</div>
           </div>
           <div>
-            <div className="eyebrow">Sorti</div>
+            <div className="eyebrow">Ce que le mois coûte</div>
             <div className="heroNum neg" style={{ fontSize: 31 }}>{fmt(M.sorties)}</div>
-            <div className="mini">tout ce que le mois doit, réglé ou non</div>
+            <div className="mini">payé ou non — le détail est en bas de page</div>
           </div>
           {/* Sur ces sorties, ce qui n'est pas encore payé : les échéances non
               pointées et les pièces fournisseurs en attente. C'est l'argent qui
@@ -3004,7 +3024,15 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
             <h2 className="h2">Où va l'argent du mois</h2>
             <div className="row"><span className="lbl">Ce qui rentre, commissions déduites</span>
               <span className="val pos">{fmt(M.encaisse)}</span></div>
-            <div className="row"><span className="lbl">Ce que le mois doit sortir</span>
+            {M.detailSorties.map(([lbl, v]) => (
+              <div className="row" key={lbl}>
+                <span className="lbl" style={{ paddingLeft: 14 }}>{lbl}</span>
+                <span className={"val " + (v < 0 ? "pos" : "neg")} style={{ fontSize: 16 }}>
+                  {v < 0 ? "+ " + fmt(-v) : "− " + fmt(v)}
+                </span>
+              </div>
+            ))}
+            <div className="row"><span className="lbl">Ce que le mois coûte en tout</span>
               <span className="val neg">− {fmt(M.sorties)}</span></div>
             <div className="row rowTot"><span className="lbl">Ce qu'il reste</span>
               <span className={"val " + (M.tresorerie >= 0 ? "pos" : "neg")}>{fmt(M.tresorerie)}</span></div>
