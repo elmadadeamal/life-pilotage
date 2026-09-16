@@ -698,6 +698,20 @@ const diffReglages = (avant, apres) => {
 
 const MSG_MONTANT = "Montant manquant — écris le montant en chiffres avant d'enregistrer.";
 
+/* Une date mal tapée — 2027 au lieu de 2026 — sort l'écriture de tous les
+   totaux sans un mot. On ne l'interdit pas, saisir une pièce d'un autre mois
+   est légitime : on la signale. */
+function HorsMois({ date, defDate }) {
+  if (!date || !defDate || date.slice(0, 7) === defDate.slice(0, 7)) return null;
+  return (
+    <div style={{ background: "#FDF3E0", color: "#8A5B10", borderRadius: 10,
+                  padding: "10px 12px", marginBottom: 12, fontSize: 15.5 }}>
+      Cette date n'est pas dans le mois affiché — l'écriture ira sur
+      {" " + monthLabel(date.slice(0, 7))}. Vérifie qu'elle est juste.
+    </div>
+  );
+}
+
 function Alerte({ children }) {
   if (!children) return null;
   return (
@@ -1660,17 +1674,14 @@ function calcul(config, entries, ym) {
   const avances = avSalaire + avPerso;
   const invests = inMonth.filter((e) => e.type === "invest").reduce((s, e) => s + num(e.montant), 0);
   const encaisse = caTotal - keys.reduce((s, k) => s + A[k].com, 0);
-  const nonReglees = inMonth.filter((e) => e.type === "depense" && e.aPayer)
-                            .reduce((s, e) => s + num(e.montant), 0);
-  const reporteMontant = [...config.fixes, ...config.structures, ...config.foyer.fixes, ...remus]
-    .filter((x) => reportesRef.has(x.id))
-    .reduce((s, x) => s + num(x.montant), 0);
-  const sorties = keys.reduce((s, k) =>
-      s + A[k].matiereReelle + A[k].variable + A[k].fixes + A[k].partage + A[k].cnss, 0)
-    + structure + enveloppe + solidarite + avPerso + invests - nonReglees - reporteMontant
-    + reserveDepotsMoisTotal - reserveRetraitsMoisTotal
-    + pretsSortieMois - pretsEntreeMois;
-  const tresorerie = encaisse - sorties;
+  /* Une dépense « à payer plus tard » se retire des sorties du mois — mais
+     seulement si elle y avait été ajoutée. Une dépense de la maison n'entre
+     jamais dans les charges (elle vit de l'enveloppe déjà versée) : la
+     retrancher créait de l'argent qui n'existait pas. */
+  const nonReglees = inMonth
+    .filter((e) => e.type === "depense" && e.aPayer
+                   && (A[e.affaire] || e.affaire === "structure"))
+    .reduce((s, e) => s + num(e.montant), 0);
 
   /* Ce qu'il reste à couvrir : on retire tout ce qui est déjà réglé ce mois-ci. */
   const regle    = new Set(inMonth.filter((e) => e.type === "paye").map((e) => e.ref));
@@ -1700,18 +1711,40 @@ function calcul(config, entries, ym) {
                            montant: soliReste, groupe: "solidarite" }] : []),
   ];
 
-  /* Ce qui a été reporté depuis le mois précédent revient, marqué en retard */
-  const moisPrec = shiftMonth(ym, -1);
-  const repPrec = entries
-    .filter((e) => e.type === "reporte" && (e.date || "").startsWith(moisPrec))
-    .map((e) => String(e.ref).replace("retard:", ""));
+  /* Un report n'est pas une chaîne d'un mois au suivant : c'est une DETTE qui
+     court jusqu'à ce qu'elle soit payée. L'ancienne version ne regardait que
+     le mois précédent — un mois d'inattention et un loyer entier disparaissait
+     pour de bon ; et deux mois de retard se repliaient sur une seule ligne.
+     On compte donc, sur tous les mois passés : combien de fois la charge du
+     mois a été repoussée, moins combien de fois un retard a été soldé.
+     Repousser un retard déjà existant (ref « retard:x ») ne crée pas une
+     nouvelle dette : c'est la même, portée plus loin. */
+  const moisDe = (e) => (e.date || "").slice(0, 7);
+  const ardoise = {};
+  const premierReport = {};
+  entries.filter((e) => e.type === "reporte" && moisDe(e) < ym).forEach((e) => {
+    const r = String(e.ref);
+    if (r.startsWith("retard:")) return;
+    ardoise[r] = (ardoise[r] || 0) + 1;
+    if (!premierReport[r] || moisDe(e) < premierReport[r]) premierReport[r] = moisDe(e);
+  });
+  entries.filter((e) => e.type === "paye" && moisDe(e) < ym
+                        && String(e.ref).startsWith("retard:")).forEach((e) => {
+    const r = String(e.ref).slice(7);
+    ardoise[r] = (ardoise[r] || 0) - 1;
+  });
 
-  const retards = [...new Set(repPrec)].map((rid) => {
+  const retards = Object.entries(ardoise).map(([rid, n]) => {
+    if (n <= 0) return null;
     const b = base.find((x) => x.id === rid);
     if (!b) return null;
+    const depuis = premierReport[rid] || shiftMonth(ym, -1);
+    const unitaire = b.base !== undefined ? b.base : b.montant;
     /* Une prime appartient au mois où elle est versée : le retard ne la traîne pas. */
-    return { id: "retard:" + rid, lbl: b.lbl + " — en retard de " + monthLabel(moisPrec),
-             montant: b.base !== undefined ? b.base : b.montant, retard: true, groupe: b.groupe };
+    return { id: "retard:" + rid,
+             lbl: b.lbl + " — en retard depuis " + monthLabel(depuis)
+                  + (n > 1 ? " (" + n + " mois)" : ""),
+             montant: unitaire * n, retard: true, groupe: b.groupe };
   }).filter(Boolean);
 
   const lignesAPayer = [...retards, ...base]
@@ -1739,8 +1772,29 @@ function calcul(config, entries, ym) {
   const reporteVers = base.filter((b) => reportes.has(b.id))
                           .reduce((s, b) => s + b.montant, 0);
 
-  /* Ce que le mois doit porter, payé ou non (les reports sont déjà exclus) */
-  const chargesDuMois = lignesAPayer.reduce((s, l) => s + l.montant, 0);
+  /* Ce qui a été repoussé hors de ce mois. Construit à partir de `base` et non
+     d'une liste écrite à la main : la CNSS et la solidarité n'y figuraient pas,
+     donc les reporter ne changeait rien aux sorties — et la ligne ne revenait
+     jamais le mois suivant. */
+  const reporteMontant = base.filter((x) => reportesRef.has(x.id))
+                             .reduce((s, x) => s + num(x.montant), 0);
+
+  /* Ce qui sort vraiment de la caisse ce mois-ci. Les retards des mois passés
+     en font partie : ils avaient été retirés du mois où on les a repoussés,
+     sans jamais revenir nulle part — de la trésorerie fantôme, des deux côtés. */
+  const sorties = keys.reduce((s, k) =>
+      s + A[k].matiereReelle + A[k].variable + A[k].fixes + A[k].partage + A[k].cnss, 0)
+    + structure + enveloppe + solidarite + avPerso + invests
+    - nonReglees - reporteMontant + enRetard
+    + reserveDepotsMoisTotal - reserveRetraitsMoisTotal
+    + pretsSortieMois - pretsEntreeMois;
+  const tresorerie = encaisse - sorties;
+
+  /* Ce que le mois doit porter, payé ou non (les reports sont déjà exclus).
+     Les frais de structure ponctuels — un acompte d'impôts, une facture du
+     comptable — sortent de la caisse mais n'étaient dans aucun catalogue :
+     le seuil de rentabilité ne les voyait pas passer. */
+  const chargesDuMois = lignesAPayer.reduce((s, l) => s + l.montant, 0) + structExtra;
   /* Ce qui doit encore sortir de la caisse */
   const aCouvrir = lignesAPayer.filter((l) => !l.paye).reduce((s, l) => s + l.montant, 0);
   const dejaRegle = lignesAPayer.filter((l) => l.paye).reduce((s, l) => s + l.montant, 0);
@@ -1871,8 +1925,12 @@ function calcul(config, entries, ym) {
     if (montant <= 0 || reportes.has(ref)) return;
     const j = Math.min(num(jour) || 5, joursMois);
     const paye = regle.has(ref);
+    /* Un mois à venir n'a rien de dépassé : préparer octobre affichait tous
+       les loyers et les salaires en rouge, et le tableau de bord annonçait
+       « 7 échéances sont passées sans être pointées ». */
+    const passe = ym <= thisMonth();
     echeances.push({ ref, lbl, montant, jour: j, groupe, paye,
-                     enRetard: !paye && j < jourActuel });
+                     enRetard: passe && !paye && j < jourActuel });
   };
   /* les retards du mois précédent s'affichent en tête */
   retards.forEach((r) => ajoute(r.id, r.lbl, r.montant, 1, r.groupe));
@@ -2069,7 +2127,11 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
     for (let i = 1; i <= 6 && res.length < 3; i++) {
       const m = shiftMonth(ym, -i);
       if (!entries.some((e) => (e.date || "").slice(0, 7) === m)) continue;
-      res.push(calcul(config, entries, m).resultatNet);
+      /* La trésorerie, pas le résultat : le résultat ignore les investissements,
+         les prélèvements, la solidarité et les mises en réserve — c'est-à-dire
+         précisément tout ce qui se dispute l'argent avec un chantier. Le rythme
+         annoncé était optimiste de façon systématique. */
+      res.push(calcul(config, entries, m).tresorerie);
     }
     return res.length ? { moy: res.reduce((s, v) => s + v, 0) / res.length, n: res.length } : null;
   }, [config, entries, ym]);
@@ -3101,10 +3163,8 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
         </div>
       )}
 
-      {erreur && (
-        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
-                      padding: "10px 12px", marginBottom: 12, fontSize: 15.5 }}>{erreur}</div>
-      )}
+      <HorsMois date={date} defDate={defDate} />
+      <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer la journée</button>
       <div className="note">
         Le cash compté est directement la recette du jour — le fond de caisse ne s'en déduit
@@ -3177,6 +3237,7 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
       <div className="mini" style={{ marginBottom: 14 }}>
         Commission : {fmt(com)} · versé sur ton compte : {fmt(num(montant) - com)}
       </div>
+      <HorsMois date={date} defDate={defDate} />
       <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
@@ -3291,6 +3352,7 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
         </div>
       )}
 
+      <HorsMois date={date} defDate={defDate} />
       <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
@@ -3451,10 +3513,8 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
         </div>
       )}
 
-      {erreur && (
-        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
-                      padding: "10px 12px", marginBottom: 12, fontSize: 15.5 }}>{erreur}</div>
-      )}
+      <HorsMois date={date} defDate={defDate} />
+      <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
         Chaque fournisseur a son rythme : le pain à la semaine, le boucher au mois, l'épicerie au besoin.
@@ -3576,10 +3636,8 @@ function FInvest({ config, defDate, onAdd, flash, fixe }) {
         <label className="f">Quoi</label>
         <input className="f" placeholder="Travaux du local, machine à café, packaging" value={lbl} onChange={(e) => setLbl(e.target.value)} />
       </div>
-      {erreur && (
-        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
-                      padding: "10px 12px", marginBottom: 12, fontSize: 15.5 }}>{erreur}</div>
-      )}
+      <HorsMois date={date} defDate={defDate} />
+      <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
         Ce que tu achètes une fois et que tu gardes : ça sort de la caisse mais ce n'est pas une charge
@@ -4275,9 +4333,19 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         )}
         {a.variable > 0 && (
           <Detail titre="Charges variables" montant={a.variable}
-                  lignes={entries.filter((e) => e.type === "depense" && e.affaire === k
-                            && (e.date || "").startsWith(ym) && e.categorie !== "matiere")
-                    .map((e) => [e.lbl + (e.numero ? " (n° " + e.numero + ")" : ""), num(e.montant)])} />
+                  lignes={(() => {
+                    /* Le détail ne montrait que les dépenses saisies, alors que
+                       le total porte aussi le service des repas et extras (la
+                       commission par couvert) : on ouvrait « 4 200 DH » sur une
+                       liste qui en totalisait 3 100, sans explication. */
+                    const saisies = entries.filter((e) => e.type === "depense" && e.affaire === k
+                        && (e.date || "").startsWith(ym) && e.categorie !== "matiere")
+                      .map((e) => [e.lbl + (e.numero ? " (n° " + e.numero + ")" : ""), num(e.montant)]);
+                    const reste = a.variable - saisies.reduce((s, l) => s + l[1], 0);
+                    return Math.abs(reste) >= 1
+                      ? [...saisies, ["Service des repas et extras", reste]]
+                      : saisies;
+                  })()} />
         )}
         {a.fixes > 0 && (
           <Detail titre="Charges fixes" montant={a.fixes}
@@ -4667,8 +4735,12 @@ function Historique({ config, entries, ym, filtre }) {
   const premier = brut.findIndex((h) => h.ca > 0);
   const H = premier === -1 ? brut.slice(-1) : brut.slice(premier);
   const actifs = H.filter((h) => h.ca > 0);
-  const cumulCA  = actifs.reduce((s, h) => s + h.ca, 0);
-  const cumulRes = actifs.reduce((s, h) => s + h.resultat, 0);
+  /* Le cumul porte sur TOUS les mois, pas seulement ceux où la caisse a tourné.
+     Un mois de fermeture a un chiffre d'affaires nul mais paie quand même son
+     loyer, ses salaires et sa quote-part : c'est le mois le plus déficitaire de
+     l'année, et c'était exactement celui qu'on retirait du total. */
+  const cumulCA  = H.reduce((s, h) => s + h.ca, 0);
+  const cumulRes = H.reduce((s, h) => s + h.resultat, 0);
   const maxi = Math.max(1, ...H.map((h) => h.ca));
 
   if (!actifs.length) {
@@ -4683,12 +4755,13 @@ function Historique({ config, entries, ym, filtre }) {
         <div className="card">
           <div className="heroLbl">Chiffre d'affaires cumulé</div>
           <div className="heroNum">{fmt(cumulCA)}</div>
-          <div className="heroNote">Sur {actifs.length} mois saisis.</div>
+          <div className="heroNote">Sur {H.length} mois, dont {actifs.length} avec des ventes.</div>
         </div>
         <div className="card">
           <div className="heroLbl">Résultat cumulé</div>
           <div className={"heroNum " + (cumulRes >= 0 ? "pos" : "neg")}>{fmt(cumulRes)}</div>
-          <div className="heroNote">Moyenne : {fmt(cumulRes / actifs.length)} par mois.</div>
+          <div className="heroNote">Moyenne : {fmt(cumulRes / Math.max(1, H.length))} par mois,
+            fermetures comprises.</div>
         </div>
       </div>
 
@@ -4700,9 +4773,9 @@ function Historique({ config, entries, ym, filtre }) {
                           alignItems: "baseline", marginBottom: 5 }}>
               <span style={{ fontSize: 16 }}>{monthLabel(h.ym)}</span>
               <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                <span className="mini">{h.ca > 0 ? fmt(h.ca) : "—"}</span>
-                {h.ca > 0 && <span className={h.resultat >= 0 ? "pos" : "neg"}
-                                   style={{ marginLeft: 12, fontWeight: 500 }}>{fmt(h.resultat)}</span>}
+                <span className="mini">{h.ca > 0 ? fmt(h.ca) : "fermé"}</span>
+                <span className={h.resultat >= 0 ? "pos" : "neg"}
+                      style={{ marginLeft: 12, fontWeight: 500 }}>{fmt(h.resultat)}</span>
               </span>
             </div>
             <div style={{ height: 9, borderRadius: 5, background: "#EDF0E4", overflow: "hidden" }}>
@@ -5531,11 +5604,17 @@ function Sauvegarde({ config }) {
 
   const exporter = async () => {
     try {
+      /* Le catch interne avalait l'échec de lecture : le fichier partait avec
+         « entries: [] » et l'app annonçait « Fichier téléchargé ». On ne
+         découvrait la sauvegarde vide que le jour où on en avait besoin. */
       let entries = [];
-      try {
-        const e = await window.storage.get("pilotage:entries");
-        if (e && e.value) entries = JSON.parse(e.value);
-      } catch (x) { /* rien à exporter */ }
+      const e = await window.storage.get("pilotage:entries");
+      if (e && e.value) entries = JSON.parse(e.value);
+      if (!entries.length) {
+        setMsg("Rien n'a pu être lu — aucun fichier n'a été créé. Réessaie dans un instant.");
+        setTimeout(() => setMsg(""), 5000);
+        return;
+      }
       const contenu = JSON.stringify({ version: 1, date: today(), config, entries }, null, 2);
       const blob = new Blob([contenu], { type: "application/json" });
       const a = document.createElement("a");
@@ -5543,7 +5622,7 @@ function Sauvegarde({ config }) {
       a.download = "life-sauvegarde-" + today() + ".json";
       a.click();
       URL.revokeObjectURL(a.href);
-      setMsg("Fichier téléchargé. Garde-le dans ton Drive.");
+      setMsg("Fichier téléchargé (" + entries.length + " écritures). Garde-le dans ton Drive.");
     } catch (x) {
       setMsg("La sauvegarde n'a pas pu se faire.");
     }
