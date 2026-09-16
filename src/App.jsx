@@ -610,6 +610,19 @@ const montantLisible = (v) => String(v ?? "").trim() === ""
                            || !isNaN(parseFloat(normaliseMontant(v)));
 const teinte = (a) => a.aquarelle ? AQUARELLE : a.chip;
 
+/* Un bouton qui ne fait rien est le pire des messages : il laisse croire à une
+   panne, et on ressaisit. Partout où une saisie peut être refusée, elle est
+   désormais refusée à voix haute, en nommant ce qui manque. */
+const MSG_MONTANT = "Montant manquant — écris le montant en chiffres avant d'enregistrer.";
+
+function Alerte({ children }) {
+  if (!children) return null;
+  return (
+    <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
+                  padding: "10px 12px", marginBottom: 12, fontSize: 15.5 }}>{children}</div>
+  );
+}
+
 /* Une activité peut être une vente au comptoir ou un hébergement.
    Archivée, elle sort des menus mais reste dans l'historique. */
 const vivantes   = (config) => Object.entries(config.affaires).filter(([, a]) => !a.archive);
@@ -1872,6 +1885,7 @@ function BarresCA({ M, config, onAller }) {
 function Chantiers({ config, entries, ym, onAdd, onDel }) {
   const [ouvert, setOuvert] = useState("");
   const [montant, setMontant] = useState("");
+  const [erreur, setErreur] = useState("");
 
   /* Le rythme vient des trois derniers mois clos qui ont des saisies */
   const rythme = useMemo(() => {
@@ -1888,7 +1902,8 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
     .reduce((s, e) => s + num(e.montant), 0);
 
   const affecter = (id) => {
-    if (num(montant) <= 0) return;
+    if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    setErreur("");
     onAdd({ type: "chantier", chantier: id, date: ym + "-28", montant: num(montant) });
     setMontant(""); setOuvert("");
   };
@@ -1965,13 +1980,14 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
                 <div style={{ flex: 1 }}>
                   <label className="f">Montant affecté ce mois-ci</label>
                   <input className="f" autoFocus inputMode="decimal" value={montant}
-                         onChange={(e) => setMontant(e.target.value)}
+                         onChange={(e) => { setMontant(e.target.value); setErreur(""); }}
                          onKeyDown={(e) => { if (e.key === "Enter") affecter(ch.id); }} />
                 </div>
                 <button className="btn" style={{ margin: 0 }}
                         onClick={() => affecter(ch.id)}>Affecter</button>
               </div>
             )}
+            {ouvert === ch.id && <Alerte>{erreur}</Alerte>}
           </div>
         );
       })}
@@ -2169,8 +2185,10 @@ function LigneTache({ t, config, gens, onMaj, onDel, affaireFixe }) {
   const [repete, setRepete] = useState(t.repete || "");
   const [affaire, setAffaire] = useState(t.affaire || "");
 
+  const [erreur, setErreur] = useState("");
   const enregistrer = () => {
-    if (!titre.trim()) return;
+    if (!titre.trim()) { setErreur("Écris ce qu'il y a à faire."); return; }
+    setErreur("");
     onMaj(t.id, { titre: titre.trim(), responsable, debut, echeance, priorite, repete,
                   affaire: affaireFixe || affaire });
     setEdit(false);
@@ -2215,6 +2233,7 @@ function LigneTache({ t, config, gens, onMaj, onDel, affaireFixe }) {
           </select>
         </div>
         <div style={{ display: "flex", gap: 9 }}>
+          <Alerte>{erreur}</Alerte>
           <button className="btn" style={{ margin: 0 }} onClick={enregistrer}>Enregistrer</button>
           <button className="pill" onClick={() => setEdit(false)}>Annuler</button>
         </div>
@@ -2274,8 +2293,10 @@ function NouvelleTache({ config, gens, onAdd, affaireFixe }) {
   const [priorite, setPriorite] = useState("normale");
   const [repete, setRepete] = useState("");
 
+  const [erreur, setErreur] = useState("");
   const creer = () => {
-    if (!titre.trim()) return;
+    if (!titre.trim()) { setErreur("Écris ce qu'il y a à faire."); return; }
+    setErreur("");
     onAdd({ titre: titre.trim(), affaire, responsable, debut, echeance, priorite, repete, etat: "afaire" });
     setTitre(""); setPriorite("normale"); setRepete(""); setOuvert(false);
   };
@@ -2327,6 +2348,7 @@ function NouvelleTache({ config, gens, onAdd, affaireFixe }) {
         </select>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
+        <Alerte>{erreur}</Alerte>
         <button className="btn" style={{ margin: 0 }} onClick={creer}>Créer la tâche</button>
         <button className="pill" onClick={() => setOuvert(false)}>Annuler</button>
       </div>
@@ -2777,7 +2799,10 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
   const ecartFonds = fondVerifie ? num(fondSuppose) - num(fondReel) : 0;
 
   const ajouterTicket = () => {
-    if (!stan.trim() || num(mtStan) <= 0 || doublonAilleurs || doublonIci) return;
+    if (doublonAilleurs || doublonIci) return;   /* déjà signalé juste en dessous */
+    if (!stan.trim())      { setErreur("Numéro du ticket manquant."); return; }
+    if (num(mtStan) <= 0)  { setErreur("Montant du ticket manquant."); return; }
+    setErreur("");
     setTickets([...tickets, { stan: stan.trim(), montant: num(mtStan) }]);
     setStan(""); setMtStan("");
   };
@@ -2844,6 +2869,7 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
                  onKeyDown={(e) => { if (e.key === "Enter") ajouterTicket(); }} /></div>
         <button className="pill" style={{ marginBottom: 1 }} onClick={ajouterTicket}>Ajouter</button>
       </div>
+      <Alerte>{erreur}</Alerte>
 
       {(doublonAilleurs || doublonIci) && (
         <div className="mini" style={{ marginTop: 8, color: "#C9503A" }}>
@@ -2923,13 +2949,16 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
   const [nuits, setNuits] = useState("");
   const [montant, setMontant] = useState("");
   const [reference, setReference] = useState("");
+  const [erreur, setErreur] = useState("");
 
   const H = HEB(config, affaire);
   const c = config.affaires[affaire];
   const com = H ? num(montant) * num(source === "direct" ? H.comDirect : H.comAirbnb) / 100 : 0;
 
   const valider = () => {
-    if (num(montant) <= 0) return;
+    if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    if (num(nuits) <= 0)   { setErreur("Nombre de nuits manquant."); return; }
+    setErreur("");
     onAdd({ type: "resa", date, affaire, source, nuits: num(nuits), montant: num(montant),
             reference: reference.trim() });
     flash("Réservation enregistrée.");
@@ -2972,6 +3001,7 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
       <div className="mini" style={{ marginBottom: 14 }}>
         Commission : {fmt(com)} · versé sur ton compte : {fmt(num(montant) - com)}
       </div>
+      <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
         Les repas et extras du séjour (petit-déj, dîner, boisson…) se saisissent à part, dans
@@ -3007,6 +3037,7 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
   const [statut, setStatut] = useState("paye");
   const [motif, setMotif] = useState("");
   const [reference, setReference] = useState("");
+  const [erreur, setErreur] = useState("");
 
   const H = HEB(config, affaire);
   const c = config.affaires[affaire];
@@ -3019,8 +3050,12 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
   }, [categorie, couverts, affaire]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const valider = () => {
-    if (statut === "paye" && num(montant) <= 0) return;
-    if (statut === "offert" && !motif.trim()) return;
+    if (statut === "paye" && num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    if (statut === "offert" && !motif.trim()) {
+      setErreur("Motif de l'offre manquant — dis pourquoi le repas est offert.");
+      return;
+    }
+    setErreur("");
     onAdd({ type: "repas", date, affaire, categorie, couverts: num(couverts),
             statut, motif: motif.trim(), reference: reference.trim(),
             montant: statut === "offert" ? 0 : num(montant) });
@@ -3080,6 +3115,7 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
         </div>
       )}
 
+      <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
         {tarifee
@@ -3261,12 +3297,19 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
   const [ref, setRef] = useState("");
   const [qui, setQui] = useState("");
   const [montant, setMontant] = useState("");
+  const [erreur, setErreur] = useState("");
 
   const salaries = (config.fixes || []).filter((f) => f.sal);
   const perso = salaries.find((s) => s.id === ref);
 
   const valider = () => {
-    if (num(montant) <= 0) return;
+    if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    /* Une avance sans nom ne se déduit d'aucune paie : l'argent est perdu. */
+    if (nature === "salaire" && !ref) {
+      setErreur("Choisis la personne — sans elle, l'avance ne sera déduite d'aucun salaire.");
+      return;
+    }
+    setErreur("");
     onAdd({ type: "avance", date, nature,
             affaire: nature === "perso" ? "foyer" : null,
             ref: nature === "salaire" ? ref : null,
@@ -3309,6 +3352,7 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
           </>
         )}
       </div>
+      <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
         Choisis bien la personne : c'est ce qui permet à l'écran <strong>La paie</strong> de déduire
@@ -3667,7 +3711,8 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
   const defDate = ym === thisMonth() ? today() : ym + "-01";
 
   const verser = () => {
-    if (num(montant) <= 0) return;
+    if (num(montant) <= 0) { setOk(""); setErreur(MSG_MONTANT); return; }
+    setErreur("");
     onAdd({ type: "reserve", affaire: k, date: defDate, sens, montant: num(montant),
              ...(motif.trim() ? { motif: motif.trim() } : {}) });
     setOk(sens === "retrait" ? "Sorti de la réserve." : "Mis en réserve.");
@@ -3736,6 +3781,7 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
                value={motif} onChange={(e) => setMotif(e.target.value)}
                onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
       </div>
+      <Alerte>{erreur}</Alerte>
       <button className="pill" style={{ marginTop: 10 }} onClick={verser}>Enregistrer</button>
       {ok && <div className="note" style={{ color: c.marque }}>{ok}</div>}
       <div className="note">
@@ -3764,7 +3810,13 @@ function ReservesConsolide({ M, config, ym, onAdd }) {
   const nom = (x) => x === "foyer" ? "La maison" : (config.affaires[x] ? config.affaires[x].nom : x);
 
   const enregistrer = () => {
-    if (num(montant) <= 0 || de === vers) return;
+    if (num(montant) <= 0) { setOk(""); setErreur(MSG_MONTANT); return; }
+    if (de === vers) {
+      setOk("");
+      setErreur("« Depuis » et « Vers » sont la même affaire — choisis deux affaires différentes.");
+      return;
+    }
+    setErreur("");
     onAdd({ type: "avance-interne", date: defDate, de, vers,
              montant: num(montant), motif: motif.trim() || "—", affaire: vers });
     setOk("Avance interne enregistrée.");
@@ -3837,6 +3889,7 @@ function ReservesConsolide({ M, config, ym, onAdd }) {
           <input className="f" placeholder="Réouverture Sabich après l'été…"
                  value={motif} onChange={(e) => setMotif(e.target.value)} />
         </div>
+        <Alerte>{erreur}</Alerte>
         <button className="btn" onClick={enregistrer}>Enregistrer</button>
         {ok && <div className="note" style={{ marginTop: 10 }}>{ok}</div>}
         <div className="note">
@@ -3871,7 +3924,13 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
   const nom = (x) => x === "foyer" ? "La maison" : (config.affaires[x] ? config.affaires[x].nom : x);
 
   const enregistrer = () => {
-    if (num(montant) <= 0 || !qui.trim()) return;
+    if (num(montant) <= 0) { setOk(""); setErreur(MSG_MONTANT); return; }
+    if (!qui.trim()) {
+      setOk("");
+      setErreur("Nom manquant — écris à qui tu prêtes, ou de qui tu empruntes.");
+      return;
+    }
+    setErreur("");
     onAdd({ type: "pret-perso", date, echeance, sens, qui: qui.trim(),
              motif: motif.trim(), montant: num(montant), affaire });
     setOk(sens === "prete" ? "Prêt enregistré." : "Emprunt enregistré.");
@@ -3945,6 +4004,7 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
           <input className="f" placeholder="Dépannage, projet…"
                  value={motif} onChange={(e) => setMotif(e.target.value)} />
         </div>
+        <Alerte>{erreur}</Alerte>
         <button className="btn" onClick={enregistrer}>Enregistrer</button>
         {ok && <div className="note" style={{ marginTop: 10 }}>{ok}</div>}
         <div className="note">
@@ -4258,6 +4318,7 @@ function LigneEcheance({ e, nom, couleur, jourActuel, onRegler, onReporter }) {
 function Paie({ M, config, onRegler, onAdd, ym, filtre }) {
   const [prime, setPrime] = useState("");
   const [mtPrime, setMtPrime] = useState("");
+  const [erreurPrime, setErreurPrime] = useState("");
   const [ok, setOk] = useState("");
   const flash = (m) => { setOk(m); setTimeout(() => setOk(""), 2600); };
   const defDate = ym === thisMonth() ? today() : ym + "-01";
@@ -4272,7 +4333,8 @@ function Paie({ M, config, onRegler, onAdd, ym, filtre }) {
   const primes = liste.reduce((s, p) => s + p.prime, 0);
 
   const donner = (id, nom) => {
-    if (num(mtPrime) <= 0) return;
+    if (num(mtPrime) <= 0) { setErreurPrime(MSG_MONTANT); return; }
+    setErreurPrime("");
     onAdd({ type: "prime", date: defDate, ref: id, lbl: "Prime — " + nom,
             montant: num(mtPrime) });
     flash("Prime de " + fmt(num(mtPrime)) + " ajoutée à " + nom + ".");
@@ -4361,8 +4423,9 @@ function Paie({ M, config, onRegler, onAdd, ym, filtre }) {
                   <div style={{ width: 150 }}>
                     <label className="f">Montant de la prime</label>
                     <input className="f" autoFocus inputMode="decimal" value={mtPrime}
-                           onChange={(e) => setMtPrime(e.target.value)}
+                           onChange={(e) => { setMtPrime(e.target.value); setErreurPrime(""); }}
                            onKeyDown={(e) => { if (e.key === "Enter") donner(p.id, p.nom); }} />
+                    <Alerte>{erreurPrime}</Alerte>
                   </div>
                   <button className="pill" onClick={() => donner(p.id, p.nom)}>Donner</button>
                   <button className="pill" onClick={() => setPrime("")}>Annuler</button>
@@ -4536,7 +4599,8 @@ function SolidariteCarte({ M, config, ym, onAdd, flash }) {
   const prevu = num((config.solidarite || {}).montant);
 
   const verser = () => {
-    if (num(saisi) <= 0) return;
+    if (num(saisi) <= 0) { setErreur("Montant manquant — écris ce que tu as réellement donné."); return; }
+    setErreur("");
     onAdd({ type: "solidarite", date: ym + "-" + String(num((config.solidarite || {}).jour) || 1)
               .padStart(2, "0"), montant: num(saisi), lbl: "Solidarité" });
     flash("Solidarité de " + fmt(num(saisi)) + " enregistrée.");
@@ -4561,11 +4625,12 @@ function SolidariteCarte({ M, config, ym, onAdd, flash }) {
         <div style={{ flex: 1 }}>
           <label className="f">Montant réellement donné</label>
           <input className="f" inputMode="decimal" placeholder={String(prevu)} value={saisi}
-                 onChange={(e) => setSaisi(e.target.value)}
+                 onChange={(e) => { setSaisi(e.target.value); setErreur(""); }}
                  onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
         </div>
         <button className="pill" onClick={verser}>Enregistrer</button>
       </div>
+      <Alerte>{erreur}</Alerte>
       <div className="note">
         Ce n'est ni une charge de tes commerces ni une dépense du ménage : c'est une décision.
         Elle sort donc de la trésorerie sans entrer dans le résultat ni dans ton seuil de
@@ -4977,6 +5042,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
   const [nature, setNature] = useState(e.nature || "salaire");
   const [qui, setQui] = useState(e.qui || "");
   const [echeance, setEcheance] = useState(e.echeance || "");
+  const [erreur, setErreur] = useState("");
 
   const entrant = e.type === "vente" || e.type === "resa" || e.type === "repas"
                 || (e.type === "pret-perso" && e.sens === "emprunte");
@@ -4987,13 +5053,16 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
     let patch = { date };
     if (e.type === "vente") {
       const esp = num(espece), ct = num(carte);
-      if (esp + ct <= 0) return;
+      if (esp + ct <= 0) {
+        setErreur("Rien à enregistrer — écris le montant en espèces et/ou par carte.");
+        return;
+      }
       const verifie = fondReel.trim() !== "";
       patch = { ...patch, espece: esp, carte: ct, montant: esp + ct,
                 fondSuppose: verifie ? num(fondSuppose) : undefined,
                 fondReel: verifie ? num(fondReel) : undefined };
     } else if (e.type === "resa") {
-      if (num(montant) <= 0) return;
+      if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), nuits: num(nuits), source,
                 reference: reference.trim() };
     } else if (e.type === "repas") {
@@ -5001,26 +5070,27 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
                 motif: motif.trim(), reference: reference.trim(),
                 montant: statut === "offert" ? 0 : num(montant) };
     } else if (e.type === "depense") {
-      if (num(montant) <= 0) return;
+      if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl,
                 numero: numero.trim(), piece, aPayer, affaire };
     } else if (e.type === "invest") {
-      if (num(montant) <= 0) return;
+      if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl, affaire };
     } else if (e.type === "avance") {
-      if (num(montant) <= 0) return;
+      if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), nature, qui: qui.trim() || e.qui };
     } else if (e.type === "reserve") {
-      if (num(montant) <= 0) return;
+      if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), sens, motif: motif.trim() };
     } else if (e.type === "pret-perso") {
-      if (num(montant) <= 0) return;
+      if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), qui: qui.trim() || e.qui,
                 motif: motif.trim(), affaire, sens, echeance };
     } else {
-      if (num(montant) <= 0) return;
+      if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), numero: numero.trim() };
     }
+    setErreur("");
     onMaj(e.id, patch);
     fermer();
   };
@@ -5233,6 +5303,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
         </>
       )}
 
+      <Alerte>{erreur}</Alerte>
       <div style={{ display: "flex", gap: 9 }}>
         <button className="btn" onClick={valider}>Corriger</button>
         <button className="pill" onClick={annuler}>Annuler</button>
@@ -5312,8 +5383,10 @@ function NouveauFournisseur({ affaires, onAdd }) {
   const [aff, setAff] = useState(Object.keys(affaires)[0]);
   const [rythme, setRythme] = useState("besoin");
 
+  const [erreur, setErreur] = useState("");
   const ajouter = () => {
-    if (!nom.trim()) return;
+    if (!nom.trim()) { setErreur("Donne un nom au fournisseur."); return; }
+    setErreur("");
     onAdd({ id: uid(), nom: nom.trim(), affaires: [aff], rythme });
     setNom("");
   };
@@ -5332,6 +5405,7 @@ function NouveauFournisseur({ affaires, onAdd }) {
             {Object.entries(RYTHMES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select></div>
       </div>
+      <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={ajouter}>Ajouter</button>
     </div>
   );
@@ -5583,21 +5657,26 @@ function RepartirDeZero() {
 /* Ajouter une société */
 function NouvelleSociete({ existantes, onAdd }) {
   const [nom, setNom] = useState("");
+  const [erreur, setErreur] = useState("");
   const creer = () => {
-    if (!nom.trim()) return;
+    if (!nom.trim()) { setErreur("Donne un nom à la société."); return; }
+    setErreur("");
     let id = slug(nom);
     while (existantes.some((s) => s.id === id)) id = id + "2";
     onAdd({ id, nom: nom.trim() });
     setNom("");
   };
   return (
-    <div style={{ display: "flex", gap: 9, alignItems: "flex-end", marginTop: 14 }}>
-      <div style={{ flex: 1 }}>
-        <label className="f">Nouvelle société</label>
-        <input className="f" placeholder="Nom de la structure" value={nom}
-               onChange={(e) => setNom(e.target.value)} />
+    <div style={{ marginTop: 14 }}>
+      <Alerte>{erreur}</Alerte>
+      <div style={{ display: "flex", gap: 9, alignItems: "flex-end" }}>
+        <div style={{ flex: 1 }}>
+          <label className="f">Nouvelle société</label>
+          <input className="f" placeholder="Nom de la structure" value={nom}
+                 onChange={(e) => { setNom(e.target.value); setErreur(""); }} />
+        </div>
+        <button className="pill" onClick={creer} style={{ marginBottom: 12 }}>Ajouter</button>
       </div>
-      <button className="pill" onClick={creer} style={{ marginBottom: 12 }}>Ajouter</button>
     </div>
   );
 }
@@ -5611,8 +5690,11 @@ function NouvelleCharge({ affaires, onAdd }) {
   const [jour, setJour] = useState("5");
   const [sal, setSal] = useState(false);
 
+  const [erreur, setErreur] = useState("");
   const creer = () => {
-    if (!lbl.trim() || num(montant) <= 0) return;
+    if (!lbl.trim())       { setErreur("Intitulé manquant — dis de quelle charge il s'agit."); return; }
+    if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    setErreur("");
     onAdd({ id: "x" + uid(), lbl: lbl.trim(), montant: num(montant),
             affaire, jour: num(jour), ...(sal ? { sal: true } : {}) });
     setLbl(""); setMontant(""); setSal(false); setOuvert(false);
@@ -5651,6 +5733,7 @@ function NouvelleCharge({ affaires, onAdd }) {
         </button>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+        <Alerte>{erreur}</Alerte>
         <button className="btn" style={{ margin: 0 }} onClick={creer}>Ajouter</button>
         <button className="pill" onClick={() => setOuvert(false)}>Annuler</button>
       </div>
@@ -5670,8 +5753,10 @@ function NouvelleActivite({ existantes, onAdd }) {
   const [pct, setPct] = useState("30");
   const [teinteIdx, setTeinteIdx] = useState(0);
 
+  const [erreur, setErreur] = useState("");
   const creer = () => {
-    if (!nom.trim()) return;
+    if (!nom.trim()) { setErreur("Donne un nom à l'activité."); return; }
+    setErreur("");
     let id = slug(nom);
     while (existantes[id]) id = id + "2";
     const t = TEINTES[teinteIdx];
@@ -5717,6 +5802,7 @@ function NouvelleActivite({ existantes, onAdd }) {
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        <Alerte>{erreur}</Alerte>
         <button className="btn" style={{ margin: 0 }} onClick={creer}>Créer l'activité</button>
         <button className="pill" onClick={() => setOuvert(false)}>Annuler</button>
       </div>
