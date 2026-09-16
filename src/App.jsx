@@ -1861,7 +1861,11 @@ function calcul(config, entries, ym) {
     ["Solidarité",                       solidarite],
     ["Investissements",                  invests],
     ["Prélèvements exceptionnels",       avPerso],
-    ["Mis en réserve",                   reserveDepotsMoisTotal - reserveRetraitsMoisTotal],
+    /* Un retrait de réserve est de l'argent qui revient : l'appeler « mis en
+       réserve − 4 805 DH » se lisait à l'envers. */
+    [reserveDepotsMoisTotal - reserveRetraitsMoisTotal < 0
+       ? "Repris dans la réserve" : "Mis en réserve",
+                                         reserveDepotsMoisTotal - reserveRetraitsMoisTotal],
     ["Mis de côté pour un chantier",     chantiersMois],
     ["Retards des mois passés",          enRetard],
     ["Reporté sur le mois suivant",     -reporteMontant],
@@ -1882,6 +1886,26 @@ function calcul(config, entries, ym) {
   /* Ce qui doit encore sortir de la caisse */
   const aCouvrir = lignesAPayer.filter((l) => !l.paye).reduce((s, l) => s + l.montant, 0);
   const dejaRegle = lignesAPayer.filter((l) => l.paye).reduce((s, l) => s + l.montant, 0);
+
+  /* Ce que tu dois encore à tes fournisseurs, tous mois confondus */
+  const dettes = entries.filter((e) => e.type === "depense" && e.aPayer)
+                        .reduce((s, e) => s + num(e.montant), 0);
+
+  /* Amal veut trois chiffres et rien d'autre : ce qu'elle a fait rentrer, ce
+     qu'elle a RÉELLEMENT payé, ce qu'il lui reste à payer. Tous les trois du
+     même temps, tous les trois de l'argent qui a bougé ou qui va bouger — pas
+     de projection, pas d'engagement théorique. */
+  const achatsAcquittes = inMonth
+    .filter((e) => e.type === "depense" && !e.aPayer
+                   && (A[e.affaire] || e.affaire === "structure"))
+    .reduce((s, e) => s + num(e.montant), 0);
+  /* Sorti pour de bon : les achats réglés, les échéances pointées, la
+     solidarité versée, les prélèvements, les avances données, le matériel
+     acheté et les prêts consentis. */
+  const dejaPaye = achatsAcquittes + dejaRegle + soliVerse + avPerso + avSalaire
+                 + invests + pretsSortieMois;
+  /* Ce qui doit encore quitter la caisse, tous mois confondus. */
+  const resteAPayer = aCouvrir + dettes;
 
   /* Marge réelle de chaque affaire : ce qui reste après marchandise et commissions */
   const marges = {};
@@ -1999,10 +2023,6 @@ function calcul(config, entries, ym) {
   const paieAvances = paie.reduce((s, p) => s + p.avances, 0);
   const paieReste = paie.filter((p) => !p.paye).reduce((s, p) => s + p.reste, 0);
 
-  /* Ce que tu dois encore à tes fournisseurs */
-  const dettes = entries.filter((e) => e.type === "depense" && e.aPayer)
-                        .reduce((s, e) => s + num(e.montant), 0);
-
   /* Les échéances des 30 prochains jours */
   const echeances = [];
   const ajoute = (ref, lbl, montant, jour, groupe) => {
@@ -2050,7 +2070,8 @@ function calcul(config, entries, ym) {
 
   return { A, keys, caTotal, resAffaires, structure, structFixe, structExtra,
            enveloppe, solidarite, soliVerse, soliReste, soliCumul, detailSorties,
-           coutDuMois, empruntNet, resultatNet, encaisse, sorties, tresorerie,
+           coutDuMois, empruntNet, dejaPaye, resteAPayer, achatsAcquittes,
+           pretsEntreeMois, pretsSortieMois, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
            partageTotal, posTotal,
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
@@ -2915,47 +2936,50 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
       <Taches taches={taches} config={config} onAdd={onAddTache}
               onMaj={onMajTache} onDel={onDelTache} />
 
-      {/* Le premier écran annonçait le chiffre d'affaires seul, en gros et en
-          vert, et cachait ce qui sort derrière un bouton. C'est le chiffre qui
-          flatte, pas celui qui sert : 106 000 DH encaissés peuvent très bien
-          être un mois perdu. Les trois nombres sont désormais côte à côte, de
-          même taille — c'est l'ÉCART entre eux qui apprend quelque chose, pas
-          l'un des trois isolé. */}
+      {/* Trois chiffres, pas un de plus, et tous les trois de l'argent réel.
+          Les versions précédentes mélangeaient de l'argent qui a bougé, des
+          engagements théoriques et des projections de fin de mois dans la même
+          rangée : illisible. Ici, ce qui est rentré, ce qui est sorti pour de
+          bon, ce qui doit encore sortir. Le reste est plus bas, à sa place. */}
       <div className="card bandeau" style={{ padding: "26px 24px" }}>
         <div className="heroLbl">{monthLabel(ym)}</div>
 
         <div style={{ display: "grid", gap: 18, margin: "16px 0 4px",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(165px, 1fr))" }}>
+                      gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
           <div>
-            <div className="eyebrow">Rentré</div>
-            <div className="heroNum pos" style={{ fontSize: 31 }}>{fmt(M.encaisse)}</div>
-            <div className="mini">commissions déduites</div>
+            <div className="eyebrow">Ce que j'ai fait rentrer</div>
+            <div className="heroNum pos" style={{ fontSize: 33 }}>{fmt(M.encaisse)}</div>
+            <div className="mini">recettes encaissées, commissions déduites</div>
           </div>
           <div>
-            <div className="eyebrow">Ce que le mois coûte</div>
-            <div className="heroNum neg" style={{ fontSize: 31 }}>{fmt(M.coutDuMois)}</div>
-            <div className="mini">payé ou non — le détail est en bas de page</div>
+            <div className="eyebrow">Ce que j'ai réellement payé</div>
+            <div className="heroNum neg" style={{ fontSize: 33 }}>{fmt(M.dejaPaye)}</div>
+            <div className="mini">sorti de la caisse — achats réglés, échéances pointées, avances, matériel</div>
           </div>
-          {/* Sur ces sorties, ce qui n'est pas encore payé : les échéances non
-              pointées et les pièces fournisseurs en attente. C'est l'argent qui
-              va quitter la caisse dans les jours qui viennent. */}
           <div>
-            <div className="eyebrow">Reste à régler</div>
-            <div className="heroNum" style={{ fontSize: 31, color: "#B07C1E" }}>
-              {fmt(M.aCouvrir + M.dettes)}
+            <div className="eyebrow">Ce que je dois payer</div>
+            <div className="heroNum" style={{ fontSize: 33, color: "#B07C1E" }}>
+              {fmt(M.resteAPayer)}
             </div>
             <div className="mini">
-              échéances non pointées{M.dettes > 0 ? " + " + fmt(M.dettes) + " aux fournisseurs" : ""}
+              {fmt(M.aCouvrir)} d'échéances non pointées
+              {M.dettes > 0 ? " + " + fmt(M.dettes) + " aux fournisseurs" : ""}
             </div>
           </div>
-          <div>
-            <div className="eyebrow">Ce qu'il reste</div>
-            <div className={"heroNum " + (M.tresorerie >= 0 ? "pos" : "neg")}
-                 style={{ fontSize: 31 }}>{fmt(M.tresorerie)}</div>
-            <div className="mini">
-              {M.tresorerie >= 0 ? "solde de fin de mois" : "il manque encore"}
-            </div>
-          </div>
+        </div>
+
+        {/* La caisse du mois se lit en soustrayant le deuxième du premier. On
+            l'écrit plutôt que d'en faire un quatrième gros chiffre : elle se
+            déduit, elle ne s'ajoute pas. */}
+        <div className="mini" style={{ marginTop: 10 }}>
+          {(() => {
+            const caisse = M.encaisse - M.dejaPaye;
+            return "Sur le mois, " + (caisse >= 0 ? "il t'est resté " + fmt(caisse)
+                                                  : "tu as sorti " + fmt(-caisse) + " de plus que tu n'as encaissé")
+                 + (caisse >= 0 ? " en caisse." : ".");
+          })()}
+          {M.pretsEntreeMois > 0 && " Ce chiffre ne compte pas les " + fmt(M.pretsEntreeMois)
+            + " d'emprunt reçu ce mois-ci : c'est de l'argent à rendre, pas de l'argent gagné."}
         </div>
 
         <div style={{ height: 18, borderRadius: 9, background: "#EDF0E4",
@@ -2979,9 +3003,9 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
         </div>
         {M.tresorerie < 0 && (
           <div className="mini" style={{ marginTop: 5 }}>
-            « Ce qu'il reste » compte toutes les charges du mois dès le 1er, alors que les
-            recettes arrivent jour après jour : en milieu de mois il est normalement négatif.
-            C'est le solde de fin de mois si tout est honoré, pas ta caisse d'aujourd'hui.
+            Si tu honores tout ce qui reste à payer, le mois se termine à {fmt(M.tresorerie)}.
+            C'est une projection de fin de mois, pas ta caisse d'aujourd'hui : les charges
+            comptent dès le 1er, les recettes arrivent jour après jour.
           </div>
         )}
       </div>
