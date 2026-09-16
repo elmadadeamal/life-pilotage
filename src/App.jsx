@@ -581,7 +581,33 @@ const shiftMonth = (ym, d) => {
   const dt = new Date(y, m - 1 + d, 1);
   return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0");
 };
-const num = (v) => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
+/* Lire un montant tel qu'un humain l'écrit. L'ancienne version faisait
+   parseFloat(String(v).replace(",", ".")) : elle ne remplaçait que la PREMIÈRE
+   virgule et ne retirait aucune espace, et parseFloat s'arrête au premier
+   caractère non numérique. « 2 395,29 » recopié d'une facture devenait donc 2,
+   « 12 000 » devenait 12 — et l'app affichait quand même sa confirmation verte.
+   Ici on nettoie d'abord, on décide ensuite qui est le séparateur décimal :
+   c'est toujours le dernier des deux signes, l'autre marque les milliers. */
+const normaliseMontant = (v) => {
+  let t = String(v ?? "")
+    .replace(/[\s\u00A0\u202F]/g, "")   /* espaces, insécables, fines */
+    .replace(/[^\d,.-]/g, "");           /* « DH », lettres, symboles */
+  const vg = t.lastIndexOf(","), pt = t.lastIndexOf(".");
+  if (vg >= 0 && pt >= 0) {
+    t = vg > pt ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  } else if (vg >= 0) {
+    /* Une virgule seule : décimale (« 12,5 »), sauf si elle sépare des
+       milliers (« 1,500 » — en dirham c'est mille cinq cents, pas 1,5). */
+    t = t.replace(/,(?=\d{3}(\D|$))/g, "").replace(",", ".");
+  } else {
+    t = t.replace(/\.(?=\d{3}(\D|$))/g, "");
+  }
+  return t;
+};
+const num = (v) => { const n = parseFloat(normaliseMontant(v)); return isNaN(n) ? 0 : n; };
+/* Vide est acceptable (le champ n'est pas encore rempli) ; « abc » ne l'est pas. */
+const montantLisible = (v) => String(v ?? "").trim() === ""
+                           || !isNaN(parseFloat(normaliseMontant(v)));
 const teinte = (a) => a.aquarelle ? AQUARELLE : a.chip;
 
 /* Une activité peut être une vente au comptoir ou un hébergement.
@@ -5149,16 +5175,26 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
 /*  RÉGLAGES                                                           */
 /* ------------------------------------------------------------------ */
 
+/* Le champ garde son propre texte pour qu'on puisse taper librement, mais il ne
+   doit JAMAIS afficher autre chose que ce qui sera enregistré : c'est ce qui
+   permettait d'afficher « 12 000 » pendant que 12 partait dans les réglages.
+   On compare donc sur la chaîne normalisée, pas sur num(). */
 function Ligne({ lbl, value, onChange, suffix }) {
   const [txt, setTxt] = useState(String(value));
-  useEffect(() => { if (num(txt) !== num(value)) setTxt(String(value)); }, [value]);
+  useEffect(() => {
+    if (normaliseMontant(txt) !== normaliseMontant(value)) setTxt(String(value));
+  }, [value]);
+  const faux = !montantLisible(txt);
   return (
     <div className="row">
       <span className="lbl">{lbl}</span>
       <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <input className="f" style={{ width: 112, textAlign: "right", padding: "8px 11px" }}
+        <input className="f" style={{ width: 112, textAlign: "right", padding: "8px 11px",
+                 borderColor: faux ? "#C9503A" : undefined,
+                 color: faux ? "#A4262C" : undefined }}
                inputMode="decimal" value={txt}
-               onChange={(e) => { setTxt(e.target.value); onChange(e.target.value); }} />
+               onChange={(e) => { setTxt(e.target.value); onChange(e.target.value); }}
+               onBlur={() => setTxt(String(num(txt)))} />
         <span className="mini">{suffix || "DH"}</span>
       </span>
     </div>
