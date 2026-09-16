@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./lib/supabaseClient";
 
 /* ------------------------------------------------------------------ */
@@ -215,9 +215,9 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
    colonnes triables : trier par fournisseur ou par montant colle les
    doublons les uns aux autres, c'est ce qui les rend visibles. */
 .achBloc { width:100%; overflow-x:auto; }
-.achLigne { display:grid; grid-template-columns:104px 94px 152px 1fr 118px 104px 34px;
+.achLigne { display:grid; grid-template-columns:104px 88px 140px 1fr 116px 96px 104px 34px;
   align-items:center; gap:12px; padding:12px 10px; border-bottom:1px solid var(--u-filet);
-  font-size:16.5px; min-width:800px; }
+  font-size:16.5px; min-width:900px; }
 .achTete { font-size:13px; letter-spacing:.08em; text-transform:uppercase;
   color:var(--u-doux); font-weight:500; border-bottom:1px solid var(--u-bord); }
 .achTete button { border:none; background:none; cursor:pointer; padding:0; font:inherit;
@@ -613,6 +613,89 @@ const teinte = (a) => a.aquarelle ? AQUARELLE : a.chip;
 /* Un bouton qui ne fait rien est le pire des messages : il laisse croire à une
    panne, et on ressaisit. Partout où une saisie peut être refusée, elle est
    désormais refusée à voix haute, en nommant ce qui manque. */
+/* Qui saisit. Amal et SAIB ont chacun leur compte : chaque écriture porte
+   désormais le nom de celui qui l'a créée, et celui qui l'a corrigée. Rien
+   n'est bloqué — ils voient et corrigent tout — mais plus rien n'est anonyme.
+   Une erreur a un nom, on la demande au lieu de la chercher. */
+const MEMBRES = {
+  "elmadadeamal@gmail.com": "Amal",
+  "khodeir.saib@gmail.com": "SAIB",
+};
+const nomMembre = (config, email) => {
+  if (!email) return "";
+  const e = String(email).trim().toLowerCase();
+  const perso = (config && config.membres) || {};
+  if (perso[e]) return perso[e];
+  if (MEMBRES[e]) return MEMBRES[e];
+  const base = e.split("@")[0].replace(/[._-]+/g, " ").trim();
+  return base ? base.charAt(0).toUpperCase() + base.slice(1) : "";
+};
+
+/* La signature affichée sous une écriture : qui l'a saisie, et qui l'a
+   corrigée si ce n'est pas la même personne. */
+const signature = (e) => {
+  if (!e || !e.par) return "";
+  if (e.majPar && e.majPar !== e.par) return e.par + ", corrigé par " + e.majPar;
+  return e.par;
+};
+
+/* ------------------------------------------------------------------ *
+ *  TRACE DES RÉGLAGES                                                  *
+ * ------------------------------------------------------------------ *
+ *  Les Réglages ne sont pas verrouillés : SAIB doit tout voir et tout
+ *  pouvoir corriger pour apprendre à lire le business. Mais un salaire
+ *  ou une clé de répartition changée là fausse TOUT, partout, en
+ *  silence. On ne bloque pas : on garde un témoin.
+ *  Ici on prend une photo des chiffres qui comptent ; deux photos
+ *  comparées donnent la liste de ce qui a bougé.                        */
+const photoReglages = (c) => {
+  const p = {};
+  if (!c) return p;
+  const mt = (v) => String(num(v));
+  (c.fixes || []).forEach((f) =>
+    { p["Charge · " + f.lbl] = mt(f.montant); });
+  (c.structures || []).forEach((f) =>
+    { p["Structure · " + f.lbl] = mt(f.montant); });
+  ((c.foyer || {}).fixes || []).forEach((f) =>
+    { p["Maison · " + f.lbl] = mt(f.montant); });
+  ((c.foyer || {}).remunerations || []).forEach((r) =>
+    { p["Rémunération · " + r.nom] = mt(r.montant); });
+  Object.entries(c.cle || {}).forEach(([k, v]) =>
+    { p["Clé de répartition · " + k] = mt(v) + " %"; });
+  Object.entries(c.cnss || {}).forEach(([k, v]) =>
+    { p["CNSS · " + k] = (v && v.actif ? mt(v.montant) : "désactivée"); });
+  Object.entries(c.affaires || {}).forEach(([k, a]) => {
+    p["Activité · " + k + " · nom"] = a.nom || "";
+    p["Activité · " + k + " · % matière"] = mt(a.matierePct) + " %";
+    const H = a.hebergement;
+    if (H) {
+      p["Activité · " + k + " · commission Airbnb"] = mt(H.comAirbnb) + " %";
+      p["Activité · " + k + " · commission directe"] = mt(H.comDirect) + " %";
+      Object.entries(H.extras || {}).forEach(([id, x]) => {
+        p["Activité · " + k + " · " + (x.nom || id) + " · prix"] = mt(x.prix);
+        p["Activité · " + k + " · " + (x.nom || id) + " · matière"] = mt(x.matiere);
+      });
+    }
+  });
+  p["Solidarité · montant"] = mt((c.solidarite || {}).montant);
+  p["Commission carte (Naps)"] = mt((c.naps || {}).taux) + " %";
+  return p;
+};
+
+/* Ce qui a bougé entre deux photos, en clair. */
+const diffReglages = (avant, apres) => {
+  const a = photoReglages(avant), b = photoReglages(apres);
+  const lignes = [];
+  Object.keys(b).forEach((k) => {
+    if (!(k in a)) lignes.push({ quoi: k, avant: null, apres: b[k] });
+    else if (a[k] !== b[k]) lignes.push({ quoi: k, avant: a[k], apres: b[k] });
+  });
+  Object.keys(a).forEach((k) => {
+    if (!(k in b)) lignes.push({ quoi: k, avant: a[k], apres: null });
+  });
+  return lignes;
+};
+
 const MSG_MONTANT = "Montant manquant — écris le montant en chiffres avant d'enregistrer.";
 
 function Alerte({ children }) {
@@ -893,6 +976,14 @@ export default function App({ session, onLogout }) {
   const [entries, setEntries] = useState([]);
   const [taches, setTaches] = useState([]);
   const [ready, setReady] = useState(false);
+  const [panne, setPanne] = useState(false);
+  /* Le jeton de version de chaque clé, et la dernière valeur qu'on lui connaît.
+     Dans une ref et non dans l'état : une sauvegarde doit lire la valeur du
+     moment, pas celle figée au rendu qui a déclenché le clic. */
+  const versions = useRef({ config: { jeton: null, valeur: null },
+                            entries: { jeton: null, valeur: null },
+                            taches: { jeton: null, valeur: null } });
+  const moi = nomMembre(config, session && session.user && session.user.email);
   const [ym, setYm] = useState(thisMonth());
   const [vue, setVue] = useState("dash");
 
@@ -900,11 +991,19 @@ export default function App({ session, onLogout }) {
     (async () => {
       try {
         const c = await window.storage.get("pilotage:config");
-        if (c && c.value) setConfig(reprendre(JSON.parse(c.value)));
+        if (c && c.value) {
+          const parse = JSON.parse(c.value);
+          versions.current.config = { jeton: c.version, valeur: parse };
+          setConfig(reprendre(parse));
+        }
       } catch (e) { /* première ouverture */ }
       try {
         const e = await window.storage.get("pilotage:entries");
-        if (e && e.value) setEntries(JSON.parse(e.value));
+        if (e && e.value) {
+          const parse = JSON.parse(e.value);
+          versions.current.entries = { jeton: e.version, valeur: parse };
+          setEntries(parse);
+        }
       } catch (e) { /* première ouverture */ }
       /* La vie de l'app commence le 1er septembre 2026 : tout ce qui a été
          saisi avant en essai est effacé, une seule fois. */
@@ -916,9 +1015,11 @@ export default function App({ session, onLogout }) {
             const gardees = JSON.parse(e0.value)
               .filter((x) => x.seed || (x.date || "") >= "2026-09-01");
             setEntries(gardees);
-            await window.storage.set("pilotage:entries", JSON.stringify(gardees));
+            const w = await window.storage.set("pilotage:entries", JSON.stringify(gardees));
+            versions.current.entries = { jeton: w.version, valeur: gardees };
           }
-          await window.storage.set("pilotage:taches", JSON.stringify([]));
+          const wt = await window.storage.set("pilotage:taches", JSON.stringify([]));
+          versions.current.taches = { jeton: wt.version, valeur: [] };
           setTaches([]);
           await window.storage.set("pilotage:reset-sept26", "1");
         }
@@ -932,14 +1033,19 @@ export default function App({ session, onLogout }) {
           if (!dejaLa.some((x) => x.seed)) {
             const fusion = [...dejaLa, ...HISTORIQUE_SABICH];
             setEntries(fusion);
-            await window.storage.set("pilotage:entries", JSON.stringify(fusion));
+            const w = await window.storage.set("pilotage:entries", JSON.stringify(fusion));
+            versions.current.entries = { jeton: w.version, valeur: fusion };
           }
           await window.storage.set("pilotage:seed", "1");
         }
       } catch (e) { /* première ouverture */ }
       try {
         const t = await window.storage.get("pilotage:taches");
-        if (t && t.value) setTaches(reveiller(JSON.parse(t.value)));
+        if (t && t.value) {
+          const parse = JSON.parse(t.value);
+          versions.current.taches = { jeton: t.version, valeur: parse };
+          setTaches(reveiller(parse));
+        }
       } catch (e) { /* première ouverture */ }
       setReady(true);
     })();
@@ -950,44 +1056,104 @@ export default function App({ session, onLogout }) {
      l'état local, la sauvegarde elle-même reste gérée par saveConfig /
      saveEntries / saveTaches ci-dessous. */
   useEffect(() => {
-    const dernier = { config: JSON.stringify(config), entries: JSON.stringify(entries),
-                       taches: JSON.stringify(taches) };
     const channel = supabase
       .channel("kv_store-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "kv_store" }, (payload) => {
         const row = payload.new;
         if (!row || typeof row.value !== "string") return;
-        if (row.key === "pilotage:config" && row.value !== dernier.config) {
-          try { setConfig(reprendre(JSON.parse(row.value))); } catch (e) { /* ignore */ }
-        } else if (row.key === "pilotage:entries" && row.value !== dernier.entries) {
-          try { setEntries(JSON.parse(row.value)); } catch (e) { /* ignore */ }
-        } else if (row.key === "pilotage:taches" && row.value !== dernier.taches) {
-          try { setTaches(reveiller(JSON.parse(row.value))); } catch (e) { /* ignore */ }
-        }
+        const quoi = row.key === "pilotage:config" ? "config"
+                   : row.key === "pilotage:entries" ? "entries"
+                   : row.key === "pilotage:taches" ? "taches" : null;
+        if (!quoi) return;
+        /* C'est notre propre écriture qui nous revient : rien à faire. */
+        if (row.version && versions.current[quoi].jeton === row.version) return;
+        try {
+          const parse = JSON.parse(row.value);
+          versions.current[quoi] = { jeton: row.version, valeur: parse };
+          if (quoi === "config") setConfig(reprendre(parse));
+          else if (quoi === "entries") setEntries(parse);
+          else setTaches(reveiller(parse));
+        } catch (e) { /* ignore */ }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [config, entries, taches]);
+  }, []);
+
+  /* ------------------------------------------------------------------ *
+   *  SAUVEGARDE PARTAGÉE — personne n'écrase personne                    *
+   * ------------------------------------------------------------------ *
+   *  Avant : chaque sauvegarde réécrivait tout le tableau depuis la copie
+   *  locale. SAIB enregistrant une recette à 20h02 pendant qu'Amal saisit
+   *  une facture, le dernier des deux effaçait l'autre, sans un mot.
+   *
+   *  Maintenant : on n'envoie plus un résultat, on envoie un GESTE. La base
+   *  n'accepte l'écriture que si personne n'est passé depuis notre dernière
+   *  lecture ; sinon on relit le frais et on rejoue le même geste dessus.
+   *  Les deux saisies survivent, quel que soit l'ordre d'arrivée.           */
+
+  const setLocal = { config: setConfig, entries: setEntries, taches: setTaches };
+  const relire   = { config: reprendre, entries: (x) => x, taches: reveiller };
+
+  const appliquer = async (quoi, geste) => {
+    const cle = "pilotage:" + quoi;
+    let courant = versions.current[quoi] ? versions.current[quoi].valeur : null;
+    for (let essai = 0; essai < 5; essai++) {
+      const suivant = geste(courant);
+      setLocal[quoi](relire[quoi](suivant));
+      versions.current[quoi] = { ...versions.current[quoi], valeur: suivant };
+      let r;
+      try {
+        r = await window.storage.setIf(cle, JSON.stringify(suivant),
+                                       versions.current[quoi].jeton);
+      } catch (e) {
+        console.error("sauvegarde", cle, e);
+        setPanne(true);
+        return false;
+      }
+      if (r.ok) {
+        versions.current[quoi].jeton = r.version;
+        setPanne(false);
+        return true;
+      }
+      /* Quelqu'un est passé : on repart de SA version et on rejoue notre geste. */
+      try { courant = r.value ? JSON.parse(r.value) : (quoi === "config" ? {} : []); }
+      catch (e) { courant = quoi === "config" ? {} : []; }
+      versions.current[quoi] = { jeton: r.version, valeur: courant };
+    }
+    console.error("sauvegarde impossible après 5 essais", cle);
+    setPanne(true);
+    return false;
+  };
 
   const saveConfig = async (c) => {
-    setConfig(c);
-    try { await window.storage.set("pilotage:config", JSON.stringify(c)); }
-    catch (e) { console.error(e); }
+    const avant = config;
+    const ok = await appliquer("config", () => c);
+    if (!ok) return false;
+    const lignes = diffReglages(avant, c);
+    if (lignes.length > 0) {
+      try {
+        const j = await window.storage.get("pilotage:journal-config");
+        const liste = j && j.value ? JSON.parse(j.value) : [];
+        const quand = new Date().toISOString();
+        const ajout = lignes.map((l) => ({ ...l, quand, qui: moi || "—" }));
+        /* On garde les 300 derniers changements : de quoi remonter loin
+           sans faire gonfler le fichier indéfiniment. */
+        await window.storage.set("pilotage:journal-config",
+          JSON.stringify([...ajout, ...liste].slice(0, 300)));
+      } catch (e) { console.error("journal des réglages", e); }
+    }
+    return true;
   };
-  const saveEntries = async (list) => {
-    setEntries(list);
-    try { await window.storage.set("pilotage:entries", JSON.stringify(list)); }
-    catch (e) { console.error(e); }
-  };
-  const saveTaches = async (list) => {
-    setTaches(list);
-    try { await window.storage.set("pilotage:taches", JSON.stringify(list)); }
-    catch (e) { console.error(e); }
-  };
-  const addTache = (t) => saveTaches([...taches, { ...t, id: uid(), creee: aujourdhui() }]);
-  const majTache = (id, champs) => saveTaches(taches.map((t) => {
+  const saveEntries = (list) => appliquer("entries", () => list);
+  const saveTaches  = (list) => appliquer("taches",  () => list);
+  /* Les gestes qui comptent passent par un delta rejouable, pas par un résultat. */
+  const gesteEntries = (fn) => appliquer("entries", (list) => fn(list || []));
+  const gesteTaches  = (fn) => appliquer("taches",  (list) => fn(list || []));
+  const addTache = (t) => gesteTaches((l) =>
+    [...l, { ...t, id: uid(), creee: aujourdhui(), par: moi }]);
+  const majTache = (id, champs) => gesteTaches((l) => l.map((t) => {
     if (t.id !== id) return t;
-    const t2 = { ...t, ...champs };
+    const t2 = { ...t, ...champs, majPar: moi };
     /* Une tâche qui revient se replante toute seule à la prochaine échéance */
     if (champs.etat === "fait" && t.repete) {
       const echeance = prochaine(t.echeance, t.repete);
@@ -996,28 +1162,29 @@ export default function App({ session, onLogout }) {
     }
     return t2;
   }));
-  const delTache = (id) => saveTaches(taches.filter((t) => t.id !== id));
+  const delTache = (id) => gesteTaches((l) => l.filter((t) => t.id !== id));
 
-  const addEntry = (e) => saveEntries([...entries, { ...e, id: uid() }]);
-  const delEntry = (id) => saveEntries(entries.filter((e) => e.id !== id));
-  const regler = (ref, oui) => {
+  /* Chaque écriture garde le nom de qui l'a créée et de qui l'a corrigée. */
+  const addEntry = (e) => gesteEntries((l) =>
+    [...l, { ...e, id: uid(), par: moi, saisiLe: aujourdhui() }]);
+  const delEntry = (id) => gesteEntries((l) => l.filter((e) => e.id !== id));
+  const regler = (ref, oui) => gesteEntries((l) => {
     const cle = (e) => e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym);
-    if (oui) saveEntries([...entries, { id: uid(), type: "paye", ref, date: ym + "-01" }]);
-    else saveEntries(entries.filter((e) => !cle(e)));
-  };
-  const reporter = (ref) => {
-    const existe = entries.some((e) => e.type === "reporte" && e.ref === ref
-                                       && (e.date || "").startsWith(ym));
-    if (existe) saveEntries(entries.filter((e) => !(e.type === "reporte" && e.ref === ref
-                                                   && (e.date || "").startsWith(ym))));
-    else saveEntries([...entries, { id: uid(), type: "reporte", ref, date: ym + "-01" }]);
-  };
+    return oui ? [...l, { id: uid(), type: "paye", ref, date: ym + "-01", par: moi }]
+               : l.filter((e) => !cle(e));
+  });
+  const reporter = (ref) => gesteEntries((l) => {
+    const cle = (e) => e.type === "reporte" && e.ref === ref && (e.date || "").startsWith(ym);
+    return l.some(cle) ? l.filter((e) => !cle(e))
+                       : [...l, { id: uid(), type: "reporte", ref, date: ym + "-01", par: moi }];
+  });
   /* On solde des pièces précises, quel que soit leur mois : le filtre sur le mois
      affiché rendait un bon de livraison d'août impossible à solder depuis
      septembre — il restait « à régler » pour toujours. */
-  const solder = (ids) => saveEntries(entries.map((e) =>
-    ids.includes(e.id) ? { ...e, aPayer: false } : e));
-  const majEntry = (id, champs) => saveEntries(entries.map((e) => e.id === id ? { ...e, ...champs } : e));
+  const solder = (ids) => gesteEntries((l) => l.map((e) =>
+    ids.includes(e.id) ? { ...e, aPayer: false, majPar: moi, majLe: aujourdhui() } : e));
+  const majEntry = (id, champs) => gesteEntries((l) => l.map((e) =>
+    e.id === id ? { ...e, ...champs, majPar: moi, majLe: aujourdhui() } : e));
 
   /* Si l'activité ouverte vient d'être archivée ou supprimée, on revient au tableau de bord */
   useEffect(() => {
@@ -1049,6 +1216,15 @@ export default function App({ session, onLogout }) {
             <button className="pill" onClick={() => setYm(shiftMonth(ym, 1))} aria-label="Mois suivant">→</button>
           </div>
         </div>
+
+        {panne && (
+          <div className="card" style={{ background: "#FDECEC", borderColor: "#F0C6C6",
+                                         color: "#A4262C", marginBottom: 14 }}>
+            <strong>La dernière saisie n'est pas enregistrée.</strong> Vérifie ta connexion,
+            puis refais-la. Tant que ce bandeau est là, ce que tu vois à l'écran n'est pas
+            sur le serveur — et SAIB ne le voit pas.
+          </div>
+        )}
 
         <div className="scene">
 
@@ -4848,6 +5024,7 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
     if (col === "numero")  return (e.numero || "").toLowerCase();
     if (col === "lbl")     return ((e.lbl || "") + " " + nom(e.affaire)).toLowerCase();
     if (col === "montant") return num(e.montant);
+    if (col === "par")     return (e.par || "").toLowerCase();
     return e.aPayer ? 1 : 0;
   };
   const list = [...base].sort((a, b) => {
@@ -4863,7 +5040,8 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
 
   const PERIODES = [["mois", "Ce mois"], ["trois", "3 derniers mois"], ["tout", "Tout"]];
   const COLS = [["date", "Date"], ["piece", "Pièce"], ["numero", "N°"],
-                ["lbl", "Fournisseur / intitulé"], ["montant", "Montant"], ["etat", "État"]];
+                ["lbl", "Fournisseur / intitulé"], ["montant", "Montant"], ["etat", "État"],
+                ["par", "Saisi par"]];
 
   return (
     <div className="card">
@@ -4915,6 +5093,7 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
                 <span className={"achEtat" + (e.aPayer ? " du" : "")}>
                   {e.type === "invest" ? "—" : e.aPayer ? "À régler" : "Payé"}
                 </span>
+                <span className="achEtat">{signature(e) || "—"}</span>
                 <button className="del" onClick={(x) => { x.stopPropagation(); onDel(e.id); }}
                         aria-label="Supprimer">×</button>
               </div>
@@ -4991,9 +5170,10 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
       const q = e.piece === "bl" ? "BL" : e.piece === "bon" ? "Bon" : "Facture";
       const n = e.numero ? " n° " + e.numero : "";
       const du = e.aPayer ? " · à régler" : "";
-      return e.date + (e.numero || e.piece ? " · " + q + n : "") + du;
+      return e.date + (e.numero || e.piece ? " · " + q + n : "") + du
+             + (signature(e) ? " · " + signature(e) : "");
     }
-    return e.date;
+    return e.date + (signature(e) ? " · " + signature(e) : "");
   };
   const couleur = (e) => {
     return config.affaires[e.affaire] ? teinte(config.affaires[e.affaire]) : "#C3CDAF";
@@ -6185,6 +6365,65 @@ function Reglages({ config, onSave, session, onLogout }) {
           </div>
         </div>
       )}
+
+      <JournalReglages />
     </>
+  );
+}
+
+/* Le témoin des Réglages. Rien n'est bloqué ici : on montre simplement ce qui
+   a été changé, par qui et quand. Un loyer qui passe de 14 000 à 12 000 DH
+   change le seuil de rentabilité de toutes les affaires — mieux vaut le voir
+   écrit que le découvrir dans un résultat qui ne colle plus. */
+function JournalReglages() {
+  const [lignes, setLignes] = useState(null);
+  const [tout, setTout] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const j = await window.storage.get("pilotage:journal-config");
+        setLignes(j && j.value ? JSON.parse(j.value) : []);
+      } catch (e) { setLignes([]); }
+    })();
+  }, []);
+
+  if (!lignes || lignes.length === 0) return null;
+  const vues = tout ? lignes.slice(0, 120) : lignes.slice(0, 12);
+  const quand = (iso) => {
+    const d = new Date(iso);
+    return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0")
+      + " à " + String(d.getHours()).padStart(2, "0") + "h" + String(d.getMinutes()).padStart(2, "0");
+  };
+
+  return (
+    <div className="card">
+      <h2 className="h2">Ce qui a été modifié ici</h2>
+      {vues.map((l, i) => (
+        <div key={i} className="row" style={{ alignItems: "baseline" }}>
+          <span className="lbl">
+            <span style={{ display: "block" }}>{l.quoi}</span>
+            <span className="mini">{quand(l.quand)} · {l.qui}</span>
+          </span>
+          <span className="val" style={{ fontSize: 16, textAlign: "right" }}>
+            {l.avant === null ? <span className="pos">ajouté · {l.apres}</span>
+             : l.apres === null ? <span className="neg">supprimé · {l.avant}</span>
+             : <><span className="mini" style={{ textDecoration: "line-through" }}>{l.avant}</span>
+                 {"  →  "}<strong>{l.apres}</strong></>}
+          </span>
+        </div>
+      ))}
+      {lignes.length > 12 && (
+        <button className="pill" style={{ marginTop: 12 }} onClick={() => setTout(!tout)}>
+          {tout ? "Ne montrer que les derniers" : "Voir les " + Math.min(120, lignes.length) + " derniers changements"}
+        </button>
+      )}
+      <div className="note">
+        Chaque changement de réglage laisse une trace : quoi, quand, par qui. Rien n'est
+        bloqué — mais un salaire, un loyer ou la clé de répartition modifiés ici déplacent
+        tous les résultats et tous les seuils. Si un chiffre te surprend un jour, commence par
+        regarder cette liste.
+      </div>
+    </div>
   );
 }
