@@ -1639,6 +1639,14 @@ function calcul(config, entries, ym) {
   const reserveDepotsMoisTotal = keys.reduce((s, k) => s + A[k].reserveDepotMois, 0);
   const reserveRetraitsMoisTotal = keys.reduce((s, k) => s + A[k].reserveRetraitMois, 0);
 
+  /* Mettre de côté pour un chantier, c'est le même geste que mettre en réserve :
+     l'argent est encore là, mais il est promis. « Ce qu'il reste » doit répondre
+     à UNE seule question — ce que tu peux encore engager librement. La réserve
+     sortait déjà de la trésorerie, les chantiers n'y entraient nulle part :
+     deux gestes identiques, deux réponses opposées. */
+  const chantiersMois = inMonth.filter((e) => e.type === "chantier")
+                               .reduce((s, e) => s + num(e.montant), 0);
+
   /* Les avances internes : quand la réserve d'une affaire ne suffit pas et
      qu'il faut vraiment puiser ailleurs (une autre affaire, ou l'enveloppe
      du mois suivant). Ça reste une dette tracée — qui doit quoi à qui,
@@ -1834,7 +1842,7 @@ function calcul(config, entries, ym) {
       s + A[k].matiereReelle + A[k].variable + A[k].fixes + A[k].partage + A[k].cnss, 0)
     + structure + enveloppe + solidarite + avPerso + invests
     - nonReglees - reporteMontant + enRetard
-    + reserveDepotsMoisTotal - reserveRetraitsMoisTotal
+    + reserveDepotsMoisTotal - reserveRetraitsMoisTotal + chantiersMois
     + pretsSortieMois - pretsEntreeMois;
   const tresorerie = encaisse - sorties;
 
@@ -2283,10 +2291,12 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
       })}
 
       <div className="note">
-        Les chantiers se financent dans l'ordre. L'estimation part du résultat réellement
-        dégagé les mois précédents, sans supposer aucune saisonnalité : à Marrakech elle change
-        chaque année, et treize mois ne suffisent pas à la connaître. La fourchette reflète
-        cette incertitude — elle se resserrera à mesure que tu saisiras.
+        Les chantiers se financent dans l'ordre. Ce que tu affectes ici sort de « Ce qu'il
+        reste », exactement comme une mise en réserve : l'argent est encore là, mais il est
+        promis — tu ne dois plus le compter comme disponible. L'estimation part de la
+        trésorerie réellement dégagée les mois précédents, sans supposer aucune saisonnalité :
+        à Marrakech elle change chaque année, et treize mois ne suffisent pas à la connaître.
+        La fourchette reflète cette incertitude — elle se resserrera à mesure que tu saisiras.
       </div>
     </div>
   );
@@ -2396,8 +2406,9 @@ function Rythme({ M, config }) {
         journalière des charges fixes ({fmt(quotaFixe)} par jour : loyer, salaires, CNSS,
         abonnements), les investissements et les prélèvements. Quand l'orange dépasse le vert,
         la journée n'a pas payé ce qu'elle a coûté. Ne sont pas comptés : ce que tu mets en
-        réserve ou de côté pour un chantier — cet argent est déplacé, pas dépensé — ni les
-        avances sur salaire, déjà portées par les charges fixes.
+        réserve ou de côté pour un chantier — cet argent n'a rien coûté à la journée, même
+        s'il sort bien de « Ce qu'il reste » — ni les avances sur salaire, déjà portées par
+        les charges fixes.
       </div>
     </div>
   );
