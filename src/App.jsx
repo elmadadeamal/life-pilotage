@@ -211,6 +211,26 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   font-size:22px; padding:2px 8px; line-height:1; border-radius:8px; }
 .del:hover { color:#C9503A; background:#FBF0ED; }
 
+/* Vue ACHATS — tableau d'audit des pièces d'achat. Une ligne par pièce,
+   colonnes triables : trier par fournisseur ou par montant colle les
+   doublons les uns aux autres, c'est ce qui les rend visibles. */
+.achBloc { width:100%; overflow-x:auto; }
+.achLigne { display:grid; grid-template-columns:104px 94px 152px 1fr 118px 104px 34px;
+  align-items:center; gap:12px; padding:12px 10px; border-bottom:1px solid var(--u-filet);
+  font-size:16.5px; min-width:800px; }
+.achTete { font-size:13px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--u-doux); font-weight:500; border-bottom:1px solid var(--u-bord); }
+.achTete button { border:none; background:none; cursor:pointer; padding:0; font:inherit;
+  color:inherit; letter-spacing:inherit; text-transform:inherit; text-align:left; }
+.achTete button:hover { color:var(--u-encre); }
+.achCorps { cursor:pointer; }
+.achCorps:hover { background:#FAF7F0; }
+.achCorps.dbl { background:#FDECEC; }
+.achCorps.dbl:hover { background:#FBE0E0; }
+.achMt { text-align:right; font-variant-numeric:tabular-nums; }
+.achEtat { font-size:14px; color:var(--u-doux); }
+.achEtat.du { color:#B07C1E; }
+
 @media (max-width: 640px) {
   .grid2, .grid3 { grid-template-columns:1fr; }
   .heroNum { font-size:44px; }
@@ -1690,6 +1710,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAd
     ["chantiers",  "Chantiers"],
     ["echeancier", "Échéancier"],
     ["paie",       "Paie"],
+    ["achats",     "Achats"],
     ["journal",    "Journal"],
     ["exercice",   "Exercice"],
   ];
@@ -1719,6 +1740,8 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAd
                                         onRegler={onRegler} onReporter={onReporter} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} />}
+      {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
+                                        onDel={onDel} onMaj={onMaj} />}
       {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
                                             onDel={onDel} onMaj={onMaj} />}
       {sous === "exercice"   && <Historique config={config} entries={entries} ym={ym} />}
@@ -2599,7 +2622,7 @@ function Saisie({ config, ym, onAdd, entries }) {
       {type === "vente"   && <FVente   config={config} defDate={defDate} onAdd={onAdd} flash={flash} entries={entries} />}
       {type === "resa"    && <FResa    config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
       {type === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
-      {type === "depense" && <FDepense config={config} defDate={defDate} onAdd={onAdd} flash={flash} deja={deja} />}
+      {type === "depense" && <FDepense config={config} defDate={defDate} onAdd={onAdd} flash={flash} deja={deja} entries={entries} />}
       {type === "avance"  && <FAvance  defDate={defDate} onAdd={onAdd} flash={flash} config={config} />}
       {type === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
     </>
@@ -2964,7 +2987,7 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
   );
 }
 
-function FDepense({ config, defDate, onAdd, flash, deja, fixe }) {
+function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const [date, setDate] = useState(defDate);
   const [affaire, setAffaire] = useState(fixe || "sabich");
   const [choix, setChoix] = useState("");
@@ -2977,6 +3000,14 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe }) {
 
   const liste = (config.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
   const courant = liste.find((f) => f.id === choix);
+
+  /* Même principe que les numéros STAN sur les recettes : un numéro de pièce
+     déjà saisi sur cette activité est signalé AVANT d'enregistrer, plutôt que
+     découvert en fin de mois dans un coût matière gonflé. */
+  const dejaSaisi = numero.trim()
+    ? (entries || []).filter((e) => e.type === "depense" && e.affaire === affaire
+        && (e.numero || "").trim().toLowerCase() === numero.trim().toLowerCase())
+    : [];
 
   const valider = () => {
     if (num(montant) <= 0) {
@@ -3057,6 +3088,15 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe }) {
                placeholder={piece === "bl" ? "N° du BL" : piece === "facture" ? "N° de facture" : "N° du bon"}
                value={numero} onChange={(e) => setNumero(e.target.value)} />
       </div>
+
+      {dejaSaisi.length > 0 && (
+        <div style={{ background: "#FDF3E0", color: "#8A5B10", borderRadius: 10,
+                      padding: "10px 12px", marginBottom: 14, fontSize: 15.5 }}>
+          Ce numéro est déjà saisi : {dejaSaisi.map((e) => (e.lbl || "pièce") + " du "
+            + (e.date || "").slice(8, 10) + "/" + (e.date || "").slice(5, 7)
+            + " · " + fmt(num(e.montant))).join(" — ")}.
+        </div>
+      )}
 
       {piece !== "bl" && (
         <>
@@ -3348,7 +3388,7 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
           {form === "vente"   && <FVente   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} entries={entries} />}
           {form === "resa"    && <FResa    config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
           {form === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
-          {form === "depense" && <FDepense config={config} defDate={defDate} onAdd={ajouter} flash={flash} deja={deja} fixe={k} />}
+          {form === "depense" && <FDepense config={config} defDate={defDate} onAdd={ajouter} flash={flash} deja={deja} fixe={k} entries={entries} />}
           {form === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
         </div>
       )}
@@ -3771,6 +3811,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
     ["resultat",   "Résultat"],
     ["echeancier", "Échéancier"],
     ["paie",       "Paie"],
+    ["achats",     "Achats"],
     ["journal",    "Journal"],
     ["exercice",   "Exercice"],
   ];
@@ -3793,6 +3834,8 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                                         onReporter={onReporter} filtre={k} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} filtre={k} />}
+      {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
+                                        onDel={onDel} onMaj={onMaj} filtre={k} />}
       {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
                                             onDel={onDel} onMaj={onMaj} filtre={k} />}
       {sous === "exercice"   && <Historique config={config} entries={entries} ym={ym} filtre={k} />}
@@ -4300,6 +4343,7 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
     ["resultat",   "Postes"],
     ["taches",     "Tâches"],
     ["echeancier", "Échéancier"],
+    ["achats",     "Achats"],
     ["journal",    "Journal"],
   ];
   return (
@@ -4320,6 +4364,8 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
                                           onMaj={onMajTache} onDel={onDelTache} affaireFixe="foyer" />}
         {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
                                           onReporter={onReporter} filtre="foyer" />}
+        {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
+                                          onDel={onDel} onMaj={onMaj} filtre="foyer" />}
         {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
                                               onDel={onDel} onMaj={onMaj} filtre="foyer" />}
       </div>
@@ -4520,6 +4566,149 @@ function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  ACHATS — vue d'audit des pièces                                    */
+/* ------------------------------------------------------------------ */
+
+/* Le Journal sert à relire une journée : il mêle recettes, achats, avances.
+   Pour vérifier une série de factures et repérer une saisie faite deux fois,
+   il faut l'inverse — les achats seuls, en colonnes, triables. */
+
+const moisDecale = (ym, n) => {
+  const [a, m] = ym.split("-").map(Number);
+  const d = new Date(a, m - 1 - n, 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+};
+
+const PIECES = { bl: "BL", facture: "Facture", bon: "Bon" };
+
+/* Deux règles, volontairement strictes pour ne pas crier au loup :
+   - même activité, même intitulé, MÊME NUMÉRO de pièce (quelle que soit la date) ;
+   - même activité, même intitulé, même montant, LE MÊME JOUR.
+   Le pain à 10 DH tous les jours n'est donc pas signalé, une facture ressaisie l'est. */
+const suspectAchat = (e, list) => {
+  const l = (e.lbl || "").trim().toLowerCase();
+  const n = (e.numero || "").trim().toLowerCase();
+  if (num(e.montant) <= 0) return true;
+  if (n && list.some((o) => o.id !== e.id && o.affaire === e.affaire
+        && (o.lbl || "").trim().toLowerCase() === l
+        && (o.numero || "").trim().toLowerCase() === n)) return true;
+  return list.some((o) => o.id !== e.id && o.affaire === e.affaire
+        && o.date === e.date
+        && (o.lbl || "").trim().toLowerCase() === l
+        && num(o.montant) === num(e.montant));
+};
+
+function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
+  const [periode, setPeriode] = useState("mois");
+  const [tri, setTri] = useState({ col: "date", sens: -1 });
+  const [edit, setEdit] = useState("");
+
+  const nom = (k) => k === "foyer" ? "La maison"
+                   : k === "structure" ? "Structure"
+                   : config.affaires[k] ? config.affaires[k].nom : k;
+
+  const debut = moisDecale(ym, 2);
+  const base = entries.filter((e) => {
+    if (e.type !== "depense" && e.type !== "invest") return false;
+    if (filtre && e.affaire !== filtre) return false;
+    const m = (e.date || "").slice(0, 7);
+    if (periode === "mois") return m === ym;
+    if (periode === "trois") return m >= debut && m <= ym;
+    return true;
+  });
+
+  const valeur = (e, col) => {
+    if (col === "date")    return e.date || "";
+    if (col === "piece")   return e.type === "invest" ? "Investissement" : (PIECES[e.piece] || "Facture");
+    if (col === "numero")  return (e.numero || "").toLowerCase();
+    if (col === "lbl")     return ((e.lbl || "") + " " + nom(e.affaire)).toLowerCase();
+    if (col === "montant") return num(e.montant);
+    return e.aPayer ? 1 : 0;
+  };
+  const list = [...base].sort((a, b) => {
+    const x = valeur(a, tri.col), y = valeur(b, tri.col);
+    if (x === y) return (a.date < b.date ? 1 : -1);
+    return (x > y ? 1 : -1) * tri.sens;
+  });
+
+  const marques = new Set(base.filter((e) => suspectAchat(e, base)).map((e) => e.id));
+  const total = base.reduce((s, e) => s + num(e.montant), 0);
+  const trier = (col) => setTri(tri.col === col ? { col, sens: -tri.sens } : { col, sens: 1 });
+  const fleche = (col) => tri.col === col ? (tri.sens === 1 ? " ▲" : " ▼") : "";
+
+  const PERIODES = [["mois", "Ce mois"], ["trois", "3 derniers mois"], ["tout", "Tout"]];
+  const COLS = [["date", "Date"], ["piece", "Pièce"], ["numero", "N°"],
+                ["lbl", "Fournisseur / intitulé"], ["montant", "Montant"], ["etat", "État"]];
+
+  return (
+    <div className="card">
+      <h2 className="h2">Achats et investissements</h2>
+
+      <div className="navSimple" style={{ marginBottom: 14 }}>
+        {PERIODES.map(([id, lbl]) => (
+          <button key={id} className={"pill" + (periode === id ? " on" : "")}
+                  onClick={() => { setPeriode(id); setEdit(""); }}>{lbl}</button>
+        ))}
+      </div>
+
+      {!base.length ? (
+        <div className="empty">Aucun achat sur cette période.</div>
+      ) : (
+        <>
+          <div className="row rowTot" style={{ marginBottom: 6 }}>
+            <span className="lbl">
+              {base.length} pièce{base.length > 1 ? "s" : ""}
+              {marques.size > 0 && " · " + marques.size + " à vérifier"}
+            </span>
+            <span className="val neg">{fmt(total)}</span>
+          </div>
+
+          <div className="achBloc">
+            <div className="achLigne achTete">
+              {COLS.map(([id, lbl]) => (
+                <span key={id} className={id === "montant" ? "achMt" : ""}>
+                  <button onClick={() => trier(id)}>{lbl}{fleche(id)}</button>
+                </span>
+              ))}
+              <span />
+            </div>
+
+            {list.map((e) => edit === e.id ? (
+              <MvtLigne key={e.id} e={e} config={config} onDel={onDel} onMaj={onMaj}
+                        ouvrir onFerme={() => setEdit("")}
+                        couleur={config.affaires[e.affaire] ? teinte(config.affaires[e.affaire]) : "#C3CDAF"}
+                        sous={e.date}
+                        libelle={(e.lbl || "Achat") + " — " + nom(e.affaire)} />
+            ) : (
+              <div key={e.id} className={"achLigne achCorps" + (marques.has(e.id) ? " dbl" : "")}
+                   onClick={() => setEdit(e.id)}>
+                <span>{(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}/{(e.date || "").slice(2, 4)}</span>
+                <span className="achEtat">{e.type === "invest" ? "Invest." : (PIECES[e.piece] || "Facture")}</span>
+                <span className="achEtat">{e.numero || "—"}</span>
+                <span>{e.lbl || "Achat"}{!filtre && <span className="achEtat"> · {nom(e.affaire)}</span>}</span>
+                <span className="achMt">{fmt(num(e.montant))}</span>
+                <span className={"achEtat" + (e.aPayer ? " du" : "")}>
+                  {e.type === "invest" ? "—" : e.aPayer ? "À régler" : "Payé"}
+                </span>
+                <button className="del" onClick={(x) => { x.stopPropagation(); onDel(e.id); }}
+                        aria-label="Supprimer">×</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="note">
+        Clique sur une ligne pour corriger la pièce, la croix la supprime. Clique sur un
+        titre de colonne pour trier : par fournisseur ou par montant, les doublons se
+        retrouvent côte à côte. Les lignes en rouge sont à vérifier — même numéro de pièce
+        saisi deux fois, ou même montant saisi deux fois le même jour.
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  MOUVEMENTS                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -4608,8 +4797,8 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
 /* Une écriture se corrige entièrement, sans jamais la supprimer et la
    ressaisir : chaque type garde ses propres champs, initialisés depuis
    l'écriture existante. */
-function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config }) {
-  const [ouvert, setOuvert] = useState(false);
+function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onFerme }) {
+  const [ouvert, setOuvert] = useState(!!ouvrir);
   const [date, setDate] = useState(e.date);
   const [montant, setMontant] = useState(String(e.montant ?? ""));
   const [numero, setNumero] = useState(e.numero || "");
@@ -4635,7 +4824,8 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config }) {
 
   const entrant = e.type === "vente" || e.type === "resa" || e.type === "repas"
                 || (e.type === "pret-perso" && e.sens === "emprunte");
-  const annuler = () => setOuvert(false);
+  const fermer = () => { setOuvert(false); if (onFerme) onFerme(); };
+  const annuler = () => fermer();
 
   const valider = () => {
     let patch = { date };
@@ -4676,7 +4866,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config }) {
       patch = { ...patch, montant: num(montant), numero: numero.trim() };
     }
     onMaj(e.id, patch);
-    setOuvert(false);
+    fermer();
   };
 
   if (!ouvert) {
