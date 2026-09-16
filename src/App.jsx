@@ -999,9 +999,11 @@ export default function App({ session, onLogout }) {
                                                    && (e.date || "").startsWith(ym))));
     else saveEntries([...entries, { id: uid(), type: "reporte", ref, date: ym + "-01" }]);
   };
-  const solder = (affaire, fid) => saveEntries(entries.map((e) =>
-    (e.type === "depense" && e.aPayer && e.affaire === affaire && e.fournisseur === fid
-     && (e.date || "").startsWith(ym)) ? { ...e, aPayer: false } : e));
+  /* On solde des pièces précises, quel que soit leur mois : le filtre sur le mois
+     affiché rendait un bon de livraison d'août impossible à solder depuis
+     septembre — il restait « à régler » pour toujours. */
+  const solder = (ids) => saveEntries(entries.map((e) =>
+    ids.includes(e.id) ? { ...e, aPayer: false } : e));
   const majEntry = (id, champs) => saveEntries(entries.map((e) => e.id === id ? { ...e, ...champs } : e));
 
   /* Si l'activité ouverte vient d'être archivée ou supprimée, on revient au tableau de bord */
@@ -1443,7 +1445,11 @@ function calcul(config, entries, ym) {
   const soliFixe = num((config.solidarite || {}).montant);
   const soliVerse = inMonth.filter((e) => e.type === "solidarite")
                            .reduce((s, e) => s + num(e.montant), 0);
-  const solidarite = soliVerse > 0 ? soliVerse : soliFixe;
+  /* Le mois porte l'engagement, pas seulement ce qui a déjà été donné : verser
+     1 000 DH sur 10 000 prévus ne fait pas disparaître les 9 000 restants de la
+     trésorerie. Si elle donne plus que prévu, c'est le versé qui compte. */
+  const solidarite = Math.max(soliVerse, soliFixe);
+  const soliReste  = Math.max(0, soliFixe - soliVerse);
   const soliCumul = entries.filter((e) => e.type === "solidarite"
       && (e.date || "").slice(0, 4) === ym.slice(0, 4))
     .reduce((s, e) => s + num(e.montant), 0);
@@ -1457,6 +1463,11 @@ function calcul(config, entries, ym) {
                            .reduce((s, e) => s + num(e.montant), 0);
   const avPerso   = inMonth.filter((e) => e.type === "avance" && e.nature !== "salaire")
                            .reduce((s, e) => s + num(e.montant), 0);
+  /* Ce qui a déjà été avancé sur le salaire de quelqu'un ne reste pas à sortir :
+     l'écran Paie le déduisait déjà, l'échéancier et le « reste à décaisser » non. */
+  const avanceDe = (id) => inMonth
+    .filter((e) => e.type === "avance" && e.nature === "salaire" && e.ref === id)
+    .reduce((s, e) => s + num(e.montant), 0);
   const avances = avSalaire + avPerso;
   const invests = inMonth.filter((e) => e.type === "invest").reduce((s, e) => s + num(e.montant), 0);
   const encaisse = caTotal - keys.reduce((s, k) => s + A[k].com, 0);
@@ -1481,7 +1492,8 @@ function calcul(config, entries, ym) {
     /* La prime fait partie du salaire du mois : elle pèse dans le résultat,
        elle doit donc peser aussi dans ce qu'il reste à sortir de la caisse. */
     ...config.fixes.map((f) => ({ id: f.id, lbl: f.lbl,
-                                  montant: num(f.montant) + (f.sal ? primeDe(f.id) : 0),
+                                  montant: Math.max(0, num(f.montant)
+                                    + (f.sal ? primeDe(f.id) - avanceDe(f.id) : 0)),
                                   base: num(f.montant),
                                   groupe: f.affaire === "partage" ? "labo" : f.affaire })),
     ...config.structures.map((s) => ({ id: s.id, lbl: s.lbl, montant: num(s.montant),
@@ -1493,6 +1505,10 @@ function calcul(config, entries, ym) {
     ...(config.societes || []).filter((s) => cnssSoc[s.id] > 0)
       .map((s) => ({ id: "cnss:" + s.id, lbl: "CNSS — " + s.nom,
                      montant: cnssSoc[s.id], groupe: "societe" })),
+    /* La solidarité manquait ici : le tableau de bord et l'échéancier affichaient
+       deux « reste à décaisser » différents, à l'écart de son montant. */
+    ...(soliReste > 0 ? [{ id: "solidarite", lbl: "Solidarité",
+                           montant: soliReste, groupe: "solidarite" }] : []),
   ];
 
   /* Ce qui a été reporté depuis le mois précédent revient, marqué en retard */
@@ -1519,6 +1535,7 @@ function calcul(config, entries, ym) {
     { id: "labo",    nom: "Labo partagé",     couleur: "#697E40" },
     { id: "societe", nom: "Structure",        couleur: "#8A9578" },
     { id: "foyer",   nom: "La maison",        couleur: "#E0968A", logo: "foyer" },
+    { id: "solidarite", nom: "Solidarité",    couleur: "#C2A878" },
   ];
 
   const groupes = metaGroupes.map((g) => {
@@ -1656,7 +1673,7 @@ function calcul(config, entries, ym) {
   const paieReste = paie.filter((p) => !p.paye).reduce((s, p) => s + p.reste, 0);
 
   /* Ce que tu dois encore à tes fournisseurs */
-  const dettes = inMonth.filter((e) => e.type === "depense" && e.aPayer)
+  const dettes = entries.filter((e) => e.type === "depense" && e.aPayer)
                         .reduce((s, e) => s + num(e.montant), 0);
 
   /* Les échéances des 30 prochains jours */
@@ -1671,12 +1688,14 @@ function calcul(config, entries, ym) {
   /* les retards du mois précédent s'affichent en tête */
   retards.forEach((r) => ajoute(r.id, r.lbl, r.montant, 1, r.groupe));
   config.fixes.forEach((f) => ajoute(f.id, f.lbl,
-        num(f.montant) + (f.sal ? primeDe(f.id) : 0), f.jour,
+        Math.max(0, num(f.montant) + (f.sal ? primeDe(f.id) - avanceDe(f.id) : 0)), f.jour,
         f.affaire === "partage" ? "labo" : f.affaire));
   config.structures.forEach((s) => ajoute(s.id, s.lbl, num(s.montant), s.jour, "societe"));
   config.foyer.fixes.forEach((f) => ajoute(f.id, f.lbl, num(f.montant), f.jour, "foyer"));
-  if (soliFixe > 0) ajoute("solidarite", "Solidarité", soliFixe,
-                           num((config.solidarite || {}).jour) || 1, "solidarite");
+  /* Ce qui reste à donner, pas la totalité prévue : sinon l'échéancier réclame
+     encore 10 000 DH le lendemain du jour où elle en a versé 1 000. */
+  if (soliReste > 0) ajoute("solidarite", "Solidarité", soliReste,
+                            num((config.solidarite || {}).jour) || 1, "solidarite");
   remus.forEach((r) => ajoute(r.id, "Rémunération — " + r.nom, num(r.montant), r.jour, "foyer"));
   (config.societes || []).filter((s) => cnssSoc[s.id] > 0)
     .forEach((s) => ajoute("cnss:" + s.id, "CNSS — " + s.nom, cnssSoc[s.id], 25, "societe"));
@@ -1699,7 +1718,7 @@ function calcul(config, entries, ym) {
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
   return { A, keys, caTotal, resAffaires, structure, structFixe, structExtra,
-           enveloppe, solidarite, soliVerse, soliCumul, resultatNet, encaisse, sorties, tresorerie,
+           enveloppe, solidarite, soliVerse, soliReste, soliCumul, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
            partageTotal, posTotal,
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
@@ -3482,17 +3501,40 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
   );
 }
 
+/* Les dettes fournisseurs ne connaissent pas les mois : un bon de livraison d'août
+   reste dû en septembre. L'ancienne version filtrait sur le mois affiché — les
+   pièces d'un autre mois étaient invisibles ET le bouton « Régler » ne pouvait pas
+   les atteindre. Elle ignorait aussi les pièces saisies en « Autre dépense », sans
+   fournisseur : celles-là n'étaient soldables nulle part, jamais. */
 function ARegler({ config, affaire, entries, ym, onSolder }) {
   const liste = (config.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
+  const nomFournisseur = (fid) => (liste.find((f) => f.id === fid) || {}).nom;
 
-  const dus = liste.map((f) => {
-    const lignes = entries.filter((e) => e.type === "depense" && e.aPayer
-      && e.affaire === affaire && e.fournisseur === f.id && (e.date || "").startsWith(ym));
-    return { f, lignes, total: lignes.reduce((s, e) => s + num(e.montant), 0) };
-  }).filter((x) => x.total > 0);
+  const ouvertes = (entries || []).filter((e) => e.type === "depense" && e.aPayer
+                                                 && e.affaire === affaire);
+  /* Regroupées par fournisseur quand il y en a un, par intitulé sinon. */
+  const paquets = [];
+  ouvertes.forEach((e) => {
+    const cle = e.fournisseur || ("lbl:" + (e.lbl || "Sans intitulé"));
+    let g = paquets.find((x) => x.cle === cle);
+    if (!g) {
+      g = { cle, nom: (e.fournisseur && nomFournisseur(e.fournisseur)) || e.lbl || "Sans intitulé",
+            lignes: [] };
+      paquets.push(g);
+    }
+    g.lignes.push(e);
+  });
+  paquets.forEach((g) => {
+    g.lignes.sort((a, b) => (a.date < b.date ? -1 : 1));
+    g.total = g.lignes.reduce((s, e) => s + num(e.montant), 0);
+    g.vieilles = g.lignes.filter((e) => !(e.date || "").startsWith(ym)).length;
+  });
+  paquets.sort((a, b) => b.total - a.total);
 
-  if (!dus.length) return null;
-  const somme = dus.reduce((s, x) => s + x.total, 0);
+  if (!paquets.length) return null;
+  const somme = paquets.reduce((s, g) => s + g.total, 0);
+  const vieillesTotal = paquets.reduce((s, g) => s + g.vieilles, 0);
+  const jour = (d) => (d || "").slice(8, 10) + "/" + (d || "").slice(5, 7);
 
   return (
     <div className="card" style={{ background: "#FDF6E7", borderColor: "#E9D9AE" }}>
@@ -3503,33 +3545,42 @@ function ARegler({ config, affaire, entries, ym, onSolder }) {
                        fontVariantNumeric: "tabular-nums" }}>{fmt(somme)}</span>
       </div>
 
-      {dus.map(({ f, lignes, total }) => (
-        <div key={f.id} style={{ display: "flex", justifyContent: "space-between",
-                                 alignItems: "center", gap: 12, padding: "11px 0",
-                                 borderBottom: "1px solid #F0E6CE" }}>
-          <span>
-            <span style={{ display: "block", fontSize: 16.5, color: "#7A6428" }}>{f.nom}</span>
-            <span className="mini" style={{ color: "#A08B4E" }}>
-              {lignes.length} bon{lignes.length > 1 ? "s" : ""} de livraison
+      {vieillesTotal > 0 && (
+        <div className="mini" style={{ marginBottom: 12, color: "#8A5B10" }}>
+          Dont {vieillesTotal} pièce{vieillesTotal > 1 ? "s" : ""} d'un autre mois — elles
+          restent dues tant que tu ne les as pas réglées.
+        </div>
+      )}
+
+      {paquets.map((g) => (
+        <div key={g.cle} style={{ padding: "11px 0", borderBottom: "1px solid #F0E6CE" }}>
+          <div style={{ display: "flex", justifyContent: "space-between",
+                        alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 16.5, color: "#7A6428" }}>{g.nom}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 11 }}>
+              <span style={{ fontSize: 17, fontWeight: 500, fontVariantNumeric: "tabular-nums",
+                             color: "#7A6428" }}>{fmt(g.total)}</span>
+              <button onClick={() => onSolder(g.lignes.map((e) => e.id))}
+                      style={{ border: "none", background: "#B07C1E", color: "#fff",
+                               borderRadius: 8, padding: "9px 15px", cursor: "pointer",
+                               font: "inherit", fontSize: 15, fontWeight: 500,
+                               whiteSpace: "nowrap" }}>
+                Régler
+              </button>
             </span>
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <span style={{ fontSize: 17, fontWeight: 500, fontVariantNumeric: "tabular-nums",
-                           color: "#7A6428" }}>{fmt(total)}</span>
-            <button onClick={() => onSolder(affaire, f.id)}
-                    style={{ border: "none", background: "#B07C1E", color: "#fff",
-                             borderRadius: 8, padding: "9px 15px", cursor: "pointer",
-                             font: "inherit", fontSize: 15, fontWeight: 500,
-                             whiteSpace: "nowrap" }}>
-              Regler
-            </button>
-          </span>
+          </div>
+          <div className="mini" style={{ color: "#A08B4E", marginTop: 4 }}>
+            {g.lignes.map((e) => jour(e.date)
+              + (e.numero ? " · n° " + e.numero : "")
+              + " · " + fmt(num(e.montant))
+              + ((e.date || "").startsWith(ym) ? "" : " — autre mois")).join("   ·   ")}
+          </div>
         </div>
       ))}
 
       <div className="mini" style={{ marginTop: 12, color: "#8A7440" }}>
-        Le jour où tu paies la facture du mois, appuie sur « Régler » : tous les bons de ce
-        fournisseur passent en payé d'un coup.
+        Le jour où tu paies un fournisseur, appuie sur « Régler » : toutes ses pièces en
+        attente passent en payé d'un coup, quel que soit le mois où elles ont été saisies.
       </div>
     </div>
   );
@@ -4153,8 +4204,9 @@ function Avenir({ M, config, ym, onRegler, onReporter, filtre }) {
           <div className="row rowTot"><span className="lbl">Solde fournisseurs</span>
             <span className="val">{fmt(M.dettes)}</span></div>
           <div className="note">
-            Les bons de livraison non encore réglés. Tu les soldes fournisseur par fournisseur
-            depuis la fiche de l'activité concernée.
+            Toutes les pièces non encore réglées, quel que soit le mois où tu les as saisies —
+            une livraison de fin de mois reste due le mois suivant. Tu les soldes fournisseur
+            par fournisseur depuis la fiche de l'activité concernée.
           </div>
         </div>
       )}
