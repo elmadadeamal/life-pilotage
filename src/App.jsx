@@ -1134,7 +1134,16 @@ function calcul(config, entries, ym) {
       + duJour.filter((e) => e.type === "resa").reduce((s, e) => s + num(e.montant), 0);
     const dep = duJour.filter((e) => e.type === "depense")
       .reduce((s, e) => s + num(e.montant), 0);
-    jours7.push({ date: iso, rec, dep,
+    /* Ce qui sort aussi de la caisse ce jour-là, sans être un achat courant.
+       Les avances sur salaire sont volontairement exclues : le salaire est
+       déjà porté par les charges fixes, les compter deux fois gonflerait
+       la journée pour rien. */
+    const inv = duJour.filter((e) => e.type === "invest")
+      .reduce((s, e) => s + num(e.montant), 0);
+    const prel = duJour.filter((e) => (e.type === "avance" && e.nature !== "salaire")
+                                      || e.type === "perso")
+      .reduce((s, e) => s + num(e.montant), 0);
+    jours7.push({ date: iso, rec, dep, inv, prel,
                   par: Object.fromEntries(keys.map((k) => [k,
                     duJour.filter((e) => e.affaire === k && e.type === "depense")
                           .reduce((s, e) => s + num(e.montant), 0)])) });
@@ -1934,21 +1943,50 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
 
 const JOURS_COURTS = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
 
-/* Sept jours en vis-à-vis : recettes vers le haut, dépenses vers le bas.
-   Une dépense qui gonfle se repère avant la fin du mois. */
+/* Sept jours en vis-à-vis : ce qui rentre vers le haut, TOUT ce qui sort vers
+   le bas. La barre du bas est empilée, parce qu'une journée ne coûte pas que
+   ses achats : elle porte aussi sa part de loyer, de salaires et de CNSS —
+   des charges mensuelles qui ne s'écrivent nulle part dans la journée mais qui
+   courent quand même. Sans elles, le dessin fait croire qu'une journée à
+   10 DH de pain n'a rien coûté. */
+
+const SORTIES = [
+  { id: "dep",   lbl: "Achats",           couleur: "#C98A1E" },
+  { id: "fixe",  lbl: "Part des charges fixes", couleur: "#E3BE7A" },
+  { id: "inv",   lbl: "Investissements",  couleur: "#9C6B12" },
+  { id: "prel",  lbl: "Prélèvements",     couleur: "#7A4F0C" },
+];
+
 function Rythme({ M, config }) {
   const j = M.jours7 || [];
   if (!j.length) return null;
-  const rien = j.every((x) => x.rec === 0 && x.dep === 0);
-  const recSem = j.reduce((s, x) => s + x.rec, 0);
-  const depSem = j.reduce((s, x) => s + x.dep, 0);
+
+  /* La part journalière des charges mensuelles : le loyer ne se paie pas en
+     une fois dans la tête de celui qui regarde sa semaine, il court tous les
+     jours. On l'étale, on ne le plante pas sur son jour d'échéance — sinon
+     une seule journée écrase les six autres et la semaine devient illisible. */
+  const quotaFixe = M.joursMois > 0 ? (M.chargesDuMois || 0) / M.joursMois : 0;
+
+  const jours = j.map((x) => {
+    const parts = { dep: x.dep || 0, fixe: quotaFixe, inv: x.inv || 0, prel: x.prel || 0 };
+    return { ...x, parts, sortie: SORTIES.reduce((s, p) => s + parts[p.id], 0) };
+  });
+
+  const rien = jours.every((x) => x.rec === 0 && x.sortie === 0);
+  const recSem = jours.reduce((s, x) => s + x.rec, 0);
+  const sortieSem = jours.reduce((s, x) => s + x.sortie, 0);
+  /* Une seule échelle pour le haut et pour le bas : sans ça, comparer les deux
+     moitiés à l'œil ne veut rien dire. */
+  const haut = Math.max(1, ...jours.map((x) => Math.max(x.rec, x.sortie)));
+  const H = 74;
+  const px = (v) => v > 0 ? Math.max(2, Math.round((v / haut) * H)) : 0;
 
   return (
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between",
                     alignItems: "baseline", gap: 12, marginBottom: 16 }}>
         <div className="eyebrow">Les sept derniers jours</div>
-        {!rien && <span className="mini">{fmt(recSem)} encaissés · {fmt(depSem)} dépensés</span>}
+        {!rien && <span className="mini">{fmt(recSem)} encaissés · {fmt(sortieSem)} sortis</span>}
       </div>
 
       {rien ? (
@@ -1956,25 +1994,30 @@ function Rythme({ M, config }) {
           Rien sur les sept derniers jours.
         </div>
       ) : (
+        <>
         <div style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
-          {j.map((x) => {
-            const hr = Math.round((x.rec / M.hautJour) * 62);
-            const hd = Math.round((x.dep / M.hautJour) * 62);
+          {jours.map((x) => {
             const jour = new Date(x.date + "T12:00:00").getDay();
+            const detail = SORTIES.filter((p) => x.parts[p.id] > 0)
+              .map((p) => p.lbl.toLowerCase() + " " + fmt(x.parts[p.id])).join(", ");
             return (
               <div key={x.date} style={{ flex: 1, minWidth: 0, textAlign: "center" }}
                    title={JOURS_COURTS[jour] + " " + x.date.slice(8, 10) + " — "
-                          + fmt(x.rec) + " encaissés, " + fmt(x.dep) + " dépensés"}>
-                <div style={{ height: 62, display: "flex", alignItems: "flex-end",
+                          + fmt(x.rec) + " encaissés · " + fmt(x.sortie) + " sortis ("
+                          + detail + ")"}>
+                <div style={{ height: H, display: "flex", alignItems: "flex-end",
                               justifyContent: "center" }}>
-                  <div style={{ width: "72%", height: Math.max(hr, x.rec > 0 ? 3 : 0),
+                  <div style={{ width: "72%", height: px(x.rec),
                                 background: "#5E8F1E", borderRadius: "4px 4px 0 0" }} />
                 </div>
                 <div style={{ height: 1, background: "#E4E9D6", margin: "3px 0" }} />
-                <div style={{ height: 40, display: "flex", alignItems: "flex-start",
-                              justifyContent: "center" }}>
-                  <div style={{ width: "72%", height: Math.max(Math.round(hd * .62), x.dep > 0 ? 3 : 0),
-                                background: "#C98A1E", borderRadius: "0 0 4px 4px" }} />
+                <div style={{ height: H, display: "flex", flexDirection: "column",
+                              alignItems: "center", justifyContent: "flex-start" }}>
+                  {SORTIES.map((p, i) => px(x.parts[p.id]) > 0 && (
+                    <div key={p.id} style={{ width: "72%", height: px(x.parts[p.id]),
+                          background: p.couleur,
+                          borderRadius: i === 0 ? "0 0 4px 4px" : 0 }} />
+                  ))}
                 </div>
                 <div className="mini" style={{ fontSize: 12.5, marginTop: 4 }}>
                   {JOURS_COURTS[jour]}<br />{x.date.slice(8, 10)}
@@ -1983,10 +2026,27 @@ function Rythme({ M, config }) {
             );
           })}
         </div>
+
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 16 }}>
+          <span className="mini" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span className="dot" style={{ background: "#5E8F1E", margin: 0 }} />Encaissé
+          </span>
+          {SORTIES.map((p) => (
+            <span key={p.id} className="mini"
+                  style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span className="dot" style={{ background: p.couleur, margin: 0 }} />{p.lbl}
+            </span>
+          ))}
+        </div>
+        </>
       )}
       <div className="note">
-        En vert ce qui rentre, en orange ce qui sort. Un poste qui gonfle se voit ici bien avant
-        d'arriver sur la facture de fin de mois.
+        En vert ce qui rentre, en orange tout ce qui sort — achats et factures, la part
+        journalière des charges fixes ({fmt(quotaFixe)} par jour : loyer, salaires, CNSS,
+        abonnements), les investissements et les prélèvements. Quand l'orange dépasse le vert,
+        la journée n'a pas payé ce qu'elle a coûté. Ne sont pas comptés : ce que tu mets en
+        réserve ou de côté pour un chantier — cet argent est déplacé, pas dépensé — ni les
+        avances sur salaire, déjà portées par les charges fixes.
       </div>
     </div>
   );
