@@ -3708,6 +3708,7 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
   const [montant, setMontant] = useState("");
   const [motif, setMotif] = useState("");
   const [ok, setOk] = useState("");
+  const [erreur, setErreur] = useState("");
   const defDate = ym === thisMonth() ? today() : ym + "-01";
 
   const verser = () => {
@@ -3801,6 +3802,7 @@ function ReservesConsolide({ M, config, ym, onAdd }) {
   const ouvertes = M.avancesInternesOuvertes || [];
   const defDate = ym === thisMonth() ? today() : ym + "-01";
 
+  const [erreur, setErreur] = useState("");
   const [de, setDe] = useState("foyer");
   const [vers, setVers] = useState(keys[0]);
   const [montant, setMontant] = useState("");
@@ -3912,6 +3914,7 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
   const tuDois = ouverts.filter((p) => p.sens === "emprunte");
   const defDate = ym === thisMonth() ? today() : ym + "-01";
 
+  const [erreur, setErreur] = useState("");
   const [sens, setSens] = useState("prete");
   const [qui, setQui] = useState("");
   const [motif, setMotif] = useState("");
@@ -4596,6 +4599,7 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
    Elle sort de la trésorerie sans peser sur le résultat des commerces. */
 function SolidariteCarte({ M, config, ym, onAdd, flash }) {
   const [saisi, setSaisi] = useState("");
+  const [erreur, setErreur] = useState("");
   const prevu = num((config.solidarite || {}).montant);
 
   const verser = () => {
