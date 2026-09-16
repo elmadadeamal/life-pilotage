@@ -2886,10 +2886,35 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
       <Taches taches={taches} config={config} onAdd={onAddTache}
               onMaj={onMajTache} onDel={onDelTache} />
 
+      {/* Le premier écran annonçait le chiffre d'affaires seul, en gros et en
+          vert, et cachait ce qui sort derrière un bouton. C'est le chiffre qui
+          flatte, pas celui qui sert : 106 000 DH encaissés peuvent très bien
+          être un mois perdu. Les trois nombres sont désormais côte à côte, de
+          même taille — c'est l'ÉCART entre eux qui apprend quelque chose, pas
+          l'un des trois isolé. */}
       <div className="card bandeau" style={{ padding: "26px 24px" }}>
         <div className="heroLbl">{monthLabel(ym)}</div>
-        <div className="heroNum pos" style={{ fontSize: 46 }}>{fmt(M.caTotal)}</div>
-        <div className="heroNote" style={{ fontSize: 16.5 }}>chiffre d'affaires encaissé</div>
+
+        <div className="grid3" style={{ margin: "16px 0 4px" }}>
+          <div>
+            <div className="eyebrow">Rentré</div>
+            <div className="heroNum pos" style={{ fontSize: 33 }}>{fmt(M.encaisse)}</div>
+            <div className="mini">commissions déduites</div>
+          </div>
+          <div>
+            <div className="eyebrow">Sorti</div>
+            <div className="heroNum neg" style={{ fontSize: 33 }}>{fmt(M.sorties)}</div>
+            <div className="mini">charges du mois, réglées ou non</div>
+          </div>
+          <div>
+            <div className="eyebrow">Ce qu'il reste</div>
+            <div className={"heroNum " + (M.tresorerie >= 0 ? "pos" : "neg")}
+                 style={{ fontSize: 33 }}>{fmt(M.tresorerie)}</div>
+            <div className="mini">
+              {M.tresorerie >= 0 ? "disponible, engagements déduits" : "il manque encore"}
+            </div>
+          </div>
+        </div>
 
         <div style={{ height: 18, borderRadius: 9, background: "#EDF0E4",
                       overflow: "hidden", margin: "20px 0 12px" }}>
@@ -2902,14 +2927,19 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
         <div style={{ fontSize: 18, fontWeight: 500, color: "#38452F" }}>{phrase}</div>
         <NoteDuMois config={config} ym={ym} onSave={onSaveConfig} />
 
-        {!couvert && M.caTotal > 0 && (
-          <div className="mini" style={{ marginTop: 7 }}>
-            Encore {fmt(reste)} pour atteindre le seuil de rentabilité.
-          </div>
-        )}
-        {couvert && bonus > 0 && (
-          <div className="mini" style={{ marginTop: 7 }}>
-            {fmt(bonus)} au-dessus du seuil de rentabilité.
+        <div className="mini" style={{ marginTop: 7 }}>
+          {fmt(M.caTotal)} de chiffre d'affaires encaissé.
+          {!couvert && M.caTotal > 0
+            ? " Encore " + fmt(reste) + " pour atteindre le seuil de rentabilité."
+            : couvert && bonus > 0
+              ? " " + fmt(bonus) + " au-dessus du seuil de rentabilité."
+              : ""}
+        </div>
+        {M.tresorerie < 0 && (
+          <div className="mini" style={{ marginTop: 5 }}>
+            « Ce qu'il reste » compte toutes les charges du mois dès le 1er, alors que les
+            recettes arrivent jour après jour : en milieu de mois il est normalement négatif.
+            C'est le solde de fin de mois si tout est honoré, pas ta caisse d'aujourd'hui.
           </div>
         )}
       </div>
