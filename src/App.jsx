@@ -4735,12 +4735,18 @@ function Historique({ config, entries, ym, filtre }) {
   const premier = brut.findIndex((h) => h.ca > 0);
   const H = premier === -1 ? brut.slice(-1) : brut.slice(premier);
   const actifs = H.filter((h) => h.ca > 0);
-  /* Le cumul porte sur TOUS les mois, pas seulement ceux où la caisse a tourné.
-     Un mois de fermeture a un chiffre d'affaires nul mais paie quand même son
-     loyer, ses salaires et sa quote-part : c'est le mois le plus déficitaire de
-     l'année, et c'était exactement celui qu'on retirait du total. */
-  const cumulCA  = H.reduce((s, h) => s + h.ca, 0);
-  const cumulRes = H.reduce((s, h) => s + h.resultat, 0);
+  /* Le cumul portait sur les seuls mois avec des ventes. Un mois de fermeture a
+     un chiffre d'affaires nul mais paie quand même son loyer, ses salaires et
+     sa quote-part : c'est le mois le plus déficitaire de l'année, et c'était
+     exactement celui qu'on retirait du total.
+     Mais attention à ne pas confondre « fermé » et « pas encore saisi » : un
+     mois sans la moindre écriture n'est pas un mois à zéro, c'est un mois
+     inconnu. Le compter afficherait une perte imaginaire égale aux charges
+     fixes. On ne garde donc que les mois où quelque chose a été saisi. */
+  const aDesEcritures = (m) => (entries || []).some((e) => (e.date || "").slice(0, 7) === m);
+  const saisis = H.filter((h) => h.ca > 0 || aDesEcritures(h.ym));
+  const cumulCA  = saisis.reduce((s, h) => s + h.ca, 0);
+  const cumulRes = saisis.reduce((s, h) => s + h.resultat, 0);
   const maxi = Math.max(1, ...H.map((h) => h.ca));
 
   if (!actifs.length) {
@@ -4755,12 +4761,12 @@ function Historique({ config, entries, ym, filtre }) {
         <div className="card">
           <div className="heroLbl">Chiffre d'affaires cumulé</div>
           <div className="heroNum">{fmt(cumulCA)}</div>
-          <div className="heroNote">Sur {H.length} mois, dont {actifs.length} avec des ventes.</div>
+          <div className="heroNote">Sur {saisis.length} mois saisis, dont {actifs.length} avec des ventes.</div>
         </div>
         <div className="card">
           <div className="heroLbl">Résultat cumulé</div>
           <div className={"heroNum " + (cumulRes >= 0 ? "pos" : "neg")}>{fmt(cumulRes)}</div>
-          <div className="heroNote">Moyenne : {fmt(cumulRes / Math.max(1, H.length))} par mois,
+          <div className="heroNote">Moyenne : {fmt(cumulRes / Math.max(1, saisis.length))} par mois,
             fermetures comprises.</div>
         </div>
       </div>
@@ -4773,9 +4779,13 @@ function Historique({ config, entries, ym, filtre }) {
                           alignItems: "baseline", marginBottom: 5 }}>
               <span style={{ fontSize: 16 }}>{monthLabel(h.ym)}</span>
               <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                <span className="mini">{h.ca > 0 ? fmt(h.ca) : "fermé"}</span>
-                <span className={h.resultat >= 0 ? "pos" : "neg"}
-                      style={{ marginLeft: 12, fontWeight: 500 }}>{fmt(h.resultat)}</span>
+                <span className="mini">
+                  {h.ca > 0 ? fmt(h.ca) : aDesEcritures(h.ym) ? "fermé" : "rien de saisi"}
+                </span>
+                {(h.ca > 0 || aDesEcritures(h.ym)) && (
+                  <span className={h.resultat >= 0 ? "pos" : "neg"}
+                        style={{ marginLeft: 12, fontWeight: 500 }}>{fmt(h.resultat)}</span>
+                )}
               </span>
             </div>
             <div style={{ height: 9, borderRadius: 5, background: "#EDF0E4", overflow: "hidden" }}>
