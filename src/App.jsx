@@ -1863,10 +1863,16 @@ function calcul(config, entries, ym) {
     ["Prélèvements exceptionnels",       avPerso],
     ["Mis en réserve",                   reserveDepotsMoisTotal - reserveRetraitsMoisTotal],
     ["Mis de côté pour un chantier",     chantiersMois],
-    ["Prêts personnels",                 pretsSortieMois - pretsEntreeMois],
     ["Retards des mois passés",          enRetard],
     ["Reporté sur le mois suivant",     -reporteMontant],
   ].filter(([, v]) => Math.abs(v) >= 1);
+
+  /* Un emprunt reçu n'est pas un coût en moins : c'est de l'argent qui entre.
+     Il était noyé dans les sorties, ce qui faisait paraître le mois 50 000 DH
+     moins cher qu'il ne l'est. On le sort du coût et on le montre pour ce
+     qu'il est — sans changer d'un dirham ce qu'il reste à la fin. */
+  const empruntNet = pretsEntreeMois - pretsSortieMois;
+  const coutDuMois = sorties + empruntNet;
 
   /* Ce que le mois doit porter, payé ou non (les reports sont déjà exclus).
      Les frais de structure ponctuels — un acompte d'impôts, une facture du
@@ -2043,7 +2049,8 @@ function calcul(config, entries, ym) {
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
   return { A, keys, caTotal, resAffaires, structure, structFixe, structExtra,
-           enveloppe, solidarite, soliVerse, soliReste, soliCumul, detailSorties, resultatNet, encaisse, sorties, tresorerie,
+           enveloppe, solidarite, soliVerse, soliReste, soliCumul, detailSorties,
+           coutDuMois, empruntNet, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
            partageTotal, posTotal,
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
@@ -2926,7 +2933,7 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
           </div>
           <div>
             <div className="eyebrow">Ce que le mois coûte</div>
-            <div className="heroNum neg" style={{ fontSize: 31 }}>{fmt(M.sorties)}</div>
+            <div className="heroNum neg" style={{ fontSize: 31 }}>{fmt(M.coutDuMois)}</div>
             <div className="mini">payé ou non — le détail est en bas de page</div>
           </div>
           {/* Sur ces sorties, ce qui n'est pas encore payé : les échéances non
@@ -3024,6 +3031,14 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
             <h2 className="h2">Où va l'argent du mois</h2>
             <div className="row"><span className="lbl">Ce qui rentre, commissions déduites</span>
               <span className="val pos">{fmt(M.encaisse)}</span></div>
+            {M.empruntNet > 0 && (
+              <div className="row"><span className="lbl">Emprunté à un proche</span>
+                <span className="val pos">+ {fmt(M.empruntNet)}</span></div>
+            )}
+            {M.empruntNet < 0 && (
+              <div className="row"><span className="lbl">Prêté ou remboursé</span>
+                <span className="val neg">− {fmt(-M.empruntNet)}</span></div>
+            )}
             {M.detailSorties.map(([lbl, v]) => (
               <div className="row" key={lbl}>
                 <span className="lbl" style={{ paddingLeft: 14 }}>{lbl}</span>
@@ -3033,7 +3048,7 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
               </div>
             ))}
             <div className="row"><span className="lbl">Ce que le mois coûte en tout</span>
-              <span className="val neg">− {fmt(M.sorties)}</span></div>
+              <span className="val neg">− {fmt(M.coutDuMois)}</span></div>
             <div className="row rowTot"><span className="lbl">Ce qu'il reste</span>
               <span className={"val " + (M.tresorerie >= 0 ? "pos" : "neg")}>{fmt(M.tresorerie)}</span></div>
             {(M.avPerso > 0 || M.invests > 0) && (
