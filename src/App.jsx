@@ -3106,21 +3106,40 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const liste = (config.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
   const courant = liste.find((f) => f.id === choix);
 
-  /* Même principe que les numéros STAN sur les recettes : un numéro de pièce
-     déjà saisi sur cette activité est signalé AVANT d'enregistrer, plutôt que
-     découvert en fin de mois dans un coût matière gonflé. */
-  const dejaSaisi = numero.trim()
+  /* Un numéro de pièce appartient à une seule livraison. Le même numéro chez le
+     même fournisseur, c'est la même marchandise : soit le bon de livraison et sa
+     facture, soit une double saisie — dans les deux cas le coût matière serait
+     compté deux fois. L'app refuse, elle ne se contente plus de prévenir.
+     La comparaison ignore les espaces, la casse et les zéros de tête, sinon
+     « 000148 » et « 00148 » passent pour deux pièces différentes. */
+  const clefNumero = (v) => String(v || "").replace(/\s/g, "").toLowerCase()
+                                           .replace(/^0+(?=.)/, "");
+  const clefTiers = (fid, libelle) => fid
+    ? "f:" + fid : "l:" + String(libelle || "").trim().toLowerCase();
+  const tiersCourant = clefTiers(courant ? courant.id : null, lbl);
+  const dejaSaisi = clefNumero(numero)
     ? (entries || []).filter((e) => e.type === "depense" && e.affaire === affaire
-        && (e.numero || "").trim().toLowerCase() === numero.trim().toLowerCase())
+        && clefNumero(e.numero) === clefNumero(numero)
+        && clefTiers(e.fournisseur, e.lbl) === tiersCourant)
     : [];
+  const nomTiers = courant ? courant.nom : (lbl || "Dépense");
+  const rappel = (e) => (e.piece === "bl" ? "Bon de livraison" : e.piece === "bon" ? "Bon" : "Facture")
+    + " du " + (e.date || "").slice(8, 10) + "/" + (e.date || "").slice(5, 7)
+    + " · " + fmt(num(e.montant));
 
   const valider = () => {
     if (num(montant) <= 0) {
       setErreur("Montant manquant — écris le montant en chiffres avant d'enregistrer.");
       return;
     }
+    if (dejaSaisi.length > 0) {
+      setErreur("Numéro déjà enregistré pour " + nomTiers + " : "
+        + dejaSaisi.map(rappel).join(" — ")
+        + ". Change le numéro, ou corrige la pièce existante depuis l'onglet Achats.");
+      return;
+    }
     setErreur("");
-    const nom = courant ? courant.nom : (lbl || "Dépense");
+    const nom = nomTiers;
     onAdd({ type: "depense", date, affaire,
             categorie: courant ? "matiere" : "autre",
             fournisseur: courant ? courant.id : null,
@@ -3191,15 +3210,14 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
                 onClick={() => { setPiece("bon"); setAPayer(false); }}>Bon de dépense</button>
         <input className="f" style={{ width: 170 }}
                placeholder={piece === "bl" ? "N° du BL" : piece === "facture" ? "N° de facture" : "N° du bon"}
-               value={numero} onChange={(e) => setNumero(e.target.value)} />
+               value={numero} onChange={(e) => { setNumero(e.target.value); setErreur(""); }} />
       </div>
 
       {dejaSaisi.length > 0 && (
-        <div style={{ background: "#FDF3E0", color: "#8A5B10", borderRadius: 10,
+        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
                       padding: "10px 12px", marginBottom: 14, fontSize: 15.5 }}>
-          Ce numéro est déjà saisi : {dejaSaisi.map((e) => (e.lbl || "pièce") + " du "
-            + (e.date || "").slice(8, 10) + "/" + (e.date || "").slice(5, 7)
-            + " · " + fmt(num(e.montant))).join(" — ")}.
+          Ce numéro est déjà enregistré pour {nomTiers} : {dejaSaisi.map(rappel).join(" — ")}.
+          Cette pièce ne sera pas enregistrée une seconde fois.
         </div>
       )}
 
