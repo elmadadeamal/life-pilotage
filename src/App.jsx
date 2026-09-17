@@ -351,12 +351,18 @@ const DEFAULT_CONFIG = {
     { id: "f5",  lbl: "Yassine — vendeur",           montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f6",  lbl: "Loyer Guéliz — Ta'âm et labo", montant: 14000, affaire: "taam",
       partagePct: 50, jour: 5 },
-    { id: "f7",  lbl: "Latifa — cheffe",             montant: 6500,  affaire: "partage", sal: true , jour: 30 },
-    { id: "f8",  lbl: "Bahija — commis",             montant: 4000,  affaire: "partage", sal: true , jour: 30 },
-    { id: "f9",  lbl: "Youssef — plongeur",          montant: 3000,  affaire: "partage", sal: true , jour: 30 },
-    { id: "f10", lbl: "Serveur — Ta'âm",             montant: 4000,  affaire: "taam",    sal: true , jour: 30 },
+    /* Toute la paie est portée par Sabich, sauf Ibtissam qui est sur TMSK et la
+       house manager qui reste sur le riad. Latifa, Bahija et Youssef étaient
+       dans le pot « labo partagé » et leurs 13 500 DH se répartissaient sur
+       trois activités, dont Ta'âm qui n'est pas ouvert : Amal ne savait plus
+       qui payait quoi. Un salaire est désormais rangé là où la personne
+       travaille, un point c'est tout. */
+    { id: "f7",  lbl: "Latifa — cheffe",             montant: 6500,  affaire: "sabich",  sal: true , jour: 30 },
+    { id: "f8",  lbl: "Bahija — commis",             montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
+    { id: "f9",  lbl: "Youssef — plongeur",          montant: 3000,  affaire: "sabich",  sal: true , jour: 30 },
+    { id: "f10", lbl: "Serveur",                     montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f11", lbl: "Loyer boutique TMSK",         montant: 14000, affaire: "tmsk"    , jour: 5 },
-    { id: "f12", lbl: "Barista",                     montant: 4500,  affaire: "tmsk",    sal: true , jour: 30 },
+    { id: "f12", lbl: "Ibtissam — vendeuse",         montant: 4500,  affaire: "tmsk",    sal: true , jour: 30 },
     { id: "f13", lbl: "Traites riad (conso + immo)", montant: 10300, affaire: "riad"    , jour: 5 },
     { id: "f14", lbl: "House manager",               montant: 3000,  affaire: "riad",    sal: true , jour: 30 },
     { id: "f15", lbl: "Eau / électricité riad",      montant: 1500,  affaire: "riad"    , jour: 15 },
