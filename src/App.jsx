@@ -5226,7 +5226,7 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
                 <LigneReglee key={l.id} l={l} nom={nomGroupe(l.groupe)}
                              couleur={couleurGroupe(l.groupe)}
                              onRegler={onRegler} onDater={onDater} onPocher={onPocher}
-                             config={config} />
+                             onChiffrer={onChiffrer} config={config} />
               ))}
               <div className="row rowTot"><span className="lbl">Sorti de la caisse ce mois-ci</span>
                 <span className="val pos">{fmt(M.dejaRegleCaisse)}</span></div>
@@ -5586,7 +5586,11 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
 
 /* Une charge pointée : on voit quand l'argent est sorti, on peut corriger la
    date, et on peut décocher si on s'est trompée. */
-function LigneReglee({ l, nom, couleur, config, onRegler, onDater, onPocher }) {
+function LigneReglee({ l, nom, couleur, config, onRegler, onDater, onPocher, onChiffrer }) {
+  /* Une facture qui varie peut avoir été pointée sur l'estimation : il faut
+     pouvoir écrire le vrai montant sans tout décocher. */
+  const [saisi, setSaisi] = useState("");
+  const [edite, setEdite] = useState(false);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
                   padding: "12px 0", borderBottom: "1px solid #F0F3F8" }}>
@@ -5607,7 +5611,29 @@ function LigneReglee({ l, nom, couleur, config, onRegler, onDater, onPocher }) {
               onChange={(e) => onPocher(l.id, e.target.value)}>
         {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
       </select>
-      <span className="val" style={{ flex: "none" }}>{fmt(l.montant)}</span>
+      {l.variable && onChiffrer ? (
+        edite ? (
+          <span style={{ display: "flex", gap: 7, alignItems: "center", flex: "none" }}>
+            <input className="f" style={{ width: 104, textAlign: "right", padding: "6px 9px" }}
+                   inputMode="decimal" autoFocus value={saisi}
+                   placeholder={String(Math.round(l.montant))}
+                   onChange={(x) => setSaisi(x.target.value)} />
+            <button className="pill" style={{ padding: "5px 11px" }}
+                    onClick={() => { onChiffrer(l.id, saisi); setEdite(false); setSaisi(""); }}>
+              OK</button>
+          </span>
+        ) : (
+          <button className="pill" style={{ padding: "5px 11px", flex: "none" }}
+                  onClick={() => { setEdite(true); setSaisi(l.estime ? "" : String(Math.round(l.montant))); }}>
+            {l.estime ? "Saisir le vrai montant" : "Corriger"}
+          </button>
+        )
+      ) : null}
+      <span className="val" style={{ flex: "none",
+            color: l.estime ? "#8A9578" : undefined,
+            fontStyle: l.estime ? "italic" : undefined }}>
+        {l.estime ? "≈ " : ""}{fmt(l.montant)}
+      </span>
     </div>
   );
 }
