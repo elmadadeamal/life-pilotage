@@ -5163,7 +5163,7 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
             <span>
               <span style={{ fontSize: 19, color: "#3B4F35" }}>{p.nom}</span>
               <span className="tag" style={{ marginLeft: 9 }}>
-                {p.type === "caisse" ? "espèces" : "compte"}</span>
+                {p.type === "caisse" ? "espèces" : p.type === "transit" ? "en route" : "compte"}</span>
             </span>
             <span style={{ textAlign: "right" }}>
               <span className="mini" style={{ display: "block" }}>l'appli dit</span>
