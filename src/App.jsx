@@ -39,7 +39,7 @@ export const CSS = `
 .pil {
   /* Les six teintes d'un univers. Elles valent le vert sauge de la maison mère
      par défaut, et chaque intercalaire les repeint aux siennes en entrant. */
-  --u-encre: #33482C; --u-titre: #4B5A3D; --u-doux: #8B9678;
+  --u-encre: #33482C; --u-titre: #3B4F35; --u-doux: #656E62;
   --u-bord: #C8CEB4; --u-filet: #F1F4E9; --u-feuille: transparent;
   font-family: 'Jost', system-ui, sans-serif;
   font-weight: 400;
@@ -58,9 +58,9 @@ export const CSS = `
 .wrap { max-width: 980px; margin: 0 auto; }
 
 /* Les libellés sont des repères discrets, pas des étiquettes techniques */
-.eyebrow { font-size: 13.5px; color: var(--u-doux); font-weight: 500;
+.eyebrow { font-size: 14px; color: var(--u-doux); font-weight: 500;
   letter-spacing: .12em; text-transform: uppercase; }
-.heroLbl { font-size: 15px; color: var(--u-titre); font-weight: 500;
+.heroLbl { font-size: 15.5px; color: var(--u-titre); font-weight: 500;
   letter-spacing: .11em; text-transform: uppercase; }
 .h1 { font-size: 36px; font-weight: 300; letter-spacing: .09em; margin: 0;
   text-transform: uppercase; }
@@ -91,7 +91,7 @@ export const CSS = `
 .hero .card + .card { border-left:1px solid var(--u-bord); padding-left:30px; }
 .heroNum { font-size: 54px; font-weight: 300; line-height:1.05; margin-top:6px;
   letter-spacing:-.025em; font-variant-numeric: tabular-nums; }
-.heroNote { font-size: 15px; color:var(--u-doux); margin-top:10px; line-height:1.55; }
+.heroNote { font-size: 16.5px; color:var(--u-doux); margin-top:10px; line-height:1.55; }
 
 .bar { display:flex; height:12px; border-radius:6px; overflow:hidden; margin-bottom:20px; background:var(--u-filet); }
 .barSeg { transition: width .3s; }
@@ -114,6 +114,10 @@ export const CSS = `
   box-shadow: 0 1px 2px rgba(40,30,20,.10);
   transition: filter .18s; filter: grayscale(.45) brightness(1.14); }
 .tab:hover { filter: grayscale(.15) brightness(1.05); }
+/* L'ivoire de TMSK est sa marque, pas un accident — mais seul clair d'une
+   rangee d'aplats, il se lisait comme un onglet vide. Un filet interieur lui
+   rend le poids des autres, sans lui prendre sa couleur. */
+.tab.clair { box-shadow: inset 0 0 0 1.5px rgba(62,52,42,.22), 0 1px 2px rgba(40,30,20,.10); }
 .tab.on { filter:none; }
 .tab .lib { color:#fff; font-size:13px; font-weight:500; letter-spacing:.13em;
   text-transform:uppercase; white-space:nowrap; text-align:center; line-height:1.35; }
@@ -126,7 +130,7 @@ export const CSS = `
 .navSimple { display:flex; gap:9px; flex-wrap:wrap; }
 
 /* Saisir : une action, un bouton plein, impossible à manquer */
-.btnSaisie { border:none; border-radius:13px; padding:15px 22px; cursor:pointer;
+.btnSaisie { border:none; border-radius:12px; padding:15px 22px; cursor:pointer;
   font-size:15px; font-weight:500; color:#fff; display:inline-flex;
   align-items:center; gap:9px; min-height:52px; letter-spacing:.11em;
   text-transform:uppercase; transition:filter .15s, box-shadow .15s; }
@@ -140,7 +144,7 @@ export const CSS = `
 /* Consulter : léger, souligné */
 .sections { display:flex; gap:24px; flex-wrap:wrap; border-bottom:1px solid var(--u-filet); margin-top:4px; }
 .sections button { border:none; background:none; cursor:pointer; padding:14px 1px 12px;
-  font-size:13.5px; font-weight:500; letter-spacing:.11em; text-transform:uppercase;
+  font-size:14px; font-weight:500; letter-spacing:.11em; text-transform:uppercase;
   color:var(--u-doux); border-bottom:2.5px solid transparent; margin-bottom:-1px;
   transition:color .15s; }
 .sections button:hover { color:var(--u-titre); }
@@ -153,8 +157,8 @@ export const CSS = `
 .maison .btnSaisie { border-radius:16px; }
 
 /* Boutons secondaires : contour net, cible large */
-.pill { padding: 12px 19px; border-radius: 11px; border:1.5px solid var(--u-bord); background:#fff;
-  cursor:pointer; font-size:13.5px; color:var(--u-titre); font-weight:500; min-height:46px;
+.pill { padding: 12px 19px; border-radius: 12px; border:1.5px solid var(--u-bord); background:#fff;
+  cursor:pointer; font-size:14px; color:var(--u-titre); font-weight:500; min-height:46px;
   letter-spacing:.1em; text-transform:uppercase; transition: all .15s; }
 .pill:hover { border-color:var(--u-titre); background:#FCFDF8; }
 .pill.on, .pil button.pill.on { background:var(--u-encre); color:#FFFFFF; border-color:var(--u-encre); }
@@ -168,8 +172,8 @@ export const CSS = `
 .affName { display:flex; align-items:center; font-size:18px; }
 .affNum { font-size:20.5px; font-weight:400; font-variant-numeric:tabular-nums; white-space:nowrap; }
 
-.crest { display:flex; align-items:center; padding:26px 30px; margin:-24px -26px 22px;
-  border-radius:0; min-height:112px; }
+.crest { display:flex; align-items:center; padding:18px 30px; margin:-24px -26px 18px;
+  border-radius:0; min-height:76px; }
 .crest img { width:auto; object-fit:contain; display:block; }
 .crestName { font-size:24px; font-weight:300; color:#fff; letter-spacing:.14em;
   text-transform:uppercase; }
@@ -179,27 +183,31 @@ export const CSS = `
 .neg { color:#C9503A; }
 .mut { color:var(--u-doux); }
 
-label.f { display:block; font-size:15px; color:var(--u-doux); margin-bottom:7px; font-weight:400; }
-input.f, select.f { width:100%; padding:14px 15px; border:1.5px solid var(--u-bord); border-radius:11px;
+label.f { display:block; font-size:16px; color:var(--u-doux); margin-bottom:7px; font-weight:400; }
+input.f, select.f { width:100%; padding:14px 15px; border:1.5px solid var(--u-bord); border-radius:12px;
   background:#FDFEFA; font-size:17px; min-height:50px; }
 input.f:hover, select.f:hover { border-color:var(--u-titre); }
+/* Le calendrier du navigateur arrivait gris et bleu au milieu d'une interface
+   entierement dessinee : on le repasse a l'encre de l'univers. */
+.pil input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: grayscale(1) opacity(.55); cursor:pointer; }
 input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; border-color:transparent; }
 .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
 .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:14px; }
 
 /* Bouton principal : plein, large, une seule action par écran */
 .btn, .pil button.btn { padding:16px 30px; border-radius:12px; border:none; background:var(--u-encre);
-  color:#FFFFFF; font-size:15px; font-weight:500; cursor:pointer; min-height:54px;
+  color:#FFFFFF; font-size:15px; font-weight:500; cursor:pointer; min-height:52px;
   letter-spacing:.12em; text-transform:uppercase; transition:filter .15s; }
 .btn:hover { filter:brightness(1.14); }
 .btn:active { filter:brightness(.94); }
 .btn:focus-visible { outline:2px solid #5E8F1E; outline-offset:3px; }
 
-.mini { font-size:14.5px; color:var(--u-doux); line-height:1.6; }
-.note { border-top:1px solid var(--u-filet); padding:14px 0 0; font-size:14.5px;
+.mini { font-size:16px; color:var(--u-doux); line-height:1.6; }
+.note { border-top:1px solid var(--u-filet); padding:14px 0 0; font-size:16px;
   color:var(--u-doux); line-height:1.6; margin-top:18px; max-width:64ch; }
 
-.tag { font-size:12px; font-weight:500; letter-spacing:.09em; text-transform:uppercase;
+.tag { font-size:13px; font-weight:500; letter-spacing:.09em; text-transform:uppercase;
   color:var(--u-doux); border:1px solid var(--u-bord); border-radius:8px;
   padding:4px 10px; white-space:nowrap; }
 
@@ -236,14 +244,14 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   .heroNum { font-size:44px; }
   .h1 { font-size:25px; letter-spacing:.07em; }
   .card { padding:20px 18px; border-radius:16px; }
-  .crest { padding:20px 18px; margin:-20px -18px 18px; min-height:92px; }
+  .crest { padding:14px 18px; margin:-20px -18px 14px; min-height:64px; }
   .crest img { transform: scale(.78); transform-origin: left center; }
   /* Les onglets reprenaient telles quelles leurs dimensions d'ordinateur :
      sur un téléphone, ça ne laissait voir que 3-4 affaires à la fois et ça
      dominait l'écran. Un gabarit spécifique, plus compact, pour le mobile. */
   .tab { flex:0 0 auto; width:66px; height:56px; border-radius:11px 11px 0 0; }
   .tab img { transform: scale(.58); }
-  .tab .lib { font-size:10.5px; letter-spacing:.09em; }
+  .tab .lib { font-size:11.5px; letter-spacing:.09em; }
   .hero { gap:0; }
   .hero .card { padding:14px 0; }
   .hero .card + .card { border-left:none; border-top:1px solid var(--u-bord); padding-left:0; padding-top:18px; }
@@ -287,9 +295,13 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
    La carte suivante reprend ce ton clair et finit de blanchir sur son début :
    la teinte ne s'arrête jamais net, elle se referme en douceur. */
 .card:has(> .crest) {
-  background: linear-gradient(180deg, var(--u-marque) 0%, var(--u-marque) 42%, var(--u-clair) 100%);
+  background: var(--u-entete,
+    linear-gradient(180deg, var(--u-marque) 0%, var(--u-marque) 42%, var(--u-clair) 100%));
   margin-bottom:0 !important; border-bottom:none !important;
   border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+/* Un libelle pose sur la couleur pleine du bandeau : il prend l'encre qui
+   porte sur la marque, pas le gris des textes courants. */
+.surMarque { color: var(--u-surMarque); }
 .card:has(> .crest) + .card {
   background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF 70px);
   margin-top:0 !important; border-top:none !important;
@@ -342,7 +354,7 @@ const DEFAULT_CONFIG = {
                  },
                } },
     taam:    { nom: "Ta'âm",    marque: "#F1C40D", chip: "#F3CB2A", tint: "#FEFAE9", matierePct: 30, type: "vente", societe: "michui" },
-    contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui", aquarelle: true },
+    contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui" },
   },
   fixes: [
     { id: "f1",  lbl: "Loyer boutique médina",       montant: 8500,  affaire: "sabich"  , jour: 5 },
@@ -478,6 +490,8 @@ function univers(vue, config) {
      sans raccord visible entre les deux. */
   const habitVue = HABIT_VUE[vue] || (config.affaires[vue] ? habit(vue, config.affaires[vue]) : null);
   const marque = habitVue ? habitVue.fond : base;
+  /* La couleur pleine de la languette quand c'en est une ; null pour une aquarelle. */
+  const marqueHex = String(marque).charAt(0) === "#" ? marque : null;
   /* L'encre part de la marque assombrie jusqu'à porter sur blanc — sans quoi
      un jaune ou un beige donnerait des libellés illisibles. Les teintes
      claires, elles, partent de la marque telle quelle : mélangée à de l'encre
@@ -485,14 +499,32 @@ function univers(vue, config) {
   const enc = lisible(base, 7.5);
   return {
     "--u-encre":   enc,
-    "--u-titre":   melange(enc, "#FFFFFF", .10),
-    "--u-doux":    melange(enc, "#FFFFFF", .44),
+    "--u-titre":   melange(enc, "#FFFFFF", .04),
+    /* Le gris des explications etait mele a 44 % de blanc : 2,9 pour 1 sur le
+       creme, sous le seuil de lecture. On garde sa teinte, puis on l'assombrit
+       juste assez pour tenir 4,5 pour 1 sur le fond de l'appli. */
+    "--u-doux":    lisible(melange(enc, "#FFFFFF", .44), 4.9),
     "--u-bord":    melange(base, "#FFFFFF", .76),
     "--u-filet":   melange(base, "#FFFFFF", .94),
     /* La couleur pleine de la languette, et le ton très clair où elle
        s'éteint au fil des sous-onglets — voir .card:has(> .crest). */
     "--u-marque":  marque,
-    "--u-clair":   melange(marque, "#FFFFFF", .90),
+    /* Une marque est presque toujours une couleur — le Mi-Chui, lui, porte une
+       aquarelle, donc un degrade. Un degrade ne peut pas servir d'etape a
+       l'interieur d'un autre degrade : la carte d'en-tete se retrouvait sans
+       fond. On compose donc le fond complet ici, et le voile blanc passe en
+       couche par-dessus quand la marque est une aquarelle. */
+    "--u-clair":   melange(marqueHex || base, "#FFFFFF", .90),
+    "--u-entete":  marqueHex
+      ? "linear-gradient(180deg, " + marqueHex + " 0%, " + marqueHex + " 42%, "
+        + melange(marqueHex, "#FFFFFF", .90) + " 100%)"
+      : "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 42%, "
+        + melange(base, "#FFFFFF", .90) + " 100%), " + marque,
+    /* Ce qui est ecrit sur la couleur pleine du bandeau ne peut pas prendre
+       le gris des textes courants, calcule pour un fond clair : blanc sur
+       une marque foncee, l'encre de l'univers sur une marque claire. */
+    "--u-surMarque": (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
+                       ? "rgba(255,255,255,.88)" : enc,
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
     /* Entre les cartes, rien : le fond de l'application court d'un bord à
@@ -514,7 +546,12 @@ const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
    pas un accident de contraste. Les logos sont fournis en blanc :
    brightness(0) les repasse à l'encre sans rien redessiner. */
 const HABIT = {
-  tmsk: { fond: "#F2EBDA", sombre: true, opa: 1, texte: "#2E2822" },
+  tmsk: { fond: "#EDE3CC", sombre: true, opa: 1, texte: "#2E2822", clair: true },
+  /* Ta'am : son jaune exact, releve sur son logo officiel (#F1C40D sur le
+     nacre #FDFAF3). La regle generale l'assombrissait jusqu'a #9F8109 pour
+     qu'un blanc tienne dessus — mais c'est precisement ce que fait sa marque,
+     blanc sur jaune plein. On garde donc sa couleur telle qu'elle l'a dessinee. */
+  taam: { fond: "#F1C40D" },
 };
 
 const habit = (k, c) => HABIT[k]
@@ -551,7 +588,10 @@ const TAILLE_BLANC = {
    règle dans toute l'app, aucun logo noir. */
 const HABIT_DASH     = { fond: "#94D4DD" };
 const HABIT_FOYER    = { fond: "#F1B597" };
-const HABIT_REGLAGES = { fond: "#7B797A" };
+/* Le gris etait trop sombre pour que le degrade s'eteigne : il tenait toute
+   la hauteur du panneau et avalait le texte pose dessus. Un gris perle clair
+   rend sa course au degrade — le picto passe a l'encre, comme TMSK. */
+const HABIT_REGLAGES = { fond: "#D9D6D1", sombre: true, opa: .62, clair: true };
 
 function onglets(config) {
   return [
@@ -912,6 +952,14 @@ function reprendre(saved) {
                         bouton: "#F2E7D6" };
   }
 
+  /* Le Mi-Chui portait une aquarelle — un dégradé, là où toutes les autres
+     marques sont un aplat. Il passe à son mauve, y compris dans une config
+     déjà en place. */
+  if (c.affaires.contenu && c.affaires.contenu.aquarelle) {
+    c.affaires.contenu = { ...c.affaires.contenu, aquarelle: false,
+                           marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8" };
+  }
+
   /* Ancienne configuration : le riad avait ses réglages dans un coin à part */
   if (saved.riad && c.affaires.riad) {
     c.affaires.riad.type = "hebergement";
@@ -1250,7 +1298,7 @@ export default function App({ session, onLogout }) {
 
         <div className="tabs">
           {onglets(config).map((o) => (
-            <button key={o.id} className={"tab" + (vue === o.id ? " on" : "")}
+            <button key={o.id} className={"tab" + (vue === o.id ? " on" : "") + (o.clair ? " clair" : "")}
                     onClick={() => setVue(o.id)} aria-label={o.nom} title={o.nom}
                     aria-current={vue === o.id ? "page" : undefined}
                     style={{ background: o.fond }}>
@@ -2186,7 +2234,7 @@ function BarresCA({ M, config, onAller }) {
       <div style={{ display: "flex", justifyContent: "space-between",
                     alignItems: "baseline", gap: 12, marginBottom: 18 }}>
         <div className="eyebrow">Chiffre d'affaires par activité</div>
-        {compare && <span className="mini">clair : l'an dernier</span>}
+        {compare && <span className="mini">barre claire : le même mois l'an dernier</span>}
       </div>
 
       {lignes.length === 0 ? (
@@ -2219,6 +2267,12 @@ function BarresCA({ M, config, onAller }) {
               <div style={{ height: 6, borderRadius: 3, marginBottom: 3,
                             width: Math.max(2, (avant / haut) * 100) + "%",
                             background: teinte(c), opacity: .3 }} />
+            )}
+            {/* Le pourcentage seul ne disait pas par rapport a quoi : on pose sa base. */}
+            {avant > 0 && (
+              <div className="mini" style={{ fontSize: 15, marginBottom: 5 }}>
+                {fmt(avant)} le même mois l'an dernier
+              </div>
             )}
             <div style={{ height: 13, borderRadius: 4,
                           width: Math.max(2, (ca / haut) * 100) + "%",
@@ -2623,12 +2677,17 @@ function LigneTache({ t, config, gens, onMaj, onDel, affaireFixe }) {
         <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginTop: 11 }}>
+      {/* Trois boutons pleine largeur par tache donnaient un mur de boutons ou
+          le titre — la vraie information — passait au second plan. Un seul
+          controle compact, cale a droite. */}
+      <div style={{ display: "flex", gap: 4, marginTop: 9, flexWrap: "wrap",
+                    justifyContent: "flex-end" }}>
         {ETATS.map((e) => (
           <button key={e.id} onClick={() => onMaj(t.id, { etat: e.id })}
-                  style={{ flex: 1, cursor: "pointer", borderRadius: 9, padding: "8px 6px",
-                           fontSize: 12.5, fontWeight: 500, letterSpacing: ".08em",
-                           textTransform: "uppercase", minHeight: 38,
+                  style={{ flex: "0 0 auto", cursor: "pointer", borderRadius: 8,
+                           padding: "7px 14px",
+                           fontSize: 13, fontWeight: 500, letterSpacing: ".08em",
+                           textTransform: "uppercase", minHeight: 32,
                            border: t.etat === e.id ? "none" : "1.5px solid #DDE4CD",
                            background: t.etat === e.id ? "#33482C" : "#fff",
                            color: t.etat === e.id ? "#fff" : "#5D6C4B" }}>
@@ -2767,8 +2826,8 @@ function Taches({ taches, config, onAdd, onMaj, onDel, affaireFixe }) {
 const TON = { vert:   { p: "#5E8F1E", f: "#F1F7E6", t: "Dans les clous" },
               orange: { p: "#C98A1E", f: "#FBF3E4", t: "À surveiller" },
               rouge:  { p: "#C9503A", f: "#FBEDEA", t: "Au rouge" },
-              attente:{ p: "#8B9678", f: "#F5F8EC", t: "" },
-              neutre: { p: "#8B9678", f: "#F5F8EC", t: "" } };
+              attente:{ p: "#656E62", f: "#F5F8EC", t: "" },
+              neutre: { p: "#656E62", f: "#F5F8EC", t: "" } };
 
 /* Les dépenses suivent-elles les ventes ? Une jauge par affaire. */
 function Jauge({ lbl, ratio, seuil, etat }) {
@@ -2908,7 +2967,7 @@ function NoteDuMois({ config, ym, onSave }) {
              placeholder="Fermé du 1er au 15, travaux cuisine, SAIB à plein temps…"
              onKeyDown={(e) => { if (e.key === "Enter") enregistrer(); }} />
       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-        <button className="pill" onClick={enregistrer}>Enregistrer</button>
+        <button className="btn" onClick={enregistrer}>Enregistrer</button>
         <button className="pill" onClick={() => setEdite(false)}>Annuler</button>
       </div>
     </div>
@@ -2938,10 +2997,6 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
 
   return (
     <>
-      {/* Ce qui doit se voir en premier, sans rien cliquer : qui fait quoi */}
-      <Taches taches={taches} config={config} onAdd={onAddTache}
-              onMaj={onMajTache} onDel={onDelTache} />
-
       {/* Trois chiffres, pas un de plus, et tous les trois de l'argent réel.
           Les versions précédentes mélangeaient de l'argent qui a bougé, des
           engagements théoriques et des projections de fin de mois dans la même
@@ -3016,6 +3071,13 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
         )}
       </div>
 
+      <Taches taches={taches} config={config} onAdd={onAddTache}
+              onMaj={onMajTache} onDel={onDelTache} />
+
+      {/* Ce qui doit se voir en premier, sans rien cliquer : qui fait quoi */}
+      <Taches taches={taches} config={config} onAdd={onAddTache}
+              onMaj={onMajTache} onDel={onDelTache} />
+
       {/* Ligne 1 — ce qui appelle une décision aujourd'hui, écarts de fond de
           caisse compris (repère par activité juste en dessous des jauges) */}
       <Coherence M={M} config={config} onAller={onAller} />
@@ -3030,25 +3092,21 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
         </div>
       </div>
 
-      {/* Ligne 3 — ce qui arrive */}
-      <div className="board">
-        <div className="col">
-          {M.enRetard > 0 && (
-            <div className="card" style={{ background: "#FDF6E7", borderColor: "#E9D9AE" }}>
-              <div style={{ fontSize: 18, fontWeight: 500, color: "#B07C1E" }}>
-                {fmt(M.enRetard)} viennent du mois dernier
-              </div>
-              <div className="mini" style={{ marginTop: 6, color: "#8A7440" }}>
-                Ce montant s'ajoute aux charges de ce mois-ci. Il est déjà compris dans le total
-                à décaisser.
-              </div>
-            </div>
-          )}
+      {/* Ligne 3 — ce qui arrive. En deux colonnes, la gauche se vidait et
+          laissait une demi-page de creme sous le bloc le plus consulte : les
+          deux blocs prennent maintenant toute la largeur, l'un sous l'autre. */}
+      {M.enRetard > 0 && (
+        <div className="card" style={{ background: "#FDF6E7", borderColor: "#E9D9AE" }}>
+          <div style={{ fontSize: 18, fontWeight: 500, color: "#B07C1E" }}>
+            {fmt(M.enRetard)} viennent du mois dernier
+          </div>
+          <div className="mini" style={{ marginTop: 6, color: "#8A7440" }}>
+            Ce montant s'ajoute aux charges de ce mois-ci. Il est déjà compris dans le total
+            à décaisser.
+          </div>
         </div>
-        <div className="col">
-          <Bientot M={M} config={config} onAller={onAller} />
-        </div>
-      </div>
+      )}
+      <Bientot M={M} config={config} onAller={onAller} />
 
       <button className="pill" onClick={() => setDetail(!detail)}
               style={{ width: "100%", padding: "13px", margin: "14px 0" }}>
@@ -3109,15 +3167,17 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
 
 /* La bande de marque : un aplat plein aux couleurs de l'affaire,
    son logo en blanc dedans. Le nom n'est répété que si le logo manque. */
+/* Les memes rapports qu'avant, a 68 % : le bandeau prenait 200 px de haut
+   pour ne porter qu'un logo, et repoussait le premier chiffre hors de l'ecran. */
 const TAILLE_CREST = {
-  dash:     { width: 78, height: 78 },
-  reglages: { width: 82, height: 91 },
-  sabich:  { width: 157, height: 40 },
-  tmsk:    { width: 137, height: 57 },
-  riad:    { width: 132, height: 89 },
-  contenu: { width: 101, height: 84 },
-  foyer:   { width: 78,  height: 71 },
-  taam:    { width: 155, height: 39 },
+  dash:     { width: 53, height: 53 },
+  reglages: { width: 56, height: 62 },
+  sabich:  { width: 107, height: 27 },
+  tmsk:    { width: 93, height: 39 },
+  riad:    { width: 90, height: 61 },
+  contenu: { width: 69, height: 57 },
+  foyer:   { width: 53, height: 48 },
+  taam:    { width: 105, height: 27 },
 };
 
 const HABIT_VUE = { dash: HABIT_DASH, foyer: HABIT_FOYER, reglages: HABIT_REGLAGES };
@@ -3939,7 +3999,7 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <div className="eyebrow" style={{ marginBottom: 9 }}>Enregistrer</div>
+      <div className="eyebrow surMarque" style={{ marginBottom: 9 }}>Enregistrer</div>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
         {choix.map(([id, lbl]) => {
           const actif = form === id;
@@ -4200,8 +4260,8 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
                onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
       </div>
       <Alerte>{erreur}</Alerte>
-      <button className="pill" style={{ marginTop: 10 }} onClick={verser}>Enregistrer</button>
-      {ok && <div className="note" style={{ color: c.marque }}>{ok}</div>}
+      <button className="btn" style={{ marginTop: 10 }} onClick={verser}>Enregistrer</button>
+      {ok && <div className="note" style={{ color: lisible(c.marque, 5) }}>{ok}</div>}
       <div className="note">
         Ce que tu mets de côté les bons mois sort de la trésorerie du groupe sans peser sur le
         résultat de {c.nom} — il attend d'être repioché quand l'affaire redémarre après une
@@ -5079,7 +5139,7 @@ function SolidariteCarte({ M, config, ym, onAdd, flash }) {
                  onChange={(e) => { setSaisi(e.target.value); setErreur(""); }}
                  onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
         </div>
-        <button className="pill" onClick={verser}>Enregistrer</button>
+        <button className="btn" onClick={verser}>Enregistrer</button>
       </div>
       <Alerte>{erreur}</Alerte>
       <div className="note">
@@ -5896,7 +5956,7 @@ function ActiviteReglage({ k, a, c, maj }) {
         <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span className="swatch" style={{ width: 15, height: 15, borderRadius: 5,
                   background: a.aquarelle ? AQUARELLE : a.chip, flex: "none" }} />
-          <span style={{ color: a.marque, opacity: a.archive ? .5 : 1 }}>{a.nom}</span>
+          <span style={{ color: lisible(a.marque, 5), opacity: a.archive ? .5 : 1 }}>{a.nom}</span>
           {a.type === "hebergement" && <span className="tag">hébergement</span>}
           {a.archive && <span className="tag">archivée</span>}
         </span>
