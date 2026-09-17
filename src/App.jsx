@@ -381,7 +381,7 @@ const DEFAULT_CONFIG = {
   },
   fixes: [
     { id: "f1",  lbl: "Loyer boutique médina",       montant: 8500,  affaire: "sabich"  , jour: 5 },
-    { id: "f2",  lbl: "Eau / électricité Sabich",    montant: 1500,  affaire: "sabich"  , jour: 15 },
+    { id: "f2",  lbl: "Eau / électricité Sabich",    montant: 1500,  affaire: "sabich"  , jour: 15, variable: true },
     { id: "f4",  lbl: "Simohamed — vendeur",         montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f5",  lbl: "Yassine — vendeur",           montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f6",  lbl: "Loyer Guéliz — Ta'âm et labo", montant: 14000, affaire: "taam",
@@ -400,7 +400,7 @@ const DEFAULT_CONFIG = {
     { id: "f12", lbl: "Ibtissam — vendeuse",         montant: 4500,  affaire: "tmsk",    sal: true , jour: 30 },
     { id: "f13", lbl: "Traites riad (conso + immo)", montant: 10300, affaire: "riad"    , jour: 5 },
     { id: "f14", lbl: "House manager",               montant: 3000,  affaire: "riad",    sal: true , jour: 30 },
-    { id: "f15", lbl: "Eau / électricité riad",      montant: 1500,  affaire: "riad"    , jour: 15 },
+    { id: "f15", lbl: "Eau / électricité riad",      montant: 1500,  affaire: "riad"    , jour: 15, variable: true },
     { id: "f16", lbl: "Internet riad",               montant: 300,   affaire: "riad"    , jour: 15 },
   ],
   fournisseurs: [
@@ -437,9 +437,9 @@ const DEFAULT_CONFIG = {
       { id: "h1", lbl: "Traite nouvel appartement", montant: 8500, jour: 5,  transitoire: false },
       { id: "h2", lbl: "Loyer appartement actuel",  montant: 8300, jour: 1,  transitoire: true },
       { id: "h4", lbl: "Femme de ménage",           montant: 2000, jour: 30 },
-      { id: "h5", lbl: "Téléphone",                 montant: 1000, jour: 10 },
-      { id: "h6", lbl: "Carburant",                 montant: 1000, jour: 15 },
-      { id: "h7", lbl: "Eau / électricité",         montant: 600,  jour: 15 },
+      { id: "h5", lbl: "Téléphone",                 montant: 1000, jour: 10, variable: true },
+      { id: "h6", lbl: "Carburant",                 montant: 1000, jour: 15, variable: true },
+      { id: "h7", lbl: "Eau / électricité",         montant: 600,  jour: 15, variable: true },
     ],
     remunerations: [
       { id: "r1", nom: "Salaire Amal", montant: 5000, jour: 30 },
@@ -1330,6 +1330,15 @@ export default function App({ session, onLogout }) {
   const pocherReglement = (ref, poche) => gesteEntries((l) => l.map((e) =>
     (e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym))
       ? { ...e, poche, majPar: moi, majLe: aujourdhui() } : e));
+  /* Le vrai montant d'une charge qui varie, quand la facture arrive. Écrire 0
+     ou vider le champ remet l'estimation. */
+  const chiffrer = (ref, montant) => gesteEntries((l) => {
+    const cle = (e) => e.type === "reel" && e.ref === ref && (e.date || "").startsWith(ym);
+    const sans = l.filter((e) => !cle(e));
+    if (String(montant).trim() === "") return sans;
+    return [...sans, { id: uid(), type: "reel", ref, date: ym + "-01",
+                       montant: num(montant), par: moi, saisiLe: aujourdhui() }];
+  });
   /* Déplacer de l'argent d'une poche à l'autre : un dépôt en banque, un retrait. */
   const transferer = (de, vers, montant, date, motif) => addEntry({
     type: "transfert", de, vers, montant: num(montant), date: date || aujourdhui(), motif });
@@ -1409,8 +1418,9 @@ export default function App({ session, onLogout }) {
         <div className="panneau" style={univers(vue, config)}>
         {vue === "dash"     && <Consolide M={M} config={config} ym={ym} onAller={setVue}
                                           entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
-                                    onPocher={pocherReglement}
+                                    onPocher={pocherReglement} onChiffrer={chiffrer}
                                           onPocher={pocherReglement} onTransfert={transferer} onCompter={compter}
+                                          onChiffrer={chiffrer}
                                           onAdd={addEntry} onDel={delEntry} onMaj={majEntry}
                                           onSaveConfig={saveConfig}
                                           taches={taches} onAddTache={addTache}
@@ -1418,7 +1428,7 @@ export default function App({ session, onLogout }) {
         {config.affaires[vue] && <FicheActivite k={vue} M={M} config={config} entries={entries}
                                      ym={ym} onSolder={solder} onAdd={addEntry} deja={deja}
                                      onRegler={regler} onReporter={reporter} onDater={daterReglement}
-                                     onPocher={pocherReglement}
+                                     onPocher={pocherReglement} onChiffrer={chiffrer}
                                      onDel={delEntry} onMaj={majEntry}
                                      taches={taches} onAddTache={addTache}
                                      onMajTache={majTache} onDelTache={delTache} />}
@@ -1899,19 +1909,34 @@ function calcul(config, entries, ym) {
   const regle    = new Set(inMonth.filter((e) => e.type === "paye").map((e) => e.ref));
   const reportes = reportesRef;
 
+  /* Amal : « le téléphone et le carburant, des fois c'est plus, des fois c'est
+     moins — on doit attendre la facture ». Une charge qui varie porte donc une
+     ESTIMATION, pas un montant. Elle sert à prévoir tant qu'on ne sait pas ;
+     dès qu'Amal saisit le vrai montant du mois, c'est lui qui compte partout. */
+  const reelDuMois = {};
+  inMonth.filter((e) => e.type === "reel")
+         .forEach((e) => { reelDuMois[e.ref] = num(e.montant); });
+  const duLigne = (f) => (f.variable && reelDuMois[f.id] !== undefined)
+    ? reelDuMois[f.id] : num(f.montant);
+  const estEstime = (f) => !!f.variable && reelDuMois[f.id] === undefined;
+
   /* Le catalogue de tout ce qui peut être dû, rangé par propriétaire */
   const base = [
     /* La prime fait partie du salaire du mois : elle pèse dans le résultat,
        elle doit donc peser aussi dans ce qu'il reste à sortir de la caisse. */
     ...config.fixes.map((f) => ({ id: f.id, lbl: f.lbl,
-                                  montant: Math.max(0, num(f.montant)
+                                  montant: Math.max(0, duLigne(f)
                                     + (f.sal ? primeDe(f.id) - avanceDe(f.id) : 0)),
-                                  base: num(f.montant),
+                                  base: duLigne(f),
+                                  variable: !!f.variable, estime: estEstime(f),
                                   groupe: f.affaire === "partage" ? "labo" : f.affaire })),
-    ...config.structures.map((s) => ({ id: s.id, lbl: s.lbl, montant: num(s.montant),
+    ...config.structures.map((s) => ({ id: s.id, lbl: s.lbl, montant: duLigne(s),
+                                       variable: !!s.variable, estime: estEstime(s),
                                        groupe: "societe" })),
     ...config.foyer.fixes.map((f) => ({ id: f.id, lbl: f.lbl,
-                                        montant: num(f.montant), groupe: "foyer" })),
+                                        montant: duLigne(f),
+                                        variable: !!f.variable, estime: estEstime(f),
+                                        groupe: "foyer" })),
     ...remus.map((r) => ({ id: r.id, lbl: "Rémunération — " + r.nom,
                            montant: num(r.montant), groupe: "foyer" })),
     ...(config.societes || []).filter((s) => cnssSoc[s.id] > 0)
@@ -2231,16 +2256,18 @@ function calcul(config, entries, ym) {
        les loyers et les salaires en rouge, et le tableau de bord annonçait
        « 7 échéances sont passées sans être pointées ». */
     const passe = ym <= thisMonth();
+    const b = base.find((x) => x.id === ref);
     echeances.push({ ref, lbl, montant, jour: j, groupe, paye,
+                     variable: !!(b && b.variable), estime: !!(b && b.estime),
                      enRetard: passe && !paye && j < jourActuel });
   };
   /* les retards du mois précédent s'affichent en tête */
   retards.forEach((r) => ajoute(r.id, r.lbl, r.montant, 1, r.groupe));
   config.fixes.forEach((f) => ajoute(f.id, f.lbl,
-        Math.max(0, num(f.montant) + (f.sal ? primeDe(f.id) - avanceDe(f.id) : 0)), f.jour,
+        Math.max(0, duLigne(f) + (f.sal ? primeDe(f.id) - avanceDe(f.id) : 0)), f.jour,
         f.affaire === "partage" ? "labo" : f.affaire));
-  config.structures.forEach((s) => ajoute(s.id, s.lbl, num(s.montant), s.jour, "societe"));
-  config.foyer.fixes.forEach((f) => ajoute(f.id, f.lbl, num(f.montant), f.jour, "foyer"));
+  config.structures.forEach((s) => ajoute(s.id, s.lbl, duLigne(s), s.jour, "societe"));
+  config.foyer.fixes.forEach((f) => ajoute(f.id, f.lbl, duLigne(f), f.jour, "foyer"));
   /* Ce qui reste à donner, pas la totalité prévue : sinon l'échéancier réclame
      encore 10 000 DH le lendemain du jour où elle en a versé 1 000. */
   if (soliReste > 0) ajoute("solidarite", "Solidarité", soliReste,
@@ -2274,7 +2301,7 @@ function calcul(config, entries, ym) {
     const id = String(ref).replace(/^retard:/, "");
     const t = [...config.fixes, ...config.structures, ...config.foyer.fixes,
                ...(config.foyer.remunerations || [])].find((x) => x.id === id);
-    if (t) return num(t.montant);
+    if (t) return duLigne(t);
     if (id === "solidarite") return num((config.solidarite || {}).montant);
     if (id.startsWith("cnss:")) return cnssSoc[id.slice(5)] || 0;
     return 0;
@@ -2454,7 +2481,7 @@ function historique(config, entries, ym, filtre) {
 /*  TABLEAU DE BORD                                                    */
 /* ------------------------------------------------------------------ */
 
-function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDater, onPocher,
+function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDater, onPocher, onChiffrer,
                      onTransfert, onCompter, onAdd, onDel, onMaj,
                      onSaveConfig, taches, onAddTache, onMajTache, onDelTache }) {
   const [sous, setSous] = useState("resultat");
@@ -2496,7 +2523,8 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym}
-                                        onRegler={onRegler} onReporter={onReporter} onDater={onDater} onPocher={onPocher} />}
+                                        onRegler={onRegler} onReporter={onReporter} onDater={onDater} onPocher={onPocher}
+                                        onChiffrer={onChiffrer} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
@@ -4923,7 +4951,7 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
 
 function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                         taches, onAddTache, onMajTache, onDelTache,
-                         onRegler, onReporter, onDater, onPocher, onDel, onMaj }) {
+                         onRegler, onReporter, onDater, onPocher, onChiffrer, onDel, onMaj }) {
   const a = M.A[k], c = config.affaires[k];
   const [sous, setSous] = useState("resultat");
 
@@ -4951,7 +4979,8 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
       </div>
 
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
-                                        onReporter={onReporter} onDater={onDater} onPocher={onPocher} filtre={k} />}
+                                        onReporter={onReporter} onDater={onDater} onPocher={onPocher}
+                                        onChiffrer={onChiffrer} filtre={k} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} filtre={k} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
@@ -5121,7 +5150,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 /*  FOYER                                                              */
 /* ------------------------------------------------------------------ */
 
-function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, filtre }) {
+function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChiffrer, filtre }) {
   const [vue, setVue] = useState("date");
 
   const nomGroupe = (g) => config.affaires[g] ? config.affaires[g].nom
@@ -5171,7 +5200,7 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, filtre
               {retard.map((e) => (
                 <LigneEcheance key={e.ref} e={e} nom={nomGroupe(e.groupe)}
                                couleur={couleurGroupe(e.groupe)}
-                               onRegler={onRegler} onReporter={onReporter} onDater={onDater} />
+                               onRegler={onRegler} onReporter={onReporter} onChiffrer={onChiffrer} />
               ))}
             </div>
           )}
@@ -5183,7 +5212,7 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, filtre
               : aVenir.map((e) => (
                   <LigneEcheance key={e.ref} e={e} nom={nomGroupe(e.groupe)}
                                  couleur={couleurGroupe(e.groupe)} jourActuel={M.jourActuel}
-                                 onRegler={onRegler} onReporter={onReporter} onDater={onDater} />
+                                 onRegler={onRegler} onReporter={onReporter} onChiffrer={onChiffrer} />
                 ))}
           </div>
 
@@ -5583,25 +5612,53 @@ function LigneReglee({ l, nom, couleur, config, onRegler, onDater, onPocher }) {
   );
 }
 
-function LigneEcheance({ e, nom, couleur, jourActuel, onRegler, onReporter }) {
+function LigneEcheance({ e, nom, couleur, jourActuel, onRegler, onReporter, onChiffrer }) {
   const dans = jourActuel ? e.jour - jourActuel : null;
+  /* Une charge qui varie porte une estimation tant que la facture n'est pas
+     arrivée. Amal écrit le vrai montant dans la case, et tout le mois se
+     recalcule dessus — le seuil, ce qui reste à payer, la poche qui paiera. */
+  const [saisi, setSaisi] = useState("");
+  const [edite, setEdite] = useState(false);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10,
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
                   padding: "12px 0", borderBottom: "1px solid #F0F3F8" }}>
       <Coche paye={false} retard={e.enRetard} onClick={() => onRegler(e.ref, true)} />
       <span style={{ width: 6, height: 30, borderRadius: 3, background: couleur, flex: "none" }} />
-      <span style={{ flex: 1 }}>
+      <span style={{ flex: 1, minWidth: 160 }}>
         <span style={{ display: "block", color: "#5F6E4C", fontSize: 16.5 }}>{e.lbl}</span>
         <span className="mini">
           le {e.jour} · {nom}
           {dans !== null && dans >= 0 && (dans === 0 ? " · aujourd'hui" : " · dans " + dans + " j")}
+          {e.estime && " · estimation, la facture n'est pas arrivée"}
         </span>
       </span>
       <button onClick={() => onReporter(e.ref)} title="Reporter sur le mois suivant"
               style={{ border: "1px solid #DCE2CE", background: "#fff", cursor: "pointer",
                        borderRadius: 7, padding: "5px 10px", fontSize: 14,
                        color: "#8A9578", font: "inherit" }}>→</button>
-      <span className="val">{fmt(e.montant)}</span>
+      {e.variable && onChiffrer ? (
+        edite ? (
+          <span style={{ display: "flex", gap: 7, alignItems: "center", flex: "none" }}>
+            <input className="f" style={{ width: 108, textAlign: "right", padding: "6px 9px" }}
+                   inputMode="decimal" autoFocus value={saisi}
+                   placeholder={String(Math.round(e.montant))}
+                   onChange={(x) => setSaisi(x.target.value)} />
+            <button className="pill" style={{ padding: "5px 11px" }}
+                    onClick={() => { onChiffrer(e.ref, saisi); setEdite(false); setSaisi(""); }}>
+              OK</button>
+          </span>
+        ) : (
+          <button className="pill" style={{ padding: "5px 11px", flex: "none" }}
+                  onClick={() => { setEdite(true); setSaisi(e.estime ? "" : String(Math.round(e.montant))); }}>
+            {e.estime ? "Saisir le vrai montant" : "Corriger"}
+          </button>
+        )
+      ) : null}
+      <span className="val" style={{ flex: "none",
+            color: e.estime ? "#8A9578" : undefined,
+            fontStyle: e.estime ? "italic" : undefined }}>
+        {e.estime ? "≈ " : ""}{fmt(e.montant)}
+      </span>
     </div>
   );
 }
@@ -5861,7 +5918,7 @@ function Coche({ paye, onClick, retard }) {
   );
 }
 
-function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDater, onPocher, onDel, onMaj, deja,
+function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDater, onPocher, onChiffrer, onDel, onMaj, deja,
                        taches, onAddTache, onMajTache, onDelTache }) {
   const [sous, setSous] = useState("resultat");
   const sections = [
@@ -5888,7 +5945,8 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
         {sous === "taches"     && <Taches taches={taches} config={config} onAdd={onAddTache}
                                           onMaj={onMajTache} onDel={onDelTache} affaireFixe="foyer" />}
         {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
-                                          onReporter={onReporter} onDater={onDater} onPocher={onPocher} filtre="foyer" />}
+                                          onReporter={onReporter} onDater={onDater} onPocher={onPocher}
+                                          onChiffrer={onChiffrer} filtre="foyer" />}
         {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
                                           onDel={onDel} onMaj={onMaj} filtre="foyer" />}
         {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
@@ -6892,6 +6950,12 @@ function GroupeFixes({ g, c, maj, majFixe }) {
                 <input className="f" style={{ width: 128, padding: "5px 8px" }} type="month"
                        value={f.fin || ""}
                        onChange={(e) => majLigne(f.id, { fin: e.target.value })} />
+                {/* Une facture qui varie : le montant n'est qu'une prévision. */}
+                <button className={"pill" + (f.variable ? " on" : "")}
+                        style={{ padding: "4px 10px", fontSize: 13 }}
+                        onClick={() => majLigne(f.id, { variable: !f.variable })}>
+                  {f.variable ? "montant variable" : "montant fixe"}
+                </button>
                 {f.affaire !== "partage" && <>
                   <span className="mini">dont labo</span>
                   <input className="f" style={{ width: 54, textAlign: "right", padding: "5px 8px" }}
