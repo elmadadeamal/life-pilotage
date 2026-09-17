@@ -326,12 +326,12 @@ const DEFAULT_CONFIG = {
      unique qu'Amal ne pouvait comparer ni à son tiroir ni à son relevé.
      Une poche par endroit réel : le tiroir de chaque comptoir, le compte
      qui reçoit les cartes, celui qui reçoit Airbnb. */
-  /* Sabich et TMSK, c'est le même local et le même tiroir : deux casquettes,
-     une seule caisse. Leurs résultats restent séparés — c'est ce qui dit
-     laquelle des deux gagne de l'argent. */
+  /* Sabich et TMSK ne partagent que le compte bancaire et la borne Naps :
+     chacune garde son tiroir et son fond de caisse. */
   poches: [
-    { id: "cm", nom: "Caisse Médina",     type: "caisse", affaires: ["sabich", "tmsk"], depart: 2500 },
-    { id: "cr", nom: "Caisse Riad",       type: "caisse", affaires: ["riad"],           depart: 0 },
+    { id: "cs", nom: "Caisse Sabich",     type: "caisse", affaires: ["sabich"], depart: 1500 },
+    { id: "ct", nom: "Caisse TMSK",       type: "caisse", affaires: ["tmsk"],   depart: 1000 },
+    { id: "cr", nom: "Caisse Riad",       type: "caisse", affaires: ["riad"],   depart: 0 },
     { id: "bm", nom: "Banque Le Mi-Chui", type: "banque", depart: 0 },
     { id: "ba", nom: "Banque Airbnb",     type: "banque", depart: 0 },
   ],
