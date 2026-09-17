@@ -2032,6 +2032,28 @@ function calcul(config, entries, ym) {
   const empruntNet = pretsEntreeMois - pretsSortieMois;
   const coutDuMois = sorties + empruntNet;
 
+  /* ------------------------------------------------------------------ */
+  /*  CE QUI EST ORDINAIRE, CE QUI EST EXCEPTIONNEL                       */
+  /* ------------------------------------------------------------------ */
+  /* Amal : « ce qui est normal et ce qui est exceptionnel sont dans le même
+     sac ». 7 600 DH de plomberie pesaient comme un loyer, donc elle ne savait
+     pas ce que coûte un mois ordinaire — donc pas non plus ce qu'elle doit
+     vendre pour vivre. On sépare : est exceptionnel ce qu'elle a coché comme
+     tel, plus ce qui l'est par nature (matériel, chantier, frais de structure
+     ponctuels). Tout le reste est la vie normale de l'affaire. */
+  const achatsExceptionnels = inMonth
+    .filter((e) => e.type === "depense" && e.exceptionnel)
+    .reduce((s, e) => s + num(e.montant), 0);
+  const lignesExceptionnelles = [
+    ...inMonth.filter((e) => e.type === "depense" && e.exceptionnel)
+              .map((e) => ({ lbl: e.lbl || "Achat", montant: num(e.montant),
+                             date: e.date, affaire: e.affaire })),
+    ...inMonth.filter((e) => e.type === "invest")
+              .map((e) => ({ lbl: e.lbl || "Investissement", montant: num(e.montant),
+                             date: e.date, affaire: e.affaire })),
+  ].sort((a, b) => b.montant - a.montant);
+  const exceptionnelMois = achatsExceptionnels + invests + structExtra;
+
   /* Ce que le mois doit porter, payé ou non (les reports sont déjà exclus).
      Les frais de structure ponctuels — un acompte d'impôts, une facture du
      comptable — sortent de la caisse mais n'étaient dans aucun catalogue :
@@ -2169,6 +2191,10 @@ function calcul(config, entries, ym) {
 
   const seuil = chargesDuMois / margeMoy;
   const avancement = seuil > 0 ? Math.min(100, (caTotal / seuil) * 100) : 0;
+  /* Le mois ordinaire : les charges qui reviennent tous les mois, sans les
+     coups de chaud. C'est CE chiffre qui dit ce qu'il faut vendre pour vivre. */
+  const chargesOrdinaires = chargesDuMois - structExtra;
+  const seuilOrdinaire = margeMoy > 0 ? chargesOrdinaires / margeMoy : 0;
 
   const [an, mo] = ym.split("-").map(Number);
   const joursMois = new Date(an, mo, 0).getDate();
@@ -2345,6 +2371,39 @@ function calcul(config, entries, ym) {
   const ecartsTous = poches.flatMap((p) => p.ecarts.map((c) => ({ ...c, poche: p.id, nomPoche: p.nom })))
                            .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
+  /* ------------------------------------------------------------------ */
+  /*  CE QU'ELLE DOIT, EN TOUT — pas seulement ce mois-ci                 */
+  /* ------------------------------------------------------------------ */
+  /* Amal : « tu ne vois jamais ce que tu dois au total ». LIFE montrait le
+     mois ; on peut très bien faire un bon mois et s'enfoncer. Une traite porte
+     un capital qui court encore : il suffit de dire jusqu'à quel mois elle
+     tombe, et l'appli compte les échéances qui restent — toute seule, tous les
+     mois, sans rien retoucher. */
+  const moisEntre = (a, b) => {
+    if (!a || !b) return 0;
+    const [ya, ma] = a.split("-").map(Number);
+    const [yb, mb] = b.split("-").map(Number);
+    return (yb - ya) * 12 + (mb - ma);
+  };
+  const credits = [...config.fixes, ...config.structures, ...config.foyer.fixes]
+    .filter((f) => f.fin && moisEntre(ym, f.fin) >= 0)
+    .map((f) => {
+      const restant = moisEntre(ym, f.fin) + 1;
+      return { id: f.id, lbl: f.lbl, mensualite: num(f.montant), fin: f.fin,
+               echeances: restant, capital: num(f.montant) * restant };
+    })
+    .sort((a, b) => b.capital - a.capital);
+  const capitalCredits = credits.reduce((s, c) => s + c.capital, 0);
+  const empruntsOuverts = pretsPersoOuverts.filter((p) => p.sens === "emprunte");
+  const empruntsDus = empruntsOuverts.reduce((s, p) => s + p.solde, 0);
+  const prêtsARecevoir = pretsPersoOuverts.filter((p) => p.sens === "prete")
+                                          .reduce((s, p) => s + p.solde, 0);
+  /* Exigible tout de suite contre engagé sur la durée : ce n'est pas la même
+     inquiétude, et les mélanger est exactement ce qui embrouille. */
+  const duMaintenant = aCouvrir + dettes;
+  const duPlusTard = empruntsDus + capitalCredits;
+  const duTotal = duMaintenant + duPlusTard;
+
   /* Part de chaque affaire dans le résultat positif du mois */
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
@@ -2359,6 +2418,9 @@ function calcul(config, entries, ym) {
            naps, anDernier, jours7, hautJour, voyants, aCouvrir, chargesDuMois, seuil, avancement, joursMois, joursRestants, lignesAPayer, dejaRegle,
            dejaRegleCaisse, regleAvant, lignesReglees, poches, especes, enBanque, enRoute,
            ecartCumul, ecartMois, ecartsTous,
+           exceptionnelMois, lignesExceptionnelles, chargesOrdinaires, seuilOrdinaire,
+           credits, capitalCredits, empruntsOuverts, empruntsDus, prêtsARecevoir,
+           duMaintenant, duPlusTard, duTotal,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
            echeances, resteAPayerMois, jourActuel, cnssSoc,
@@ -3307,6 +3369,104 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
       <Taches taches={taches} config={config} onAdd={onAddTache}
               onMaj={onMajTache} onDel={onDelTache} />
 
+      {/* Ce qu'un mois ordinaire coûte, et ce qui s'est ajouté par-dessus. Sans
+          cette séparation, une plomberie à 7 600 DH se lit comme une charge
+          permanente et fausse tout ce qu'Amal en conclut. */}
+      <div className="board">
+        <div className="col">
+          <div className="card">
+            <h2 className="h2">Ton mois ordinaire</h2>
+            <div className="row"><span className="lbl">Ce que coûte un mois normal</span>
+              <span className="val">{fmt(M.chargesOrdinaires)}</span></div>
+            <div className="row"><span className="lbl">Ce qu'il faut encaisser pour y arriver</span>
+              <span className="val">{fmt(M.seuilOrdinaire)}</span></div>
+            <div className="note" style={{ marginTop: 10 }}>
+              Loyers, salaires, structure, maison et solidarité — ce qui revient tous les mois,
+              quoi qu'il arrive. C'est ce chiffre-là qu'il faut battre pour vivre, pas le total
+              du mois.
+            </div>
+          </div>
+
+          {M.exceptionnelMois > 0 && (
+            <div className="card">
+              <h2 className="h2">Ce mois-ci, en plus</h2>
+              <div className="row rowTot"><span className="lbl">Exceptionnel</span>
+                <span className="val neg">{fmt(M.exceptionnelMois)}</span></div>
+              {M.lignesExceptionnelles.slice(0, 8).map((l, i) => (
+                <div className="row" key={i}>
+                  <span className="lbl">{l.lbl}
+                    {config.affaires[l.affaire] && (
+                      <span className="mini"> · {config.affaires[l.affaire].nom}</span>)}
+                  </span>
+                  <span className="val">{fmt(l.montant)}</span>
+                </div>
+              ))}
+              <div className="note" style={{ marginTop: 10 }}>
+                Des travaux, du matériel, un acompte d'impôts : ça sort de la caisse mais ça ne
+                reviendra pas le mois prochain. Ne juge pas ton mois là-dessus.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="col">
+          {/* Un bon mois n'empêche pas de s'enfoncer : ce qui est dû au-delà du
+              mois doit se voir quelque part. */}
+          <div className="card">
+            <h2 className="h2">Ce que tu dois, en tout</h2>
+            <div className="row rowTot"><span className="lbl">Total</span>
+              <span className="val neg" style={{ fontSize: 22 }}>{fmt(M.duTotal)}</span></div>
+            <div className="row"><span className="lbl">Exigible maintenant</span>
+              <span className="val">{fmt(M.duMaintenant)}</span></div>
+            <div className="row"><span className="lbl">Engagé sur la durée</span>
+              <span className="val">{fmt(M.duPlusTard)}</span></div>
+
+            {M.empruntsOuverts.length > 0 && (
+              <>
+                <div className="mini" style={{ margin: "14px 0 4px" }}>Emprunts à rendre</div>
+                {M.empruntsOuverts.map((p) => (
+                  <div className="row" key={p.id}>
+                    <span className="lbl">{p.qui || "Emprunt"}
+                      {p.echeance && <span className="mini"> · avant le {joliDate(p.echeance)}</span>}
+                    </span>
+                    <span className="val">{fmt(p.solde)}</span>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {M.credits.length > 0 && (
+              <>
+                <div className="mini" style={{ margin: "14px 0 4px" }}>Traites et crédits en cours</div>
+                {M.credits.map((c) => (
+                  <div className="row" key={c.id}>
+                    <span className="lbl">{c.lbl}
+                      <span className="mini"> · {c.echeances} échéance{c.echeances > 1 ? "s" : ""} jusqu'à {monthLabel(c.fin).toLowerCase()}</span>
+                    </span>
+                    <span className="val">{fmt(c.capital)}</span>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {M.prêtsARecevoir > 0 && (
+              <div className="row" style={{ marginTop: 10 }}>
+                <span className="lbl">À l'inverse, on te doit</span>
+                <span className="val pos">{fmt(M.prêtsARecevoir)}</span>
+              </div>
+            )}
+
+            <div className="note" style={{ marginTop: 10 }}>
+              {M.credits.length === 0
+                ? "Tes traites ne sont pas encore comptées ici : dans les Réglages, indique jusqu'à "
+                  + "quel mois chacune tombe, et l'appli calculera toute seule ce qu'il en reste."
+                : "Les traites se recalculent toutes seules chaque mois : tu n'as indiqué que la "
+                  + "date de la dernière échéance."}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Ligne 1 — ce qui appelle une décision aujourd'hui, écarts de fond de
           caisse compris (repère par activité juste en dessous des jauges) */}
       <Coherence M={M} config={config} onAller={onAller} />
@@ -3848,6 +4008,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const [numero, setNumero] = useState("");
   const [aPayer, setAPayer] = useState(false);
   const [poche, setPoche] = useState("");
+  const [exceptionnel, setExceptionnel] = useState(false);
   const [erreur, setErreur] = useState("");
 
   const liste = (config.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
@@ -3890,11 +4051,11 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
     onAdd({ type: "depense", date, affaire,
             categorie: courant ? "matiere" : "autre",
             fournisseur: courant ? courant.id : null,
-            piece, numero: numero.trim(), aPayer,
+            piece, numero: numero.trim(), aPayer, exceptionnel,
             poche: aPayer ? "" : (poche || caisseDe(config, affaire)),
             lbl: nom, montant: num(montant) });
     flash(nom + " — enregistré.");
-    setMontant(""); setLbl(""); setNumero("");
+    setMontant(""); setLbl(""); setNumero(""); setExceptionnel(false);
   };
 
   return (
@@ -3998,6 +4159,20 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
           seul geste le jour où tu paies sa facture.
         </div>
       )}
+
+      {/* Un achat qui ne reviendra pas le mois prochain ne doit pas peser dans
+          ce qu'on croit être le coût normal du mois. */}
+      <label className="f">Ça revient tous les mois ?</label>
+      <div style={{ display: "flex", gap: 9, marginBottom: 6, flexWrap: "wrap" }}>
+        <button className={"pill" + (!exceptionnel ? " on" : "")}
+                onClick={() => setExceptionnel(false)}>Achat courant</button>
+        <button className={"pill" + (exceptionnel ? " on" : "")}
+                onClick={() => setExceptionnel(true)}>Exceptionnel</button>
+      </div>
+      <div className="mini" style={{ marginBottom: 14 }}>
+        Exceptionnel : des travaux, une réparation, un achat qui ne se répétera pas.
+        Il sortira du « mois ordinaire ».
+      </div>
 
       <HorsMois date={date} defDate={defDate} />
       <Alerte>{erreur}</Alerte>
@@ -6711,6 +6886,12 @@ function GroupeFixes({ g, c, maj, majFixe }) {
                 <input className="f" style={{ width: 58, textAlign: "right", padding: "5px 8px" }}
                        inputMode="decimal" value={f.jour ?? 5}
                        onChange={(e) => majLigne(f.id, { jour: num(e.target.value) })} />
+                {/* Une traite a une fin : la dire une fois suffit à connaître le
+                    capital qui court encore, recalculé tout seul chaque mois. */}
+                <span className="mini">jusqu'à</span>
+                <input className="f" style={{ width: 128, padding: "5px 8px" }} type="month"
+                       value={f.fin || ""}
+                       onChange={(e) => majLigne(f.id, { fin: e.target.value })} />
                 {f.affaire !== "partage" && <>
                   <span className="mini">dont labo</span>
                   <input className="f" style={{ width: 54, textAlign: "right", padding: "5px 8px" }}
