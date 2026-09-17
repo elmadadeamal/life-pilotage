@@ -5084,6 +5084,10 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
           Ces soldes se comptent depuis le début, pas sur le mois affiché — un tiroir
           ne se remet pas à zéro le 1er. Les recettes s'aiguillent toutes seules :
           la part espèces reste au comptoir, la part carte part en banque.
+          {(M.poches || []).some((p) => !p.dernierComptage) && (
+            <> <b>Pour démarrer, compte chaque tiroir et pointe chaque compte une
+            première fois</b> : c'est ce qui donne à l'appli son point de départ.</>
+          )}
         </div>
       </div>
 
@@ -5102,7 +5106,8 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
 
           {p.dernierComptage && (
             <div className="mini" style={{ marginTop: 6 }}>
-              Dernier comptage le {joliDate(p.dernierComptage.date)} : {fmt(num(p.dernierComptage.montant))}
+              {p.type === "caisse" ? "Dernier comptage le " : "Dernier pointage le "}
+              {joliDate(p.dernierComptage.date)} : {fmt(num(p.dernierComptage.montant))}
               {Math.abs(p.ecart) >= 1
                 ? " — " + (p.ecart > 0 ? "il y avait " + fmt(p.ecart) + " de plus que prévu"
                                        : "il manquait " + fmt(-p.ecart))
@@ -5110,9 +5115,14 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
             </div>
           )}
 
-          {p.type === "caisse" && (ouvert === p.id ? (
+          {/* Pointer vaut aussi pour un compte : le solde du relevé remplace ce
+              que l'appli croyait, et c'est comme ça qu'on lui donne son point
+              de départ sans rien paramétrer. */}
+          {(ouvert === p.id ? (
             <div style={{ marginTop: 12 }}>
-              <label className="f">Compté dans le tiroir, en chiffres</label>
+              <label className="f">
+                {p.type === "caisse" ? "Compté dans le tiroir, en chiffres"
+                                     : "Solde du relevé, en chiffres"}</label>
               <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 5 }}>
                 <input className="f" style={{ width: 160 }} inputMode="decimal"
                        placeholder={String(Math.round(p.solde))} value={reel} autoFocus
@@ -5122,14 +5132,14 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
               </div>
               <Alerte>{erreur}</Alerte>
               <div className="mini" style={{ marginTop: 7 }}>
-                L'appli dit {fmt(p.solde)}. Tape ce que tu as réellement sous la main : à partir
-                de là, c'est ton comptage qui fait référence.
+                L'appli dit {fmt(p.solde)}. Tape le vrai chiffre : à partir de là, c'est lui
+                la référence, et l'appli ne compte plus que ce qui bouge après.
               </div>
             </div>
           ) : (
             <button className="pill" style={{ marginTop: 12 }}
                     onClick={() => { setOuvert(p.id); setReel(""); setErreur(""); }}>
-              Je compte cette caisse
+              {p.type === "caisse" ? "Je compte cette caisse" : "Je pointe ce compte"}
             </button>
           ))}
         </div>
