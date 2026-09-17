@@ -4855,7 +4855,7 @@ function LigneReglee({ l, nom, couleur, onRegler, onDater }) {
         <span className="mini">{nom}{l.horsMois ? " · payé le mois d'avant" : ""}</span>
       </span>
       <span className="mini" style={{ flex: "none" }}>payé le</span>
-      <input className="f" type="date" value={l.quand} style={{ width: 150, flex: "none" }}
+      <input className="f" type="date" value={l.quand} style={{ width: 172, flex: "none" }}
              onChange={(e) => onDater(l.id, e.target.value)} />
       <span className="val" style={{ flex: "none" }}>{fmt(l.montant)}</span>
     </div>
