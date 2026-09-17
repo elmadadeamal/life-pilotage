@@ -332,11 +332,16 @@ const DEFAULT_CONFIG = {
     { id: "cs", nom: "Caisse Sabich",     type: "caisse", affaires: ["sabich"], depart: 1500 },
     { id: "ct", nom: "Caisse TMSK",       type: "caisse", affaires: ["tmsk"],   depart: 1000 },
     { id: "cr", nom: "Caisse Riad",       type: "caisse", affaires: ["riad"],   depart: 0 },
+    { id: "np", nom: "Naps en attente",    type: "transit", depart: 0 },
     { id: "bm", nom: "Banque Le Mi-Chui", type: "banque", depart: 0 },
     { id: "ba", nom: "Banque Airbnb",     type: "banque", depart: 0 },
   ],
-  /* Les cartes du comptoir passent par Naps et tombent sur Le Mi-Chui ;
-     les virements des séjours Airbnb tombent sur l'autre compte. */
+  /* Une carte encaissée n'est pas encore de l'argent en banque : Naps garde
+     l'argent un à trois jours. Sans cette étape, le relevé ne collerait jamais
+     avec l'appli et chaque pointage afficherait un faux manque. Les cartes
+     tombent donc dans « Naps en attente », et le virement les fait passer
+     sur Le Mi-Chui le jour où il arrive vraiment. */
+  pocheCartes: "np",
   banqueCartes: "bm",
   banqueAirbnb: "ba",
   seuils: {
@@ -708,6 +713,8 @@ const caisseDe = (config, affaire) => {
 const banqueCartes = (config) => (config && config.banqueCartes)
   || ((lesPoches(config).find((x) => x.type === "banque") || {}).id) || null;
 const banqueAirbnb = (config) => (config && config.banqueAirbnb) || banqueCartes(config);
+/* Où atterrit une carte encaissée : chez Naps, pas encore à la banque. */
+const pocheCartes = (config) => (config && config.pocheCartes) || banqueCartes(config);
 /* D'où sort l'argent quand on paie, si Amal n'a rien précisé : le tiroir du
    comptoir concerné pour ce qui s'achète sur place, la banque pour le reste. */
 const pocheSortieParDefaut = (config, e) => {
@@ -1030,6 +1037,7 @@ function reprendre(saved) {
   c.notes = { ...(saved.notes || {}) };
   c.poches = (saved.poches && saved.poches.length) ? saved.poches : DEFAULT_CONFIG.poches;
   c.banqueCartes = saved.banqueCartes || DEFAULT_CONFIG.banqueCartes;
+  c.pocheCartes = saved.pocheCartes || DEFAULT_CONFIG.pocheCartes;
   c.banqueAirbnb = saved.banqueAirbnb || DEFAULT_CONFIG.banqueAirbnb;
   c.naps = { ma: num((saved.naps || {}).ma) || DEFAULT_CONFIG.naps.ma,
              etr: num((saved.naps || {}).etr) || DEFAULT_CONFIG.naps.etr,
@@ -2257,7 +2265,7 @@ function calcul(config, entries, ym) {
       case "vente":
         /* La part espèces reste dans le tiroir, la part carte part en banque. */
         bouge(caisse, num(e.espece), d, "Recette en espèces");
-        bouge(banqueCartes(config), num(e.carte), d, "Recette par carte");
+        bouge(pocheCartes(config), num(e.carte), d, "Recette par carte");
         break;
       case "resa":
         bouge(e.source === "direct" ? banqueCartes(config) : banqueAirbnb(config),
@@ -2331,6 +2339,7 @@ function calcul(config, entries, ym) {
   });
   const especes = poches.filter((p) => p.type === "caisse").reduce((s, p) => s + p.solde, 0);
   const enBanque = poches.filter((p) => p.type === "banque").reduce((s, p) => s + p.solde, 0);
+  const enRoute = poches.filter((p) => p.type === "transit").reduce((s, p) => s + p.solde, 0);
   const ecartCumul = poches.reduce((s, p) => s + p.ecartCumul, 0);
   const ecartMois = poches.reduce((s, p) => s + p.ecartMois, 0);
   const ecartsTous = poches.flatMap((p) => p.ecarts.map((c) => ({ ...c, poche: p.id, nomPoche: p.nom })))
@@ -2348,7 +2357,7 @@ function calcul(config, entries, ym) {
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
            pretsPerso, pretsPersoOuverts,
            naps, anDernier, jours7, hautJour, voyants, aCouvrir, chargesDuMois, seuil, avancement, joursMois, joursRestants, lignesAPayer, dejaRegle,
-           dejaRegleCaisse, regleAvant, lignesReglees, poches, especes, enBanque,
+           dejaRegleCaisse, regleAvant, lignesReglees, poches, especes, enBanque, enRoute,
            ecartCumul, ecartMois, ecartsTous,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
@@ -5058,6 +5067,21 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
   const [mt, setMt] = useState("");
   const [dateT, setDateT] = useState(aujourdhui());
   const [errT, setErrT] = useState("");
+  const [mtN, setMtN] = useState("");
+  const [dateN, setDateN] = useState(aujourdhui());
+  const [errN, setErrN] = useState("");
+
+  /* Le virement Naps : le geste le plus fréquent, il a son propre formulaire
+     plutôt que d'obliger Amal à choisir deux poches dans une liste. */
+  const transit = M.poches.filter((p) => p.type === "transit");
+  const versBanque = pocheParId(config, banqueCartes(config));
+  const encaisserNaps = () => {
+    if (!montantLisible(mtN) || num(mtN) <= 0) {
+      setErrN("Écris le montant du virement en chiffres."); return;
+    }
+    if (!transit[0] || !versBanque) { setErrN("Aucun compte de destination."); return; }
+    setErrN(""); onTransfert(transit[0].id, versBanque.id, mtN, dateN); setMtN("");
+  };
 
   const valider = (p) => {
     if (!montantLisible(reel) || String(reel).trim() === "") {
@@ -5098,6 +5122,14 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
                  style={{ fontSize: 31 }}>{fmt(M.enBanque)}</div>
             <div className="mini">cartes et virements encaissés</div>
           </div>
+          {Math.abs(M.enRoute) >= 1 && (
+            <div>
+              <div className="eyebrow">En route</div>
+              <div className="heroNum" style={{ fontSize: 31, color: "#8A7440" }}>
+                {fmt(M.enRoute)}</div>
+              <div className="mini">cartes encaissées, virement Naps pas encore arrivé</div>
+            </div>
+          )}
           {/* Le chiffre qu'on ne doit jamais laisser disparaître : la somme de
               tout ce que les comptages ont révélé de manquant. */}
           {Math.abs(M.ecartCumul) >= 1 && (
@@ -5226,11 +5258,44 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
           ) : (
             <button className="pill" style={{ marginTop: 12 }}
                     onClick={() => { setOuvert(p.id); setReel(""); setErreur(""); }}>
-              {p.type === "caisse" ? "Je compte cette caisse" : "Je pointe ce compte"}
+              {p.type === "caisse" ? "Je compte cette caisse"
+                : p.type === "transit" ? "Je corrige ce montant" : "Je pointe ce compte"}
             </button>
           ))}
         </div>
       ))}
+
+      {transit.length > 0 && versBanque && (
+        <div className="card">
+          <h2 className="h2">Virements Naps reçus</h2>
+          <div className="note" style={{ marginBottom: 12 }}>
+            Une carte encaissée reste chez Naps un à trois jours. Elle attend dans
+            « {transit[0].nom} », et tu la fais passer sur {versBanque.nom} le jour où le
+            virement tombe vraiment sur ton relevé. C'est ce qui fait que l'appli et ta
+            banque disent la même chose.
+          </div>
+          <div className="row rowTot" style={{ marginBottom: 12 }}>
+            <span className="lbl">En attente chez Naps</span>
+            <span className="val" style={{ color: "#8A7440" }}>{fmt(transit[0].solde)}</span>
+          </div>
+          <div className="grid2">
+            <div><label className="f">Montant reçu</label>
+              <input className="f" inputMode="decimal" placeholder="4 320" value={mtN}
+                     onChange={(e) => setMtN(e.target.value)} /></div>
+            <div><label className="f">Date du virement</label>
+              <input className="f" type="date" value={dateN}
+                     onChange={(e) => setDateN(e.target.value)} /></div>
+          </div>
+          <Alerte>{errN}</Alerte>
+          <button className="pill" style={{ marginTop: 12 }} onClick={encaisserNaps}>
+            Enregistrer le virement
+          </button>
+          <div className="mini" style={{ marginTop: 9 }}>
+            Recopie le montant exact du virement, tel qu'il apparaît sur ton relevé —
+            commission Naps déjà déduite s'il y a lieu.
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h2 className="h2">Déplacer de l'argent</h2>
