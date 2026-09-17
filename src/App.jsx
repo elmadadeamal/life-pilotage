@@ -1236,11 +1236,36 @@ export default function App({ session, onLogout }) {
   const addEntry = (e) => gesteEntries((l) =>
     [...l, { ...e, id: uid(), par: moi, saisiLe: aujourdhui() }]);
   const delEntry = (id) => gesteEntries((l) => l.filter((e) => e.id !== id));
+  /* Une charge de septembre peut très bien avoir été payée fin août. Tant que le
+     pointage ne portait qu'un mois, « ce que j'ai réellement payé » comptait en
+     septembre de l'argent sorti en août. Le pointage garde donc deux dates :
+     `date` dit de quel mois est la charge, `regleLe` dit quand l'argent est
+     vraiment sorti. Par défaut, le jour d'échéance — ou aujourd'hui si elle
+     paie en avance. Elle peut corriger la date ligne par ligne. */
+  const jourEcheance = (ref) => {
+    const t = [...config.fixes, ...config.structures, ...config.foyer.fixes,
+               ...(config.foyer.remunerations || [])]
+      .find((x) => x.id === String(ref).replace(/^retard:/, ""));
+    return t ? (num(t.jour) || 5) : 5;
+  };
+  const dateReglementParDefaut = (ref) => {
+    const [an, mo] = ym.split("-").map(Number);
+    const fin = new Date(an, mo, 0).getDate();
+    const j = Math.min(Math.max(1, jourEcheance(ref)), fin);
+    const prevu = ym + "-" + String(j).padStart(2, "0");
+    const auj = aujourdhui();
+    return (ym === thisMonth() && prevu > auj) ? auj : prevu;
+  };
   const regler = (ref, oui) => gesteEntries((l) => {
     const cle = (e) => e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym);
-    return oui ? [...l, { id: uid(), type: "paye", ref, date: ym + "-01", par: moi }]
+    return oui ? [...l, { id: uid(), type: "paye", ref, date: ym + "-01",
+                          regleLe: dateReglementParDefaut(ref), par: moi }]
                : l.filter((e) => !cle(e));
   });
+  /* Corriger après coup la date de sortie d'argent d'une charge déjà pointée. */
+  const daterReglement = (ref, quand) => gesteEntries((l) => l.map((e) =>
+    (e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym))
+      ? { ...e, regleLe: quand, majPar: moi, majLe: aujourdhui() } : e));
   const reporter = (ref) => gesteEntries((l) => {
     const cle = (e) => e.type === "reporte" && e.ref === ref && (e.date || "").startsWith(ym);
     return l.some(cle) ? l.filter((e) => !cle(e))
@@ -1311,19 +1336,19 @@ export default function App({ session, onLogout }) {
 
         <div className="panneau" style={univers(vue, config)}>
         {vue === "dash"     && <Consolide M={M} config={config} ym={ym} onAller={setVue}
-                                          entries={entries} onRegler={regler} onReporter={reporter}
+                                          entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                           onAdd={addEntry} onDel={delEntry} onMaj={majEntry}
                                           onSaveConfig={saveConfig}
                                           taches={taches} onAddTache={addTache}
                                           onMajTache={majTache} onDelTache={delTache} />}
         {config.affaires[vue] && <FicheActivite k={vue} M={M} config={config} entries={entries}
                                      ym={ym} onSolder={solder} onAdd={addEntry} deja={deja}
-                                     onRegler={regler} onReporter={reporter}
+                                     onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                      onDel={delEntry} onMaj={majEntry}
                                      taches={taches} onAddTache={addTache}
                                      onMajTache={majTache} onDelTache={delTache} />}
         {vue === "foyer"    && <FoyerComplet M={M} config={config} onAdd={addEntry} ym={ym}
-                                    entries={entries} onRegler={regler} onReporter={reporter}
+                                    entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                     onDel={delEntry} onMaj={majEntry} deja={deja}
                                     taches={taches} onAddTache={addTache}
                                     onMajTache={majTache} onDelTache={delTache} />}
@@ -1941,6 +1966,22 @@ function calcul(config, entries, ym) {
   const aCouvrir = lignesAPayer.filter((l) => !l.paye).reduce((s, l) => s + l.montant, 0);
   const dejaRegle = lignesAPayer.filter((l) => l.paye).reduce((s, l) => s + l.montant, 0);
 
+  /* Quand l'argent est vraiment sorti, pour chaque charge pointée. Les pointages
+     d'avant cette distinction n'ont pas de `regleLe` : on les rattache au mois
+     de la charge, comme avant, jusqu'à ce qu'elle les corrige. */
+  const quandRegle = {};
+  inMonth.filter((e) => e.type === "paye")
+         .forEach((e) => { quandRegle[e.ref] = e.regleLe || e.date || (ym + "-01"); });
+  const lignesReglees = lignesAPayer.filter((l) => l.paye).map((l) => {
+    const quand = quandRegle[l.id] || (ym + "-01");
+    return { ...l, quand, horsMois: quand.slice(0, 7) !== ym };
+  });
+  /* Ce qui est sorti de la caisse CE mois-ci : une charge de septembre payée fin
+     août ne pèse pas sur septembre, même si elle solde bien une ligne de septembre. */
+  const dejaRegleCaisse = lignesReglees.filter((l) => !l.horsMois)
+                                       .reduce((s, l) => s + l.montant, 0);
+  const regleAvant = dejaRegle - dejaRegleCaisse;
+
   /* Ce que tu dois encore à tes fournisseurs, tous mois confondus */
   const dettes = entries.filter((e) => e.type === "depense" && e.aPayer)
                         .reduce((s, e) => s + num(e.montant), 0);
@@ -1956,7 +1997,7 @@ function calcul(config, entries, ym) {
   /* Sorti pour de bon : les achats réglés, les échéances pointées, la
      solidarité versée, les prélèvements, les avances données, le matériel
      acheté et les prêts consentis. */
-  const dejaPaye = achatsAcquittes + dejaRegle + soliVerse + avPerso + avSalaire
+  const dejaPaye = achatsAcquittes + dejaRegleCaisse + soliVerse + avPerso + avSalaire
                  + invests + pretsSortieMois;
   /* Ce qui doit encore quitter la caisse, tous mois confondus. */
   const resteAPayer = aCouvrir + dettes;
@@ -2131,6 +2172,7 @@ function calcul(config, entries, ym) {
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
            pretsPerso, pretsPersoOuverts,
            naps, anDernier, jours7, hautJour, voyants, aCouvrir, chargesDuMois, seuil, avancement, joursMois, joursRestants, lignesAPayer, dejaRegle,
+           dejaRegleCaisse, regleAvant, lignesReglees,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
            echeances, resteAPayerMois, jourActuel, cnssSoc,
@@ -2164,7 +2206,7 @@ function historique(config, entries, ym, filtre) {
 /*  TABLEAU DE BORD                                                    */
 /* ------------------------------------------------------------------ */
 
-function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAdd, onDel, onMaj,
+function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDater, onAdd, onDel, onMaj,
                      onSaveConfig, taches, onAddTache, onMajTache, onDelTache }) {
   const [sous, setSous] = useState("resultat");
 
@@ -2202,7 +2244,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onAd
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym}
-                                        onRegler={onRegler} onReporter={onReporter} />}
+                                        onRegler={onRegler} onReporter={onReporter} onDater={onDater} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
@@ -4498,7 +4540,7 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
 
 function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                         taches, onAddTache, onMajTache, onDelTache,
-                         onRegler, onReporter, onDel, onMaj }) {
+                         onRegler, onReporter, onDater, onDel, onMaj }) {
   const a = M.A[k], c = config.affaires[k];
   const [sous, setSous] = useState("resultat");
 
@@ -4526,7 +4568,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
       </div>
 
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
-                                        onReporter={onReporter} filtre={k} />}
+                                        onReporter={onReporter} onDater={onDater} filtre={k} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} filtre={k} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
@@ -4696,7 +4738,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 /*  FOYER                                                              */
 /* ------------------------------------------------------------------ */
 
-function Avenir({ M, config, ym, onRegler, onReporter, filtre }) {
+function Avenir({ M, config, ym, onRegler, onReporter, onDater, filtre }) {
   const [vue, setVue] = useState("date");
 
   const nomGroupe = (g) => config.affaires[g] ? config.affaires[g].nom
@@ -4731,7 +4773,7 @@ function Avenir({ M, config, ym, onRegler, onReporter, filtre }) {
       {vue === "activite" && (
         <div className="card">
           {M.groupes.filter((g) => !filtre || g.id === filtre).map((g) => (
-            <GroupeCharges key={g.id} g={g} onRegler={onRegler} onReporter={onReporter} />
+            <GroupeCharges key={g.id} g={g} onRegler={onRegler} onReporter={onReporter} onDater={onDater} />
           ))}
         </div>
       )}
@@ -4746,7 +4788,7 @@ function Avenir({ M, config, ym, onRegler, onReporter, filtre }) {
               {retard.map((e) => (
                 <LigneEcheance key={e.ref} e={e} nom={nomGroupe(e.groupe)}
                                couleur={couleurGroupe(e.groupe)}
-                               onRegler={onRegler} onReporter={onReporter} />
+                               onRegler={onRegler} onReporter={onReporter} onDater={onDater} />
               ))}
             </div>
           )}
@@ -4758,14 +4800,30 @@ function Avenir({ M, config, ym, onRegler, onReporter, filtre }) {
               : aVenir.map((e) => (
                   <LigneEcheance key={e.ref} e={e} nom={nomGroupe(e.groupe)}
                                  couleur={couleurGroupe(e.groupe)} jourActuel={M.jourActuel}
-                                 onRegler={onRegler} onReporter={onReporter} />
+                                 onRegler={onRegler} onReporter={onReporter} onDater={onDater} />
                 ))}
           </div>
 
-          {M.dejaRegle > 0 && (
+          {/* Les lignes pointées disparaissaient de l'écran : impossible de voir ce
+              qu'on avait coché, de le décocher, ni de dire qu'une charge de ce
+              mois a été payée le mois d'avant. Elles sont ici, avec leur date. */}
+          {M.lignesReglees.filter((l) => !filtre || l.groupe === filtre).length > 0 && (
             <div className="card">
-              <div className="row rowTot"><span className="lbl">Déjà décaissé ce mois-ci</span>
-                <span className="val pos">{fmt(M.dejaRegle)}</span></div>
+              <h2 className="h2">Déjà réglé</h2>
+              {M.lignesReglees.filter((l) => !filtre || l.groupe === filtre).map((l) => (
+                <LigneReglee key={l.id} l={l} nom={nomGroupe(l.groupe)}
+                             couleur={couleurGroupe(l.groupe)}
+                             onRegler={onRegler} onDater={onDater} />
+              ))}
+              <div className="row rowTot"><span className="lbl">Sorti de la caisse ce mois-ci</span>
+                <span className="val pos">{fmt(M.dejaRegleCaisse)}</span></div>
+              {M.regleAvant > 0 && (
+                <div className="note">
+                  {fmt(M.regleAvant)} de charges de {monthLabel(ym).toLowerCase()} ont été payées
+                  avant le 1er. Elles soldent bien le mois, mais l'argent est sorti avant :
+                  elles ne comptent pas dans « ce que j'ai réellement payé » de ce mois-ci.
+                </div>
+              )}
             </div>
           )}
         </>
@@ -4784,6 +4842,26 @@ function Avenir({ M, config, ym, onRegler, onReporter, filtre }) {
         </div>
       )}
     </>
+  );
+}
+
+/* Une charge pointée : on voit quand l'argent est sorti, on peut corriger la
+   date, et on peut décocher si on s'est trompée. */
+function LigneReglee({ l, nom, couleur, onRegler, onDater }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  padding: "12px 0", borderBottom: "1px solid #F0F3F8" }}>
+      <Coche paye={true} onClick={() => onRegler(l.id, false)} />
+      <span style={{ width: 6, height: 30, borderRadius: 3, background: couleur, flex: "none" }} />
+      <span style={{ flex: 1, minWidth: 150 }}>
+        <span style={{ display: "block", color: "#5F6E4C", fontSize: 16.5 }}>{l.lbl}</span>
+        <span className="mini">{nom}{l.horsMois ? " · payé le mois d'avant" : ""}</span>
+      </span>
+      <span className="mini" style={{ flex: "none" }}>payé le</span>
+      <input className="f" type="date" value={l.quand} style={{ width: 150, flex: "none" }}
+             onChange={(e) => onDater(l.id, e.target.value)} />
+      <span className="val" style={{ flex: "none" }}>{fmt(l.montant)}</span>
+    </div>
   );
 }
 
@@ -5065,7 +5143,7 @@ function Coche({ paye, onClick, retard }) {
   );
 }
 
-function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDel, onMaj, deja,
+function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDater, onDel, onMaj, deja,
                        taches, onAddTache, onMajTache, onDelTache }) {
   const [sous, setSous] = useState("resultat");
   const sections = [
@@ -5092,7 +5170,7 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
         {sous === "taches"     && <Taches taches={taches} config={config} onAdd={onAddTache}
                                           onMaj={onMajTache} onDel={onDelTache} affaireFixe="foyer" />}
         {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
-                                          onReporter={onReporter} filtre="foyer" />}
+                                          onReporter={onReporter} onDater={onDater} filtre="foyer" />}
         {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
                                           onDel={onDel} onMaj={onMaj} filtre="foyer" />}
         {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
