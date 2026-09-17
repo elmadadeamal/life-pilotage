@@ -321,6 +321,24 @@ const DEFAULT_CONFIG = {
   /* Ta caisse ne distingue pas l'origine des cartes : on estime la part
      étrangère par activité, puis le relevé de fin de mois tranche. */
   naps: { ma: 1.5, etr: 3, partEtr: 100 },
+  /* Les poches où l'argent dort vraiment. Jusqu'ici l'appli savait ce qui
+     rentrait et ce qui sortait, mais pas d'OÙ : elle annonçait un solde
+     unique qu'Amal ne pouvait comparer ni à son tiroir ni à son relevé.
+     Une poche par endroit réel : le tiroir de chaque comptoir, le compte
+     qui reçoit les cartes, celui qui reçoit Airbnb. */
+  /* Sabich et TMSK, c'est le même local et le même tiroir : deux casquettes,
+     une seule caisse. Leurs résultats restent séparés — c'est ce qui dit
+     laquelle des deux gagne de l'argent. */
+  poches: [
+    { id: "cm", nom: "Caisse Médina",     type: "caisse", affaires: ["sabich", "tmsk"], depart: 2500 },
+    { id: "cr", nom: "Caisse Riad",       type: "caisse", affaires: ["riad"],           depart: 0 },
+    { id: "bm", nom: "Banque Le Mi-Chui", type: "banque", depart: 0 },
+    { id: "ba", nom: "Banque Airbnb",     type: "banque", depart: 0 },
+  ],
+  /* Les cartes du comptoir passent par Naps et tombent sur Le Mi-Chui ;
+     les virements des séjours Airbnb tombent sur l'autre compte. */
+  banqueCartes: "bm",
+  banqueAirbnb: "ba",
   seuils: {
     sabich: { matiere: 25, variable: 30 },
     tmsk:   { matiere: 25, variable: 30 },
@@ -667,6 +685,37 @@ const MEMBRES = {
   "elmadadeamal@gmail.com": "Amal",
   "khodeir.saib@gmail.com": "SAIB",
 };
+/* ------------------------------------------------------------------ */
+/*  LES POCHES — où l'argent se trouve vraiment                        */
+/* ------------------------------------------------------------------ */
+/* Amal : « quand je dis que j'ai payé un truc, je suis censée dire d'où
+   j'ai pris l'argent ». Exactement. Sans ça, l'appli donne un solde global
+   qu'elle ne peut vérifier contre rien. Presque tout s'aiguille tout seul :
+   une recette du jour porte déjà sa part espèces et sa part carte, un séjour
+   porte déjà sa source. Il ne reste à dire que pour ce qui sort. */
+const lesPoches = (config) => (config && config.poches) || [];
+const pocheParId = (config, id) => lesPoches(config).find((p) => p.id === id) || null;
+const nomPoche = (config, id) => (pocheParId(config, id) || {}).nom || "";
+/* Une caisse peut servir plusieurs activités : le comptoir de la médina tient
+   Sabich et TMSK dans le même tiroir. */
+const caisseDe = (config, affaire) => {
+  const p = lesPoches(config).find((x) => x.type === "caisse"
+    && ((x.affaires || []).includes(affaire) || x.affaire === affaire));
+  if (p) return p.id;
+  const q = lesPoches(config).find((x) => x.type === "caisse");
+  return q ? q.id : null;
+};
+const banqueCartes = (config) => (config && config.banqueCartes)
+  || ((lesPoches(config).find((x) => x.type === "banque") || {}).id) || null;
+const banqueAirbnb = (config) => (config && config.banqueAirbnb) || banqueCartes(config);
+/* D'où sort l'argent quand on paie, si Amal n'a rien précisé : le tiroir du
+   comptoir concerné pour ce qui s'achète sur place, la banque pour le reste. */
+const pocheSortieParDefaut = (config, e) => {
+  if (!e) return banqueCartes(config);
+  if (e.affaire && caisseDe(config, e.affaire)) return caisseDe(config, e.affaire);
+  return banqueCartes(config);
+};
+
 const nomMembre = (config, email) => {
   if (!email) return "";
   const e = String(email).trim().toLowerCase();
@@ -979,6 +1028,9 @@ function reprendre(saved) {
     if (!saved.solidarite) c.solidarite = { montant: num(ancienneAide.montant), jour: 1 };
   }
   c.notes = { ...(saved.notes || {}) };
+  c.poches = (saved.poches && saved.poches.length) ? saved.poches : DEFAULT_CONFIG.poches;
+  c.banqueCartes = saved.banqueCartes || DEFAULT_CONFIG.banqueCartes;
+  c.banqueAirbnb = saved.banqueAirbnb || DEFAULT_CONFIG.banqueAirbnb;
   c.naps = { ma: num((saved.naps || {}).ma) || DEFAULT_CONFIG.naps.ma,
              etr: num((saved.naps || {}).etr) || DEFAULT_CONFIG.naps.etr,
              partEtr: (saved.naps && saved.naps.partEtr !== undefined)
@@ -1266,6 +1318,18 @@ export default function App({ session, onLogout }) {
   const daterReglement = (ref, quand) => gesteEntries((l) => l.map((e) =>
     (e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym))
       ? { ...e, regleLe: quand, majPar: moi, majLe: aujourdhui() } : e));
+  /* …et dire de quelle poche l'argent est sorti. */
+  const pocherReglement = (ref, poche) => gesteEntries((l) => l.map((e) =>
+    (e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym))
+      ? { ...e, poche, majPar: moi, majLe: aujourdhui() } : e));
+  /* Déplacer de l'argent d'une poche à l'autre : un dépôt en banque, un retrait. */
+  const transferer = (de, vers, montant, date, motif) => addEntry({
+    type: "transfert", de, vers, montant: num(montant), date: date || aujourdhui(), motif });
+  /* Le comptage du soir : ce qu'il y a VRAIMENT dans le tiroir. À partir de là,
+     c'est lui la référence — l'appli repart de ce chiffre. */
+  const compter = (poche, reel, theorique, date) => addEntry({
+    type: "comptage", poche, montant: num(reel), theorique: num(theorique),
+    date: date || aujourdhui() });
   const reporter = (ref) => gesteEntries((l) => {
     const cle = (e) => e.type === "reporte" && e.ref === ref && (e.date || "").startsWith(ym);
     return l.some(cle) ? l.filter((e) => !cle(e))
@@ -1337,6 +1401,8 @@ export default function App({ session, onLogout }) {
         <div className="panneau" style={univers(vue, config)}>
         {vue === "dash"     && <Consolide M={M} config={config} ym={ym} onAller={setVue}
                                           entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
+                                    onPocher={pocherReglement}
+                                          onPocher={pocherReglement} onTransfert={transferer} onCompter={compter}
                                           onAdd={addEntry} onDel={delEntry} onMaj={majEntry}
                                           onSaveConfig={saveConfig}
                                           taches={taches} onAddTache={addTache}
@@ -1344,6 +1410,7 @@ export default function App({ session, onLogout }) {
         {config.affaires[vue] && <FicheActivite k={vue} M={M} config={config} entries={entries}
                                      ym={ym} onSolder={solder} onAdd={addEntry} deja={deja}
                                      onRegler={regler} onReporter={reporter} onDater={daterReglement}
+                                     onPocher={pocherReglement}
                                      onDel={delEntry} onMaj={majEntry}
                                      taches={taches} onAddTache={addTache}
                                      onMajTache={majTache} onDelTache={delTache} />}
@@ -1969,12 +2036,14 @@ function calcul(config, entries, ym) {
   /* Quand l'argent est vraiment sorti, pour chaque charge pointée. Les pointages
      d'avant cette distinction n'ont pas de `regleLe` : on les rattache au mois
      de la charge, comme avant, jusqu'à ce qu'elle les corrige. */
-  const quandRegle = {};
-  inMonth.filter((e) => e.type === "paye")
-         .forEach((e) => { quandRegle[e.ref] = e.regleLe || e.date || (ym + "-01"); });
+  const quandRegle = {}, pocheRegle = {};
+  inMonth.filter((e) => e.type === "paye").forEach((e) => {
+    quandRegle[e.ref] = e.regleLe || e.date || (ym + "-01");
+    pocheRegle[e.ref] = e.poche || "";
+  });
   const lignesReglees = lignesAPayer.filter((l) => l.paye).map((l) => {
     const quand = quandRegle[l.id] || (ym + "-01");
-    return { ...l, quand, horsMois: quand.slice(0, 7) !== ym };
+    return { ...l, quand, poche: pocheRegle[l.id] || "", horsMois: quand.slice(0, 7) !== ym };
   });
   /* Ce qui est sorti de la caisse CE mois-ci : une charge de septembre payée fin
      août ne pèse pas sur septembre, même si elle solde bien une ligne de septembre. */
@@ -2160,6 +2229,96 @@ function calcul(config, entries, ym) {
   const doubleLog = config.foyer.fixes.filter((f) => f.transitoire)
                                       .reduce((s, f) => s + num(f.montant), 0);
 
+  /* ---------------------------------------------------------------- */
+  /*  LES POCHES : combien il y a, et où                                */
+  /* ---------------------------------------------------------------- */
+  /* Un solde de caisse est un stock, pas un flux : il se compte depuis le
+     début, pas sur le mois affiché. On repart donc de TOUTES les écritures.
+     Et dès qu'Amal a compté une caisse pour de vrai, c'est ce comptage qui
+     fait foi : on repart de lui et on n'applique que ce qui a bougé après. */
+  const montantDeRef = (ref) => {
+    const id = String(ref).replace(/^retard:/, "");
+    const t = [...config.fixes, ...config.structures, ...config.foyer.fixes,
+               ...(config.foyer.remunerations || [])].find((x) => x.id === id);
+    if (t) return num(t.montant);
+    if (id === "solidarite") return num((config.solidarite || {}).montant);
+    if (id.startsWith("cnss:")) return cnssSoc[id.slice(5)] || 0;
+    return 0;
+  };
+  const mouvements = [];
+  const bouge = (poche, montant, date, lbl) => {
+    if (!poche || !montant) return;
+    mouvements.push({ poche, montant, date: date || "", lbl });
+  };
+  entries.forEach((e) => {
+    const d = e.date || "";
+    const caisse = e.affaire ? caisseDe(config, e.affaire) : null;
+    switch (e.type) {
+      case "vente":
+        /* La part espèces reste dans le tiroir, la part carte part en banque. */
+        bouge(caisse, num(e.espece), d, "Recette en espèces");
+        bouge(banqueCartes(config), num(e.carte), d, "Recette par carte");
+        break;
+      case "resa":
+        bouge(e.source === "direct" ? banqueCartes(config) : banqueAirbnb(config),
+              num(e.montant), d, "Séjour");
+        break;
+      case "repas":
+        bouge(e.poche || caisse, num(e.montant), d, "Repas guests");
+        break;
+      case "depense":
+        if (!e.aPayer) bouge(e.poche || pocheSortieParDefaut(config, e),
+                             -num(e.montant), d, e.lbl || "Achat");
+        break;
+      case "invest":
+        bouge(e.poche || pocheSortieParDefaut(config, e), -num(e.montant), d, e.lbl || "Investissement");
+        break;
+      case "paye":
+        bouge(e.poche || banqueCartes(config), -montantDeRef(e.ref),
+              e.regleLe || d, "Échéance réglée");
+        break;
+      case "solidarite":
+        bouge(e.poche || banqueCartes(config), -num(e.montant), d, "Solidarité");
+        break;
+      case "avance": case "perso":
+        bouge(e.poche || pocheSortieParDefaut(config, e), -num(e.montant), d, "Avance");
+        break;
+      case "pret-perso":
+        bouge(e.poche || banqueCartes(config),
+              (e.sens === "emprunte" ? 1 : -1) * num(e.montant), d,
+              e.sens === "emprunte" ? "Emprunt reçu" : "Prêt consenti");
+        break;
+      case "remboursement-pret":
+        bouge(e.poche || banqueCartes(config),
+              (pretsIdParSens[e.ref] === "prete" ? 1 : -1) * num(e.montant), d, "Remboursement");
+        break;
+      case "reserve":
+        /* Mettre de côté vide le tiroir, reprendre le remplit. */
+        bouge(e.poche || caisse, (e.sens === "retrait" ? 1 : -1) * num(e.montant), d, "Réserve");
+        break;
+      case "transfert":
+        bouge(e.de, -num(e.montant), d, "Transfert");
+        bouge(e.vers, num(e.montant), d, "Transfert");
+        break;
+      default: break;
+    }
+  });
+  const comptages = entries.filter((e) => e.type === "comptage");
+  const poches = lesPoches(config).map((p) => {
+    const miens = comptages.filter((c) => c.poche === p.id)
+                           .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    const dernier = miens[miens.length - 1] || null;
+    const depuis = dernier ? (dernier.date || "") : "";
+    const base = dernier ? num(dernier.montant) : num(p.depart);
+    const apres = mouvements.filter((m) => m.poche === p.id && m.date > depuis);
+    const solde = base + apres.reduce((s, m) => s + m.montant, 0);
+    return { ...p, solde, dernierComptage: dernier,
+             ecart: dernier ? num(dernier.montant) - num(dernier.theorique) : null,
+             mouvements: mouvements.filter((m) => m.poche === p.id) };
+  });
+  const especes = poches.filter((p) => p.type === "caisse").reduce((s, p) => s + p.solde, 0);
+  const enBanque = poches.filter((p) => p.type === "banque").reduce((s, p) => s + p.solde, 0);
+
   /* Part de chaque affaire dans le résultat positif du mois */
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
@@ -2172,7 +2331,7 @@ function calcul(config, entries, ym) {
            reserveDepotsMoisTotal, reserveRetraitsMoisTotal, avancesInternes, avancesInternesOuvertes,
            pretsPerso, pretsPersoOuverts,
            naps, anDernier, jours7, hautJour, voyants, aCouvrir, chargesDuMois, seuil, avancement, joursMois, joursRestants, lignesAPayer, dejaRegle,
-           dejaRegleCaisse, regleAvant, lignesReglees,
+           dejaRegleCaisse, regleAvant, lignesReglees, poches, especes, enBanque,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
            echeances, resteAPayerMois, jourActuel, cnssSoc,
@@ -2206,12 +2365,14 @@ function historique(config, entries, ym, filtre) {
 /*  TABLEAU DE BORD                                                    */
 /* ------------------------------------------------------------------ */
 
-function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDater, onAdd, onDel, onMaj,
+function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDater, onPocher,
+                     onTransfert, onCompter, onAdd, onDel, onMaj,
                      onSaveConfig, taches, onAddTache, onMajTache, onDelTache }) {
   const [sous, setSous] = useState("resultat");
 
   const sections = [
     ["resultat",   "Vue d'ensemble"],
+    ["caisse",     "Caisse"],
     ["reserves",   "Réserves"],
     ["prets",      "Prêts perso"],
     ["chantiers",  "Chantiers"],
@@ -2234,6 +2395,8 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
         </div>
       </div>
 
+      {sous === "caisse"     && <Poches M={M} config={config} entries={entries}
+                                        onTransfert={onTransfert} onCompter={onCompter} onDel={onDel} />}
       {sous === "reserves"   && <ReservesConsolide M={M} config={config} ym={ym} onAdd={onAdd} />}
       {sous === "prets"      && <PretsPersoConsolide M={M} config={config} ym={ym} onAdd={onAdd} />}
       {sous === "chantiers"  && <Chantiers config={config} entries={entries} ym={ym}
@@ -2244,7 +2407,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym}
-                                        onRegler={onRegler} onReporter={onReporter} onDater={onDater} />}
+                                        onRegler={onRegler} onReporter={onReporter} onDater={onDater} onPocher={onPocher} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
@@ -3657,6 +3820,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const [piece, setPiece] = useState("facture");
   const [numero, setNumero] = useState("");
   const [aPayer, setAPayer] = useState(false);
+  const [poche, setPoche] = useState("");
   const [erreur, setErreur] = useState("");
 
   const liste = (config.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
@@ -3700,6 +3864,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
             categorie: courant ? "matiere" : "autre",
             fournisseur: courant ? courant.id : null,
             piece, numero: numero.trim(), aPayer,
+            poche: aPayer ? "" : (poche || caisseDe(config, affaire)),
             lbl: nom, montant: num(montant) });
     flash(nom + " — enregistré.");
     setMontant(""); setLbl(""); setNumero("");
@@ -3786,6 +3951,18 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
             <button className={"pill" + (aPayer ? " on" : "")}
                     onClick={() => setAPayer(true)}>À payer plus tard</button>
           </div>
+          {/* Payée avec quoi : le tiroir du comptoir par défaut, puisque c'est
+              le cas courant. Un geste pour dire « par virement ». */}
+          {!aPayer && (
+            <>
+              <label className="f">Payée depuis</label>
+              <select className="f" style={{ marginBottom: 14 }}
+                      value={poche || caisseDe(config, affaire)}
+                      onChange={(e) => setPoche(e.target.value)}>
+                {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+              </select>
+            </>
+          )}
         </>
       )}
       {piece === "bl" && (
@@ -3886,6 +4063,7 @@ function FInvest({ config, defDate, onAdd, flash, fixe }) {
   const [affaire, setAffaire] = useState(fixe || "taam");
   const [lbl, setLbl] = useState("");
   const [montant, setMontant] = useState("");
+  const [poche, setPoche] = useState("");
   const [erreur, setErreur] = useState("");
 
   const valider = () => {
@@ -3894,7 +4072,8 @@ function FInvest({ config, defDate, onAdd, flash, fixe }) {
       return;
     }
     setErreur("");
-    onAdd({ type: "invest", date, affaire, lbl: lbl || "Investissement", montant: num(montant) });
+    onAdd({ type: "invest", date, affaire, lbl: lbl || "Investissement", montant: num(montant),
+            poche: poche || caisseDe(config, affaire) });
     flash("Investissement enregistré.");
     setLbl(""); setMontant("");
   };
@@ -3911,6 +4090,11 @@ function FInvest({ config, defDate, onAdd, flash, fixe }) {
               {Object.entries(config.affaires).map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
             </select></div>
         )}
+        <div><label className="f">Payé depuis</label>
+          <select className="f" value={poche || caisseDe(config, affaire)}
+                  onChange={(e) => setPoche(e.target.value)}>
+            {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          </select></div>
         <div><label className="f">Montant</label>
           <input className="f" inputMode="decimal" placeholder="60000" value={montant} onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
       </div>
@@ -4537,7 +4721,7 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
 
 function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                         taches, onAddTache, onMajTache, onDelTache,
-                         onRegler, onReporter, onDater, onDel, onMaj }) {
+                         onRegler, onReporter, onDater, onPocher, onDel, onMaj }) {
   const a = M.A[k], c = config.affaires[k];
   const [sous, setSous] = useState("resultat");
 
@@ -4565,7 +4749,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
       </div>
 
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
-                                        onReporter={onReporter} onDater={onDater} filtre={k} />}
+                                        onReporter={onReporter} onDater={onDater} onPocher={onPocher} filtre={k} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
                                       onAdd={onAdd} ym={ym} filtre={k} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
@@ -4735,7 +4919,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 /*  FOYER                                                              */
 /* ------------------------------------------------------------------ */
 
-function Avenir({ M, config, ym, onRegler, onReporter, onDater, filtre }) {
+function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, filtre }) {
   const [vue, setVue] = useState("date");
 
   const nomGroupe = (g) => config.affaires[g] ? config.affaires[g].nom
@@ -4810,7 +4994,8 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, filtre }) {
               {M.lignesReglees.filter((l) => !filtre || l.groupe === filtre).map((l) => (
                 <LigneReglee key={l.id} l={l} nom={nomGroupe(l.groupe)}
                              couleur={couleurGroupe(l.groupe)}
-                             onRegler={onRegler} onDater={onDater} />
+                             onRegler={onRegler} onDater={onDater} onPocher={onPocher}
+                             config={config} />
               ))}
               <div className="row rowTot"><span className="lbl">Sorti de la caisse ce mois-ci</span>
                 <span className="val pos">{fmt(M.dejaRegleCaisse)}</span></div>
@@ -4842,9 +5027,167 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, filtre }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  CAISSE — combien il y a, et où                                     */
+/* ------------------------------------------------------------------ */
+function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
+  const [ouvert, setOuvert] = useState("");
+  const [reel, setReel] = useState("");
+  const [erreur, setErreur] = useState("");
+  const [de, setDe] = useState((M.poches[0] || {}).id || "");
+  const [vers, setVers] = useState((M.poches[1] || {}).id || "");
+  const [mt, setMt] = useState("");
+  const [dateT, setDateT] = useState(aujourdhui());
+  const [errT, setErrT] = useState("");
+
+  const valider = (p) => {
+    if (!montantLisible(reel) || String(reel).trim() === "") {
+      setErreur("Écris en chiffres ce que tu as compté dans le tiroir."); return;
+    }
+    setErreur(""); setOuvert("");
+    onCompter(p.id, reel, p.solde);
+    setReel("");
+  };
+
+  const transferer = () => {
+    if (de === vers) { setErrT("Choisis deux poches différentes."); return; }
+    if (!montantLisible(mt) || num(mt) <= 0) {
+      setErrT("Écris le montant en chiffres."); return;
+    }
+    setErrT(""); onTransfert(de, vers, mt, dateT); setMt("");
+  };
+
+  const derniers = entries
+    .filter((e) => e.type === "transfert" || e.type === "comptage")
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 12);
+
+  return (
+    <>
+      <div className="card bandeau" style={{ padding: "24px" }}>
+        <div className="heroLbl">Ce que tu as, et où</div>
+        <div style={{ display: "grid", gap: 16, margin: "14px 0 2px",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
+          <div>
+            <div className="eyebrow">En espèces</div>
+            <div className={"heroNum " + (M.especes >= 0 ? "pos" : "neg")}
+                 style={{ fontSize: 31 }}>{fmt(M.especes)}</div>
+            <div className="mini">dans les tiroirs</div>
+          </div>
+          <div>
+            <div className="eyebrow">En banque</div>
+            <div className={"heroNum " + (M.enBanque >= 0 ? "pos" : "neg")}
+                 style={{ fontSize: 31 }}>{fmt(M.enBanque)}</div>
+            <div className="mini">cartes et virements encaissés</div>
+          </div>
+        </div>
+        <div className="mini" style={{ marginTop: 12 }}>
+          Ces soldes se comptent depuis le début, pas sur le mois affiché — un tiroir
+          ne se remet pas à zéro le 1er. Les recettes s'aiguillent toutes seules :
+          la part espèces reste au comptoir, la part carte part en banque.
+        </div>
+      </div>
+
+      {M.poches.map((p) => (
+        <div className="card" key={p.id}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between",
+                        gap: 12, flexWrap: "wrap" }}>
+            <span>
+              <span style={{ fontSize: 19, color: "#3B4F35" }}>{p.nom}</span>
+              <span className="tag" style={{ marginLeft: 9 }}>
+                {p.type === "caisse" ? "espèces" : "compte"}</span>
+            </span>
+            <span className={"val " + (p.solde >= 0 ? "pos" : "neg")}
+                  style={{ fontSize: 24 }}>{fmt(p.solde)}</span>
+          </div>
+
+          {p.dernierComptage && (
+            <div className="mini" style={{ marginTop: 6 }}>
+              Dernier comptage le {joliDate(p.dernierComptage.date)} : {fmt(num(p.dernierComptage.montant))}
+              {Math.abs(p.ecart) >= 1
+                ? " — " + (p.ecart > 0 ? "il y avait " + fmt(p.ecart) + " de plus que prévu"
+                                       : "il manquait " + fmt(-p.ecart))
+                : " — pile ce qui était prévu"}
+            </div>
+          )}
+
+          {p.type === "caisse" && (ouvert === p.id ? (
+            <div style={{ marginTop: 12 }}>
+              <label className="f">Compté dans le tiroir, en chiffres</label>
+              <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 5 }}>
+                <input className="f" style={{ width: 160 }} inputMode="decimal"
+                       placeholder={String(Math.round(p.solde))} value={reel} autoFocus
+                       onChange={(e) => setReel(e.target.value)} />
+                <button className="pill" onClick={() => valider(p)}>Enregistrer</button>
+                <button className="pill" onClick={() => { setOuvert(""); setErreur(""); }}>Annuler</button>
+              </div>
+              <Alerte>{erreur}</Alerte>
+              <div className="mini" style={{ marginTop: 7 }}>
+                L'appli dit {fmt(p.solde)}. Tape ce que tu as réellement sous la main : à partir
+                de là, c'est ton comptage qui fait référence.
+              </div>
+            </div>
+          ) : (
+            <button className="pill" style={{ marginTop: 12 }}
+                    onClick={() => { setOuvert(p.id); setReel(""); setErreur(""); }}>
+              Je compte cette caisse
+            </button>
+          ))}
+        </div>
+      ))}
+
+      <div className="card">
+        <h2 className="h2">Déplacer de l'argent</h2>
+        <div className="note" style={{ marginBottom: 12 }}>
+          Un dépôt d'espèces en banque, un retrait au distributeur, un virement d'un compte
+          à l'autre. C'est la seule chose que l'appli ne peut pas deviner.
+        </div>
+        <div className="grid2">
+          <div><label className="f">De</label>
+            <select className="f" value={de} onChange={(e) => setDe(e.target.value)}>
+              {M.poches.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+            </select></div>
+          <div><label className="f">Vers</label>
+            <select className="f" value={vers} onChange={(e) => setVers(e.target.value)}>
+              {M.poches.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+            </select></div>
+          <div><label className="f">Montant</label>
+            <input className="f" inputMode="decimal" placeholder="5000" value={mt}
+                   onChange={(e) => setMt(e.target.value)} /></div>
+          <div><label className="f">Date</label>
+            <input className="f" type="date" value={dateT}
+                   onChange={(e) => setDateT(e.target.value)} /></div>
+        </div>
+        <Alerte>{errT}</Alerte>
+        <button className="pill" style={{ marginTop: 12 }} onClick={transferer}>Enregistrer</button>
+      </div>
+
+      {derniers.length > 0 && (
+        <div className="card">
+          <h2 className="h2">Derniers mouvements de poche</h2>
+          {derniers.map((e) => (
+            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                                     padding: "11px 0", borderBottom: "1px solid #F0F3F8" }}>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "block", color: "#5F6E4C", fontSize: 16 }}>
+                  {e.type === "comptage"
+                    ? "Comptage — " + nomPoche(config, e.poche)
+                    : "Transfert — " + nomPoche(config, e.de) + " → " + nomPoche(config, e.vers)}
+                </span>
+                <span className="mini">{joliDate(e.date)}{signature(e) ? " · " + signature(e) : ""}</span>
+              </span>
+              <span className="val">{fmt(num(e.montant))}</span>
+              <button className="del" aria-label="Supprimer" onClick={() => onDel(e.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 /* Une charge pointée : on voit quand l'argent est sorti, on peut corriger la
    date, et on peut décocher si on s'est trompée. */
-function LigneReglee({ l, nom, couleur, onRegler, onDater }) {
+function LigneReglee({ l, nom, couleur, config, onRegler, onDater, onPocher }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
                   padding: "12px 0", borderBottom: "1px solid #F0F3F8" }}>
@@ -4857,6 +5200,14 @@ function LigneReglee({ l, nom, couleur, onRegler, onDater }) {
       <span className="mini" style={{ flex: "none" }}>payé le</span>
       <input className="f" type="date" value={l.quand} style={{ width: 172, flex: "none" }}
              onChange={(e) => onDater(l.id, e.target.value)} />
+      {/* D'où l'argent est sorti : la banque par défaut, à changer d'un geste
+          quand la charge a été réglée en espèces du comptoir. */}
+      <span className="mini" style={{ flex: "none" }}>depuis</span>
+      <select className="f" style={{ width: 178, flex: "none" }}
+              value={l.poche || banqueCartes(config)}
+              onChange={(e) => onPocher(l.id, e.target.value)}>
+        {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+      </select>
       <span className="val" style={{ flex: "none" }}>{fmt(l.montant)}</span>
     </div>
   );
@@ -5140,7 +5491,7 @@ function Coche({ paye, onClick, retard }) {
   );
 }
 
-function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDater, onDel, onMaj, deja,
+function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onDater, onPocher, onDel, onMaj, deja,
                        taches, onAddTache, onMajTache, onDelTache }) {
   const [sous, setSous] = useState("resultat");
   const sections = [
@@ -5167,7 +5518,7 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
         {sous === "taches"     && <Taches taches={taches} config={config} onAdd={onAddTache}
                                           onMaj={onMajTache} onDel={onDelTache} affaireFixe="foyer" />}
         {sous === "echeancier" && <Avenir M={M} config={config} ym={ym} onRegler={onRegler}
-                                          onReporter={onReporter} onDater={onDater} filtre="foyer" />}
+                                          onReporter={onReporter} onDater={onDater} onPocher={onPocher} filtre="foyer" />}
         {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
                                           onDel={onDel} onMaj={onMaj} filtre="foyer" />}
         {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
