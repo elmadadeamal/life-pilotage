@@ -3113,10 +3113,7 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
         )}
       </div>
 
-      <Taches taches={taches} config={config} onAdd={onAddTache}
-              onMaj={onMajTache} onDel={onDelTache} />
-
-      {/* Ce qui doit se voir en premier, sans rien cliquer : qui fait quoi */}
+      {/* Le chiffre du mois d'abord, qui fait quoi juste après. */}
       <Taches taches={taches} config={config} onAdd={onAddTache}
               onMaj={onMajTache} onDel={onDelTache} />
 
