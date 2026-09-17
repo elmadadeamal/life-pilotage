@@ -1327,9 +1327,9 @@ export default function App({ session, onLogout }) {
     type: "transfert", de, vers, montant: num(montant), date: date || aujourdhui(), motif });
   /* Le comptage du soir : ce qu'il y a VRAIMENT dans le tiroir. À partir de là,
      c'est lui la référence — l'appli repart de ce chiffre. */
-  const compter = (poche, reel, theorique, date) => addEntry({
+  const compter = (poche, reel, theorique, motif, date) => addEntry({
     type: "comptage", poche, montant: num(reel), theorique: num(theorique),
-    date: date || aujourdhui() });
+    motif: motif || "", date: date || aujourdhui() });
   const reporter = (ref) => gesteEntries((l) => {
     const cle = (e) => e.type === "reporte" && e.ref === ref && (e.date || "").startsWith(ym);
     return l.some(cle) ? l.filter((e) => !cle(e))
@@ -2303,21 +2303,38 @@ function calcul(config, entries, ym) {
       default: break;
     }
   });
+  /* Amal : « ça risque de cacher un manque, ou du vol ». Exactement — et c'est
+     pourquoi un comptage ne DOIT PAS effacer l'écart qu'il révèle. Le solde se
+     réaligne sur le réel, mais le trou est enregistré, gardé et cumulé. Un
+     tiroir qui perd 500 DH par mois doit le crier au bout de six mois, pas
+     avaler la différence à chaque fois. */
   const comptages = entries.filter((e) => e.type === "comptage");
+  const ecartDe = (c) => num(c.montant) - num(c.theorique);
   const poches = lesPoches(config).map((p) => {
     const miens = comptages.filter((c) => c.poche === p.id)
                            .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    /* Le tout premier comptage sert à caler la poche, pas à dénoncer un trou :
+       avant lui l'appli ne savait rien, son « théorique » ne voulait rien dire. */
+    const reels = miens.slice(1);
     const dernier = miens[miens.length - 1] || null;
     const depuis = dernier ? (dernier.date || "") : "";
     const base = dernier ? num(dernier.montant) : num(p.depart);
     const apres = mouvements.filter((m) => m.poche === p.id && m.date > depuis);
     const solde = base + apres.reduce((s, m) => s + m.montant, 0);
-    return { ...p, solde, dernierComptage: dernier,
-             ecart: dernier ? num(dernier.montant) - num(dernier.theorique) : null,
+    return { ...p, solde, dernierComptage: dernier, cale: miens.length > 0,
+             ecart: miens.length > 1 ? ecartDe(dernier) : null,
+             ecarts: reels.filter((c) => Math.abs(ecartDe(c)) >= 1),
+             ecartCumul: reels.reduce((s, c) => s + ecartDe(c), 0),
+             ecartMois: reels.filter((c) => (c.date || "").startsWith(ym))
+                             .reduce((s, c) => s + ecartDe(c), 0),
              mouvements: mouvements.filter((m) => m.poche === p.id) };
   });
   const especes = poches.filter((p) => p.type === "caisse").reduce((s, p) => s + p.solde, 0);
   const enBanque = poches.filter((p) => p.type === "banque").reduce((s, p) => s + p.solde, 0);
+  const ecartCumul = poches.reduce((s, p) => s + p.ecartCumul, 0);
+  const ecartMois = poches.reduce((s, p) => s + p.ecartMois, 0);
+  const ecartsTous = poches.flatMap((p) => p.ecarts.map((c) => ({ ...c, poche: p.id, nomPoche: p.nom })))
+                           .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
   /* Part de chaque affaire dans le résultat positif du mois */
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
@@ -2332,6 +2349,7 @@ function calcul(config, entries, ym) {
            pretsPerso, pretsPersoOuverts,
            naps, anDernier, jours7, hautJour, voyants, aCouvrir, chargesDuMois, seuil, avancement, joursMois, joursRestants, lignesAPayer, dejaRegle,
            dejaRegleCaisse, regleAvant, lignesReglees, poches, especes, enBanque,
+           ecartCumul, ecartMois, ecartsTous,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
            echeances, resteAPayerMois, jourActuel, cnssSoc,
@@ -5033,6 +5051,7 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, filtre
 function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
   const [ouvert, setOuvert] = useState("");
   const [reel, setReel] = useState("");
+  const [motif, setMotif] = useState("");
   const [erreur, setErreur] = useState("");
   const [de, setDe] = useState((M.poches[0] || {}).id || "");
   const [vers, setVers] = useState((M.poches[1] || {}).id || "");
@@ -5045,8 +5064,8 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
       setErreur("Écris en chiffres ce que tu as compté dans le tiroir."); return;
     }
     setErreur(""); setOuvert("");
-    onCompter(p.id, reel, p.solde);
-    setReel("");
+    onCompter(p.id, reel, p.solde, motif);
+    setReel(""); setMotif("");
   };
 
   const transferer = () => {
@@ -5079,6 +5098,20 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
                  style={{ fontSize: 31 }}>{fmt(M.enBanque)}</div>
             <div className="mini">cartes et virements encaissés</div>
           </div>
+          {/* Le chiffre qu'on ne doit jamais laisser disparaître : la somme de
+              tout ce que les comptages ont révélé de manquant. */}
+          {Math.abs(M.ecartCumul) >= 1 && (
+            <div>
+              <div className="eyebrow">Écarts inexpliqués</div>
+              <div className="heroNum" style={{ fontSize: 31,
+                    color: M.ecartCumul < 0 ? "#A4262C" : "#B07C1E" }}>
+                {fmt(M.ecartCumul)}</div>
+              <div className="mini">
+                {M.ecartCumul < 0 ? "manquants depuis le premier comptage"
+                                  : "de trop depuis le premier comptage"}
+              </div>
+            </div>
+          )}
         </div>
         <div className="mini" style={{ marginTop: 12 }}>
           Ces soldes se comptent depuis le début, pas sur le mois affiché — un tiroir
@@ -5100,18 +5133,51 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
               <span className="tag" style={{ marginLeft: 9 }}>
                 {p.type === "caisse" ? "espèces" : "compte"}</span>
             </span>
-            <span className={"val " + (p.solde >= 0 ? "pos" : "neg")}
-                  style={{ fontSize: 24 }}>{fmt(p.solde)}</span>
+            <span style={{ textAlign: "right" }}>
+              <span className="mini" style={{ display: "block" }}>l'appli dit</span>
+              <span className={"val " + (p.solde >= 0 ? "pos" : "neg")}
+                    style={{ fontSize: 24 }}>{fmt(p.solde)}</span>
+            </span>
           </div>
 
+          {Math.abs(p.ecartCumul) >= 1 && (
+            <div className="mini" style={{ marginTop: 6,
+                  color: p.ecartCumul < 0 ? "#A4262C" : "#B07C1E" }}>
+              {p.ecartCumul < 0 ? "Il manque " + fmt(-p.ecartCumul)
+                                : fmt(p.ecartCumul) + " de trop"} en cumulé sur {p.ecarts.length}
+              {" "}comptage{p.ecarts.length > 1 ? "s" : ""} — jamais expliqué.
+            </div>
+          )}
+
+          {/* Amal veut voir les deux chiffres côte à côte, pas une phrase :
+              ce que l'appli calculait, ce qu'il y avait vraiment. */}
           {p.dernierComptage && (
-            <div className="mini" style={{ marginTop: 6 }}>
-              {p.type === "caisse" ? "Dernier comptage le " : "Dernier pointage le "}
-              {joliDate(p.dernierComptage.date)} : {fmt(num(p.dernierComptage.montant))}
-              {Math.abs(p.ecart) >= 1
-                ? " — " + (p.ecart > 0 ? "il y avait " + fmt(p.ecart) + " de plus que prévu"
-                                       : "il manquait " + fmt(-p.ecart))
-                : " — pile ce qui était prévu"}
+            <div style={{ marginTop: 10, borderRadius: 11, background: "#FAFCF5",
+                          padding: "11px 13px" }}>
+              <div className="mini" style={{ marginBottom: 7 }}>
+                {p.type === "caisse" ? "Dernier comptage" : "Dernier pointage"} —
+                {" "}{joliDate(p.dernierComptage.date)}
+              </div>
+              <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+                <span>
+                  <span className="mini" style={{ display: "block" }}>Ce que disait l'appli</span>
+                  <span className="val">{fmt(num(p.dernierComptage.theorique))}</span>
+                </span>
+                <span>
+                  <span className="mini" style={{ display: "block" }}>Ce qu'il y avait vraiment</span>
+                  <span className="val">{fmt(num(p.dernierComptage.montant))}</span>
+                </span>
+                {p.ecart !== null && (
+                  <span>
+                    <span className="mini" style={{ display: "block" }}>Écart</span>
+                    <span className="val" style={{ color: Math.abs(p.ecart) < 1 ? "#4A6B1E"
+                            : p.ecart < 0 ? "#A4262C" : "#B07C1E" }}>
+                      {Math.abs(p.ecart) < 1 ? "juste"
+                        : (p.ecart > 0 ? "+" : "") + fmt(p.ecart)}
+                    </span>
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
@@ -5131,9 +5197,30 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
                 <button className="pill" onClick={() => { setOuvert(""); setErreur(""); }}>Annuler</button>
               </div>
               <Alerte>{erreur}</Alerte>
+              {p.cale && montantLisible(reel) && String(reel).trim() !== "" && (
+                <div style={{ marginTop: 10, borderRadius: 10, padding: "10px 12px",
+                      background: Math.abs(num(reel) - p.solde) < 1 ? "#F1F7E6" : "#FDECEC",
+                      color: Math.abs(num(reel) - p.solde) < 1 ? "#4A6B1E" : "#A4262C" }}>
+                  {Math.abs(num(reel) - p.solde) < 1
+                    ? "Ça tombe juste."
+                    : (num(reel) < p.solde
+                        ? "Il manque " + fmt(p.solde - num(reel)) + "."
+                        : "Il y a " + fmt(num(reel) - p.solde) + " de plus que prévu.")
+                      + " Cet écart sera enregistré et cumulé — il ne disparaîtra pas."}
+                </div>
+              )}
+              {p.cale && (
+                <div style={{ marginTop: 10 }}>
+                  <label className="f">Ce qui l'explique, si tu sais</label>
+                  <input className="f" value={motif} placeholder="un achat payé en liquide, un rendu de monnaie…"
+                         onChange={(e) => setMotif(e.target.value)} />
+                </div>
+              )}
               <div className="mini" style={{ marginTop: 7 }}>
-                L'appli dit {fmt(p.solde)}. Tape le vrai chiffre : à partir de là, c'est lui
-                la référence, et l'appli ne compte plus que ce qui bouge après.
+                {p.cale
+                  ? "L'appli dit " + fmt(p.solde) + ". Le solde se recalera sur ton chiffre, "
+                    + "mais la différence reste inscrite : c'est elle qui trahit un trou qui se répète."
+                  : "Premier comptage : il sert à caler la poche. Aucun écart ne sera compté."}
               </div>
             </div>
           ) : (
@@ -5171,6 +5258,37 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
         <button className="pill" style={{ marginTop: 12 }} onClick={transferer}>Enregistrer</button>
       </div>
 
+      {M.ecartsTous.length > 0 && (
+        <div className="card" style={{ background: "#FDF6E7", borderColor: "#E9D9AE" }}>
+          <h2 className="h2">Écarts relevés</h2>
+          <div className="note" style={{ marginBottom: 10 }}>
+            Chaque fois que le compté ne correspond pas au calculé. Un écart isolé, c'est une
+            erreur de monnaie. Le même écart qui revient au même endroit, ça se regarde de près.
+          </div>
+          {M.ecartsTous.map((c) => {
+            const d = num(c.montant) - num(c.theorique);
+            return (
+              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                                       padding: "11px 0", borderBottom: "1px solid #EDE2C6" }}>
+                <span style={{ flex: 1 }}>
+                  <span style={{ display: "block", color: "#5F6E4C", fontSize: 16 }}>
+                    {c.nomPoche}{c.motif ? " — " + c.motif : ""}
+                  </span>
+                  <span className="mini">
+                    {joliDate(c.date)} · calculé {fmt(num(c.theorique))} · compté {fmt(num(c.montant))}
+                  </span>
+                </span>
+                <span className="val" style={{ color: d < 0 ? "#A4262C" : "#B07C1E" }}>
+                  {d > 0 ? "+" : ""}{fmt(d)}</span>
+              </div>
+            );
+          })}
+          <div className="row rowTot"><span className="lbl">Total jamais expliqué</span>
+            <span className="val" style={{ color: M.ecartCumul < 0 ? "#A4262C" : "#B07C1E" }}>
+              {fmt(M.ecartCumul)}</span></div>
+        </div>
+      )}
+
       {derniers.length > 0 && (
         <div className="card">
           <h2 className="h2">Derniers mouvements de poche</h2>
@@ -5181,6 +5299,8 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
                 <span style={{ display: "block", color: "#5F6E4C", fontSize: 16 }}>
                   {e.type === "comptage"
                     ? "Comptage — " + nomPoche(config, e.poche)
+                      + (Math.abs(num(e.montant) - num(e.theorique)) >= 1
+                          ? " · écart de " + fmt(num(e.montant) - num(e.theorique)) : "")
                     : "Transfert — " + nomPoche(config, e.de) + " → " + nomPoche(config, e.vers)}
                 </span>
                 <span className="mini">{joliDate(e.date)}{signature(e) ? " · " + signature(e) : ""}</span>
