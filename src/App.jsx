@@ -1133,25 +1133,12 @@ export default function App({ session, onLogout }) {
           setEntries(parse);
         }
       } catch (e) { /* première ouverture */ }
-      /* La vie de l'app commence le 1er septembre 2026 : tout ce qui a été
-         saisi avant en essai est effacé, une seule fois. */
-      try {
-        const r = await window.storage.get("pilotage:reset-sept26");
-        if (!r || !r.value) {
-          const e0 = await window.storage.get("pilotage:entries");
-          if (e0 && e0.value) {
-            const gardees = JSON.parse(e0.value)
-              .filter((x) => x.seed || (x.date || "") >= "2026-09-01");
-            setEntries(gardees);
-            const w = await window.storage.set("pilotage:entries", JSON.stringify(gardees));
-            versions.current.entries = { jeton: w.version, valeur: gardees };
-          }
-          const wt = await window.storage.set("pilotage:taches", JSON.stringify([]));
-          versions.current.taches = { jeton: wt.version, valeur: [] };
-          setTaches([]);
-          await window.storage.set("pilotage:reset-sept26", "1");
-        }
-      } catch (e) { /* première ouverture */ }
+      /* La remise à zéro du 1er septembre 2026 a eu lieu. Le code qui
+         l'exécutait a été retiré : un effacement de masse n'a rien à faire
+         dans le démarrage de l'app, retenu par un drapeau écrit en dernier.
+         Une coupure réseau au mauvais moment, ou une base restaurée sans ce
+         drapeau, et tout ce qui est daté avant septembre disparaissait —
+         y compris les factures d'août saisies depuis. */
 
       try {
         const s = await window.storage.get("pilotage:seed");
@@ -1159,10 +1146,15 @@ export default function App({ session, onLogout }) {
           const e2 = await window.storage.get("pilotage:entries");
           const dejaLa = e2 && e2.value ? JSON.parse(e2.value) : [];
           if (!dejaLa.some((x) => x.seed)) {
-            const fusion = [...dejaLa, ...HISTORIQUE_SABICH];
-            setEntries(fusion);
-            const w = await window.storage.set("pilotage:entries", JSON.stringify(fusion));
-            versions.current.entries = { jeton: w.version, valeur: fusion };
+            /* Écriture conditionnelle : si l'autre appareil a saisi quelque
+               chose entre notre lecture et notre écriture, on ne l'écrase pas. */
+            const w = await window.storage.setIf("pilotage:entries",
+              JSON.stringify([...dejaLa, ...HISTORIQUE_SABICH]), e2 ? e2.version : null);
+            if (w.ok) {
+              const fusion = [...dejaLa, ...HISTORIQUE_SABICH];
+              setEntries(fusion);
+              versions.current.entries = { jeton: w.version, valeur: fusion };
+            }
           }
           await window.storage.set("pilotage:seed", "1");
         }
@@ -1222,7 +1214,7 @@ export default function App({ session, onLogout }) {
   const setLocal = { config: setConfig, entries: setEntries, taches: setTaches };
   const relire   = { config: reprendre, entries: (x) => x, taches: reveiller };
 
-  const appliquer = async (quoi, geste) => {
+  const appliquer = async (quoi, geste, refuseConflit) => {
     const cle = "pilotage:" + quoi;
     let courant = versions.current[quoi] ? versions.current[quoi].valeur : null;
     for (let essai = 0; essai < 5; essai++) {
@@ -1247,6 +1239,13 @@ export default function App({ session, onLogout }) {
       try { courant = r.value ? JSON.parse(r.value) : (quoi === "config" ? {} : []); }
       catch (e) { courant = quoi === "config" ? {} : []; }
       versions.current[quoi] = { jeton: r.version, valeur: courant };
+      /* Les réglages ne sont pas un geste rejouable mais une photo complète de
+         l'écran : la rejouer effacerait ce que l'autre vient de changer. On
+         recharge sa version et on rend la main. */
+      if (refuseConflit) {
+        setLocal[quoi](relire[quoi](courant));
+        return "conflit";
+      }
     }
     console.error("sauvegarde impossible après 5 essais", cle);
     setPanne(true);
@@ -1255,8 +1254,8 @@ export default function App({ session, onLogout }) {
 
   const saveConfig = async (c) => {
     const avant = config;
-    const ok = await appliquer("config", () => c);
-    if (!ok) return false;
+    const ok = await appliquer("config", () => c, true);
+    if (ok !== true) return ok;
     const lignes = diffReglages(avant, c);
     if (lignes.length > 0) {
       try {
@@ -1318,7 +1317,12 @@ export default function App({ session, onLogout }) {
   };
   const regler = (ref, oui) => gesteEntries((l) => {
     const cle = (e) => e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym);
+    /* On enregistre le montant réellement dû au moment du pointage — prime et
+       avance comprises, plusieurs mois de retard compris, solidarité déjà
+       versée déduite. Recalculé plus tard, ce montant aurait changé. */
+    const ligne = (M.lignesAPayer || []).find((x) => x.id === ref);
     return oui ? [...l, { id: uid(), type: "paye", ref, date: ym + "-01",
+                          ...(ligne ? { montant: ligne.montant } : {}),
                           regleLe: dateReglementParDefaut(ref), par: moi }]
                : l.filter((e) => !cle(e));
   });
@@ -1335,7 +1339,9 @@ export default function App({ session, onLogout }) {
   const chiffrer = (ref, montant) => gesteEntries((l) => {
     const cle = (e) => e.type === "reel" && e.ref === ref && (e.date || "").startsWith(ym);
     const sans = l.filter((e) => !cle(e));
-    if (String(montant).trim() === "") return sans;
+    /* « Écrire 0 ou vider le champ remet l'estimation » : un 0 créait en fait
+       une charge à zéro, qui effaçait la ligne du résultat et de la caisse. */
+    if (String(montant).trim() === "" || num(montant) <= 0) return sans;
     return [...sans, { id: uid(), type: "reel", ref, date: ym + "-01",
                        montant: num(montant), par: moi, saisiLe: aujourdhui() }];
   });
@@ -1344,9 +1350,9 @@ export default function App({ session, onLogout }) {
     type: "transfert", de, vers, montant: num(montant), date: date || aujourdhui(), motif });
   /* Le comptage du soir : ce qu'il y a VRAIMENT dans le tiroir. À partir de là,
      c'est lui la référence — l'appli repart de ce chiffre. */
-  const compter = (poche, reel, theorique, motif, date) => addEntry({
+  const compter = (poche, reel, theorique, motif, date, avant) => addEntry({
     type: "comptage", poche, montant: num(reel), theorique: num(theorique),
-    motif: motif || "", date: date || aujourdhui() });
+    motif: motif || "", date: date || aujourdhui(), ...(avant ? { avant: true } : {}) });
   const reporter = (ref) => gesteEntries((l) => {
     const cle = (e) => e.type === "reporte" && e.ref === ref && (e.date || "").startsWith(ym);
     return l.some(cle) ? l.filter((e) => !cle(e))
@@ -1355,8 +1361,13 @@ export default function App({ session, onLogout }) {
   /* On solde des pièces précises, quel que soit leur mois : le filtre sur le mois
      affiché rendait un bon de livraison d'août impossible à solder depuis
      septembre — il restait « à régler » pour toujours. */
+  /* Solder, c'est sortir l'argent AUJOURD'HUI — pas à la date de la facture.
+     Sans cette date de règlement, payer en mars un bon de livraison de février
+     vidait la caisse de février, rétroactivement. */
   const solder = (ids) => gesteEntries((l) => l.map((e) =>
-    ids.includes(e.id) ? { ...e, aPayer: false, majPar: moi, majLe: aujourdhui() } : e));
+    ids.includes(e.id)
+      ? { ...e, aPayer: false, regleLe: aujourdhui(), majPar: moi, majLe: aujourdhui() }
+      : e));
   const majEntry = (id, champs) => gesteEntries((l) => l.map((e) =>
     e.id === id ? { ...e, ...champs, majPar: moi, majLe: aujourdhui() } : e));
 
@@ -1391,9 +1402,15 @@ export default function App({ session, onLogout }) {
           </div>
         </div>
 
+        {/* Ce bandeau vivait en haut de page : sur un téléphone, au moment du
+            clic sur « Enregistrer », il était hors écran et un message vert
+            « Enregistré » s'affichait sous le doigt. Il colle maintenant au
+            haut de l'écran, quoi qu'on regarde. */}
         {panne && (
           <div className="card" style={{ background: "#FDECEC", borderColor: "#F0C6C6",
-                                         color: "#A4262C", marginBottom: 14 }}>
+                                         color: "#A4262C", marginBottom: 14,
+                                         position: "sticky", top: 0, zIndex: 50,
+                                         boxShadow: "0 6px 18px rgba(0,0,0,.10)" }}>
             <strong>La dernière saisie n'est pas enregistrée.</strong> Vérifie ta connexion,
             puis refais-la. Tant que ce bandeau est là, ce que tu vois à l'écran n'est pas
             sur le serveur — et SAIB ne le voit pas.
@@ -1714,6 +1731,31 @@ function calcul(config, entries, ym) {
     else if (A[k].matiereTheo > 0) { A[k].matiere = A[k].matiereTheo; A[k].estimee = true; }
   });
 
+  /* Amal : « le téléphone et le carburant, des fois c'est plus, des fois c'est
+     moins — on doit attendre la facture ». Une charge qui varie porte donc une
+     ESTIMATION, pas un montant. Elle sert à prévoir tant qu'on ne sait pas ;
+     dès qu'Amal saisit le vrai montant du mois, c'est lui qui compte partout.
+     « Partout » veut dire ici : le résultat de l'affaire, la trésorerie et
+     l'échéancier. Avant, le vrai montant ne remontait que dans l'échéancier —
+     une facture d'eau de 2 300 DH laissait un résultat calculé sur 1 500.
+     Les vrais montants sont rangés par mois : un règlement de février garde la
+     facture de février, même consulté depuis mars. Un solde de caisse ne doit
+     pas changer selon l'écran ouvert. Et un montant à zéro n'est pas un vrai
+     montant : c'est l'estimation qui reprend la main. */
+  const reelParMois = {};
+  entries.filter((e) => e.type === "reel").forEach((e) => {
+    if (num(e.montant) <= 0) return;
+    const m = (e.date || "").slice(0, 7);
+    (reelParMois[m] = reelParMois[m] || {})[e.ref] = num(e.montant);
+  });
+  const reelDuMois = reelParMois[ym] || {};
+  const duLigneAu = (f, mois) => {
+    const r = reelParMois[mois] || {};
+    return (f.variable && r[f.id] !== undefined) ? r[f.id] : num(f.montant);
+  };
+  const duLigne = (f) => duLigneAu(f, ym);
+  const estEstime = (f) => !!f.variable && reelDuMois[f.id] === undefined;
+
   let partageTotal = 0, salPartage = 0, salTotal = 0;
   const salPartageSoc = {};   /* salaires du labo, par société */
   keys.forEach((k) => { A[k].salParSoc = {}; });
@@ -1726,7 +1768,7 @@ function calcul(config, entries, ym) {
   const primesTotal = primesDuMois.reduce((s, e) => s + num(e.montant), 0);
 
   config.fixes.forEach((c) => {
-    const m = num(c.montant) + (c.sal ? primeDe(c.id) : 0);
+    const m = duLigne(c) + (c.sal ? primeDe(c.id) : 0);
     if (c.affaire === "partage") {
       partageTotal += m;
       if (c.sal) { salPartage += m; ajouteSal(salPartageSoc, socDe(config, c), m); }
@@ -1862,10 +1904,10 @@ function calcul(config, entries, ym) {
     + inMonth.filter((e) => e.type === "remboursement-pret" && pretsIdParSens[e.ref] === "prete")
              .reduce((s, e) => s + num(e.montant), 0);
 
-  const structFixe = config.structures.reduce((s, x) => s + num(x.montant), 0);
+  const structFixe = config.structures.reduce((s, x) => s + duLigne(x), 0);
   const structure = structFixe + structExtra;
   const remus = config.foyer.remunerations || [];
-  const totalFixesFoyer = config.foyer.fixes.reduce((s, x) => s + num(x.montant), 0);
+  const totalFixesFoyer = config.foyer.fixes.reduce((s, x) => s + duLigne(x), 0);
   const salaires = remus.reduce((s, r) => s + num(r.montant), 0);
   const enveloppe = totalFixesFoyer + salaires;
 
@@ -1914,17 +1956,6 @@ function calcul(config, entries, ym) {
   /* Ce qu'il reste à couvrir : on retire tout ce qui est déjà réglé ce mois-ci. */
   const regle    = new Set(inMonth.filter((e) => e.type === "paye").map((e) => e.ref));
   const reportes = reportesRef;
-
-  /* Amal : « le téléphone et le carburant, des fois c'est plus, des fois c'est
-     moins — on doit attendre la facture ». Une charge qui varie porte donc une
-     ESTIMATION, pas un montant. Elle sert à prévoir tant qu'on ne sait pas ;
-     dès qu'Amal saisit le vrai montant du mois, c'est lui qui compte partout. */
-  const reelDuMois = {};
-  inMonth.filter((e) => e.type === "reel")
-         .forEach((e) => { reelDuMois[e.ref] = num(e.montant); });
-  const duLigne = (f) => (f.variable && reelDuMois[f.id] !== undefined)
-    ? reelDuMois[f.id] : num(f.montant);
-  const estEstime = (f) => !!f.variable && reelDuMois[f.id] === undefined;
 
   /* Le catalogue de tout ce qui peut être dû, rangé par propriétaire */
   const base = [
@@ -2303,12 +2334,48 @@ function calcul(config, entries, ym) {
      début, pas sur le mois affiché. On repart donc de TOUTES les écritures.
      Et dès qu'Amal a compté une caisse pour de vrai, c'est ce comptage qui
      fait foi : on repart de lui et on n'applique que ce qui a bougé après. */
-  const montantDeRef = (ref) => {
-    const id = String(ref).replace(/^retard:/, "");
+  /* Combien sort vraiment de la poche quand une échéance est pointée.
+     Les pointages récents portent leur montant ; ce calcul ne sert qu'aux
+     anciens, saisis avant que le montant ne soit enregistré. */
+  /* Combien de mois de retard une charge portait à une date donnée. Compter
+     avec l'ardoise du mois AFFICHÉ ferait varier un règlement déjà passé selon
+     l'écran ouvert — or un solde de caisse est un stock, pas une vue. */
+  const moisDeRetardAu = (id, mois) => {
+    const avant = (e) => moisDe(e) < (mois || ym);
+    const n = entries.filter((e) => e.type === "reporte" && e.ref === id && avant(e)).length
+            - entries.filter((e) => e.type === "paye" && e.ref === "retard:" + id
+                                    && avant(e)).length;
+    return Math.max(1, n);
+  };
+  /* Prime, avance et solidarité du mois OÙ L'ARGENT EST SORTI — pas du mois
+     qu'on regarde. Sans ça, un salaire payé en mars changeait de montant dès
+     qu'on ouvrait avril. */
+  const duMoisLa = (m) => entries.filter((e) => (e.date || "").slice(0, 7) === m);
+  const primeAu = (id, m) => duMoisLa(m)
+    .filter((e) => e.type === "prime" && e.ref === id)
+    .reduce((s2, e) => s2 + num(e.montant), 0);
+  const avanceAu = (id, m) => duMoisLa(m)
+    .filter((e) => e.type === "avance" && e.nature === "salaire" && e.ref === id)
+    .reduce((s2, e) => s2 + num(e.montant), 0);
+  const soliResteAu = (m) => Math.max(0, soliFixe - duMoisLa(m)
+    .filter((e) => e.type === "solidarite")
+    .reduce((s2, e) => s2 + num(e.montant), 0));
+  const montantDeRef = (ref, quand) => {
+    const brut = String(ref);
+    const enRetard = brut.startsWith("retard:");
+    const id = brut.replace(/^retard:/, "");
     const t = [...config.fixes, ...config.structures, ...config.foyer.fixes,
                ...(config.foyer.remunerations || [])].find((x) => x.id === id);
-    if (t) return duLigne(t);
-    if (id === "solidarite") return num((config.solidarite || {}).montant);
+    if (t) {
+      const mois = (quand || "").slice(0, 7) || ym;
+      /* Un retard de trois mois sort trois mois de la banque, pas un seul. */
+      if (enRetard) return duLigneAu(t, mois) * moisDeRetardAu(id, mois);
+      /* Une avance déjà versée ne ressort pas une seconde fois ; une prime, si. */
+      return Math.max(0, duLigneAu(t, mois)
+        + (t.sal ? primeAu(t.id, mois) - avanceAu(t.id, mois) : 0));
+    }
+    /* La solidarité déjà versée en partie ne sort que pour son reste. */
+    if (id === "solidarite") return soliResteAu((quand || "").slice(0, 7) || ym);
     if (id.startsWith("cnss:")) return cnssSoc[id.slice(5)] || 0;
     return 0;
   };
@@ -2336,13 +2403,14 @@ function calcul(config, entries, ym) {
         break;
       case "depense":
         if (!e.aPayer) bouge(e.poche || pocheSortieParDefaut(config, e),
-                             -num(e.montant), d, e.lbl || "Achat");
+                             -num(e.montant), e.regleLe || d, e.lbl || "Achat");
         break;
       case "invest":
         bouge(e.poche || pocheSortieParDefaut(config, e), -num(e.montant), d, e.lbl || "Investissement");
         break;
       case "paye":
-        bouge(e.poche || banqueCartes(config), -montantDeRef(e.ref),
+        bouge(e.poche || banqueCartes(config),
+              -(e.montant !== undefined ? num(e.montant) : montantDeRef(e.ref, d)),
               e.regleLe || d, "Échéance réglée");
         break;
       case "solidarite":
@@ -2387,7 +2455,10 @@ function calcul(config, entries, ym) {
     const dernier = miens[miens.length - 1] || null;
     const depuis = dernier ? (dernier.date || "") : "";
     const base = dernier ? num(dernier.montant) : num(p.depart);
-    const apres = mouvements.filter((m) => m.poche === p.id && m.date > depuis);
+    /* Un comptage fait AVANT l'activité du jour laisse passer les mouvements
+       du jour même ; fait après, il les a déjà dans le tiroir. */
+    const apres = mouvements.filter((m) => m.poche === p.id
+      && (dernier && dernier.avant ? m.date >= depuis : m.date > depuis));
     const solde = base + apres.reduce((s, m) => s + m.montant, 0);
     return { ...p, solde, dernierComptage: dernier, cale: miens.length > 0,
              ecart: miens.length > 1 ? ecartDe(dernier) : null,
@@ -3718,7 +3789,7 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
       && e.affaire === affaire && (e.date || "") === date
       && Math.abs(num(e.montant) - total) < 0.01);
 
-  const valider = () => {
+  const valider = async () => {
     if (total <= 0) {
       setErreur("Rien à enregistrer — écris le montant en espèces et/ou par carte.");
       return;
@@ -3730,10 +3801,16 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
       return;
     }
     setErreur("");
-    onAdd({ type: "vente", date, affaire, montant: total,
+    /* On ne vide pas les champs avant d'être sûr : une coupure réseau ici
+       effaçait des tickets saisis un à un, sous un message vert. */
+    const ok = await onAdd({ type: "vente", date, affaire, montant: total,
             espece: recette, carte: num(carte),
             ...(fondVerifie ? { fondReel: num(fondReel), fondSuppose: num(fondSuppose) } : {}),
             ...(tickets.length ? { tickets } : {}) });
+    if (ok === false) {
+      setErreur("Pas enregistré — ne quitte pas cette page, vérifie ta connexion et réessaie.");
+      return;
+    }
     flash("Journée enregistrée.");
     setEspece(""); setCarte(""); setFondReel(""); setTickets([]); setStan(""); setMtStan("");
   };
@@ -4103,7 +4180,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
       && Math.abs(num(e.montant) - num(montant)) < 0.01
       && String(e.lbl || "").trim().toLowerCase() === nomTiers.trim().toLowerCase());
 
-  const valider = () => {
+  const valider = async () => {
     if (num(montant) <= 0) {
       setErreur("Montant manquant — écris le montant en chiffres avant d'enregistrer.");
       return;
@@ -4123,12 +4200,16 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
     }
     setErreur("");
     const nom = nomTiers;
-    onAdd({ type: "depense", date, affaire,
+    const ok = await onAdd({ type: "depense", date, affaire,
             categorie: courant ? "matiere" : "autre",
             fournisseur: courant ? courant.id : null,
             piece, numero: numero.trim(), aPayer, exceptionnel,
             poche: aPayer ? "" : (poche || caisseDe(config, affaire)),
             lbl: nom, montant: num(montant) });
+    if (ok === false) {
+      setErreur("Pas enregistré — ne quitte pas cette page, vérifie ta connexion et réessaie.");
+      return;
+    }
     flash(nom + " — enregistré.");
     setMontant(""); setLbl(""); setNumero(""); setExceptionnel(false);
   };
@@ -4494,7 +4575,8 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
     ? [["resa", "Réservation"], ["repas", "Repas & extras"], ["depense", "Achat"], ["invest", "Investissement"]]
     : [["vente", "Recette"], ["depense", "Achat"], ["invest", "Investissement"]];
 
-  const ajouter = (e) => { onAdd(e); setForm(null); };
+  /* On ne referme le formulaire qu'une fois la saisie vraiment enregistrée. */
+  const ajouter = async (e) => { const ok = await onAdd(e); if (ok !== false) setForm(null); return ok; };
 
   return (
     <div style={{ marginBottom: 18 }}>
@@ -5321,6 +5403,10 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
 /* ------------------------------------------------------------------ */
 function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
   const [ouvert, setOuvert] = useState("");
+  /* Un tiroir compté le matin n'a pas encore la recette du jour dedans ; compté
+     le soir, si. Sans cette question, le comptage jetait tout ce qui bougeait
+     le jour même et faisait apparaître un faux écart au comptage suivant. */
+  const [avantJournee, setAvantJournee] = useState(false);
   const [reel, setReel] = useState("");
   const [motif, setMotif] = useState("");
   const [erreur, setErreur] = useState("");
@@ -5350,8 +5436,8 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
       setErreur("Écris en chiffres ce que tu as compté dans le tiroir."); return;
     }
     setErreur(""); setOuvert("");
-    onCompter(p.id, reel, p.solde, motif);
-    setReel(""); setMotif("");
+    onCompter(p.id, reel, p.solde, motif, "", avantJournee);
+    setReel(""); setMotif(""); setAvantJournee(false);
   };
 
   const transferer = () => {
@@ -5490,6 +5576,21 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
                 <button className="pill" onClick={() => valider(p)}>Enregistrer</button>
                 <button className="pill" onClick={() => { setOuvert(""); setErreur(""); }}>Annuler</button>
               </div>
+              {p.type === "caisse" && (
+                <>
+                  <label className="f" style={{ marginTop: 10 }}>Compté quand ?</label>
+                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 4 }}>
+                    <button className={"pill" + (!avantJournee ? " on" : "")}
+                            onClick={() => setAvantJournee(false)}>Après la journée</button>
+                    <button className={"pill" + (avantJournee ? " on" : "")}
+                            onClick={() => setAvantJournee(true)}>Avant d'ouvrir</button>
+                  </div>
+                  <div className="mini" style={{ marginBottom: 6 }}>
+                    Compté avant d'ouvrir, la recette du jour s'ajoutera à ce montant.
+                    Compté après la journée, elle est déjà dans le tiroir.
+                  </div>
+                </>
+              )}
               <Alerte>{erreur}</Alerte>
               {p.cale && montantLisible(reel) && String(reel).trim() !== "" && (
                 <div style={{ marginTop: 10, borderRadius: 10, padding: "10px 12px",
@@ -7296,13 +7397,35 @@ function NouvelleActivite({ existantes, onAdd }) {
 function Reglages({ config, onSave, session, onLogout }) {
   const [c, setC] = useState(config);
   const [ok, setOk] = useState(false);
+  const [erreur, setErreur] = useState("");
+  /* Tant qu'Amal n'a rien touché, l'écran suit les réglages du serveur : sans
+     ça, il gardait la photo prise à son ouverture et son « Enregistrer »
+     effaçait ce que SAIB avait changé entre-temps. */
+  const [modifie, setModifie] = useState(false);
+  useEffect(() => { if (!modifie) setC(config); }, [config, modifie]);
 
-  const maj = (n) => { setC(n); setOk(false); };
+  const maj = (n) => { setC(n); setOk(false); setErreur(""); setModifie(true); };
   const majFixe = (id, v) => maj({ ...c, fixes: c.fixes.map((f) => f.id === id ? { ...f, montant: num(v) } : f) });
   const majStruct = (id, v) => maj({ ...c, structures: c.structures.map((f) => f.id === id ? { ...f, montant: num(v) } : f) });
   const majFoyer = (id, v) => maj({ ...c, foyer: { ...c.foyer, fixes: c.foyer.fixes.map((f) => f.id === id ? { ...f, montant: num(v) } : f) } });
 
-  const enregistrer = async () => { await onSave(c); setOk(true); setTimeout(() => setOk(false), 2600); };
+  const enregistrer = async () => {
+    const r = await onSave(c);
+    if (r === "conflit") {
+      setOk(false); setModifie(false);
+      setErreur("Les réglages ont été modifiés ailleurs pendant que cet écran était "
+        + "ouvert. Ils viennent d'être rechargés — refais ta modification, rien n'a "
+        + "été écrasé.");
+      return;
+    }
+    if (!r) {
+      setOk(false);
+      setErreur("Pas enregistré. Vérifie ta connexion et réessaie — ne quitte pas cet écran.");
+      return;
+    }
+    setErreur(""); setModifie(false);
+    setOk(true); setTimeout(() => setOk(false), 2600);
+  };
 
   return (
     <>
@@ -7633,9 +7756,12 @@ function Reglages({ config, onSave, session, onLogout }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20 }}>
-        <button className="btn" onClick={enregistrer}>Enregistrer les réglages</button>
-        {ok && <span className="pos">Enregistré.</span>}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button className="btn" onClick={enregistrer}>Enregistrer les réglages</button>
+          {ok && <span className="pos">Enregistré.</span>}
+        </div>
+        <Alerte>{erreur}</Alerte>
       </div>
 
       <div className="card">
