@@ -1476,6 +1476,7 @@ function calcul(config, entries, ym) {
   const A = {};
   keys.forEach((k) => {
     A[k] = { ca: 0, com: 0, matiere: 0, matiereReelle: 0, matiereExtras: 0, variable: 0,
+             variableReelle: 0, variableExtras: 0,
              fixes: 0, partage: 0, cnss: 0, salaires: 0, estimee: false, resultat: 0, charges: 0 };
   });
 
@@ -1660,8 +1661,22 @@ function calcul(config, entries, ym) {
     /* Anciennes réservations : les repas étaient saisis avec le séjour.
        Elles gardent leur CA restauration ainsi, les nouvelles passent par
        leurs propres écritures « repas ». */
-    const extrasAilleurs = (r.reference || "").trim()
-      && refsAvecRepas.has((r.reference || "").trim().toLowerCase());
+    /* La référence rattache proprement les extras à leur séjour. Quand elle
+       manque — les tout premiers séjours n'en avaient pas — on regarde si un
+       repas a été saisi pendant le séjour : si oui, il fait foi, et les extras
+       portés par la réservation ne comptent pas une seconde fois. */
+    const repasPendantLeSejour = () => {
+      if (!r.date || num(r.nuits) <= 0) return false;
+      const fin = new Date(r.date + "T12:00:00");
+      fin.setDate(fin.getDate() + num(r.nuits));
+      const finIso = fin.toISOString().slice(0, 10);
+      return entries.some((e) => e.type === "repas"
+        && (((e.affaire && A[e.affaire]) ? e.affaire : defautHeb) === k)
+        && (e.date || "") >= r.date && (e.date || "") < finIso);
+    };
+    const extrasAilleurs = ((r.reference || "").trim()
+      && refsAvecRepas.has((r.reference || "").trim().toLowerCase()))
+      || repasPendantLeSejour();
     const q = (champ) => (extrasAilleurs || r.aRecevoir) ? 0 : num(r[champ]);
     const caEx = q("pdj") * px("pdj", "prix") + q("dej") * px("dej", "prix")
                + q("diner") * px("diner", "prix");
@@ -1673,15 +1688,23 @@ function calcul(config, entries, ym) {
        de côté, pour ne pas s'additionner aux achats réellement saisis. */
     A[k].matiereExtras += q("pdj") * px("pdj", "matiere") + q("dej") * px("dej", "matiere")
                         + q("diner") * px("diner", "matiere");
-    A[k].variable += q("pdj") * px("pdj", "com") + q("dej") * px("dej", "com")
-                   + q("diner") * px("diner", "com");
+    /* Comme la matière : une commission par couvert est une estimation. Elle
+       ne s'ajoute pas aux frais réellement saisis, elle les remplace tant
+       qu'il n'y en a pas. */
+    A[k].variableExtras += q("pdj") * px("pdj", "com") + q("dej") * px("dej", "com")
+                         + q("diner") * px("diner", "com");
   });
 
   /* L'autre bout du même problème : un séjour arrivé fin du mois précédent
      occupe encore des nuits de celui-ci. Son argent reste au mois d'arrivée,
      mais ses nuits comptent ici — sinon un début de mois paraît vide alors que
      le riad était plein. */
-  entries.filter((e) => e.type === "resa" && (e.date || "").startsWith(shiftMonth(ym, -1)))
+  /* Un séjour de six semaines arrivé en janvier occupe encore des nuits en
+     mars : on remonte sur douze mois, pas sur un seul. L'argent, lui, reste au
+     mois d'arrivée. */
+  const moisAvant = [];
+  for (let i = 1; i <= 12; i++) moisAvant.push(shiftMonth(ym, -i));
+  entries.filter((e) => e.type === "resa" && moisAvant.includes((e.date || "").slice(0, 7)))
     .forEach((r) => {
       const k = (r.affaire && A[r.affaire]) ? r.affaire : defautHeb;
       if (!k || !hebStats[k]) return;
@@ -1706,7 +1729,7 @@ function calcul(config, entries, ym) {
     A[k].caRestauration = (A[k].caRestauration || 0) + montantVente;
     if (tarifee) {
       A[k].matiereExtras += num(r.couverts) * px("matiere");
-      A[k].variable += num(r.couverts) * px("com");
+      A[k].variableExtras += num(r.couverts) * px("com");
     }
   });
 
@@ -1719,7 +1742,7 @@ function calcul(config, entries, ym) {
     if (d.affaire === "foyer") { foyerDepenseMois += num(d.montant); return; }
     if (!A[d.affaire]) return;
     if (d.categorie === "matiere") A[d.affaire].matiereReelle += num(d.montant);
-    else A[d.affaire].variable += num(d.montant);
+    else A[d.affaire].variableReelle += num(d.montant);
   });
 
   /* Une seule matière par activité : le réel quand il est saisi, l'estimation
@@ -1729,6 +1752,10 @@ function calcul(config, entries, ym) {
     A[k].matiereTheo = (A[k].ca * pct) / 100 + A[k].matiereExtras;
     if (A[k].matiereReelle > 0) A[k].matiere = A[k].matiereReelle;
     else if (A[k].matiereTheo > 0) { A[k].matiere = A[k].matiereTheo; A[k].estimee = true; }
+    /* Les frais variables suivent la même règle : le réel quand il existe,
+       l'estimation par couvert sinon. Additionner les deux faisait sortir de
+       la caisse un argent qui n'en était jamais sorti. */
+    A[k].variable += A[k].variableReelle > 0 ? A[k].variableReelle : A[k].variableExtras;
   });
 
   /* Amal : « le téléphone et le carburant, des fois c'est plus, des fois c'est
@@ -1787,12 +1814,25 @@ function calcul(config, entries, ym) {
     }
     if (c.sal) salTotal += m;
   });
-  Object.entries(config.cle).forEach(([k, pct]) => {
+  /* La clé est normalisée sur les activités qui existent encore, et sur leur
+     somme réelle. Sinon : une activité supprimée emportait sa part du labo
+     dans le vide (40 % des charges évaporées, sans un mot), et une clé qui ne
+     faisait pas 100 % en inventait ou en perdait. Le labo est toujours payé
+     en entier : il se répartit en entier. */
+  const clePart = Object.entries(config.cle || {}).filter(([k]) => A[k] && num(config.cle[k]) > 0);
+  const cleSomme = clePart.reduce((t, [, pct]) => t + num(pct), 0);
+  const partsLabo = cleSomme > 0
+    ? clePart.map(([k, pct]) => [k, num(pct) / cleSomme])
+    /* Aucune clé exploitable : plutôt que de tout perdre, on partage à parts
+       égales entre les activités et on le signale. */
+    : keys.map((k) => [k, 1 / Math.max(1, keys.length)]);
+  const cleIncomplete = cleSomme === 0 || Math.abs(cleSomme - 100) >= 0.5;
+  partsLabo.forEach(([k, q]) => {
     if (!A[k]) return;
-    A[k].partage += (partageTotal * num(pct)) / 100;
-    A[k].salaires += (salPartage * num(pct)) / 100;
+    A[k].partage += partageTotal * q;
+    A[k].salaires += salPartage * q;
     Object.entries(salPartageSoc).forEach(([soc, m]) =>
-      ajouteSal(A[k].salParSoc, soc, (m * num(pct)) / 100));
+      ajouteSal(A[k].salParSoc, soc, m * q));
   });
 
   /* Chaque société déclare la sienne, répartie sur les activités qui portent ses salaires */
@@ -2057,7 +2097,7 @@ function calcul(config, entries, ym) {
      en font partie : ils avaient été retirés du mois où on les a repoussés,
      sans jamais revenir nulle part — de la trésorerie fantôme, des deux côtés. */
   const sorties = keys.reduce((s, k) =>
-      s + A[k].matiereReelle + A[k].variable + A[k].fixes + A[k].partage + A[k].cnss, 0)
+      s + A[k].matiereReelle + A[k].variableReelle + A[k].fixes + A[k].partage + A[k].cnss, 0)
     + structure + enveloppe + solidarite + avPerso + invests
     - reporteMontant + enRetard
     + reserveDepotsMoisTotal - reserveRetraitsMoisTotal + chantiersMois
@@ -2069,7 +2109,7 @@ function calcul(config, entries, ym) {
      être cru sur parole. */
   const detailSorties = [
     ["Achats et matière",                keys.reduce((s, k) => s + A[k].matiereReelle, 0)],
-    ["Commissions et charges variables", keys.reduce((s, k) => s + A[k].variable, 0)],
+    ["Commissions et charges variables", keys.reduce((s, k) => s + A[k].variableReelle, 0)],
     ["Charges fixes des activités",      keys.reduce((s, k) => s + A[k].fixes + A[k].partage, 0)],
     ["CNSS",                             keys.reduce((s, k) => s + A[k].cnss, 0)],
     ["Structure (société, comptable)",   structure],
@@ -2255,7 +2295,10 @@ function calcul(config, entries, ym) {
   const avancement = seuil > 0 ? Math.min(100, (caTotal / seuil) * 100) : 0;
   /* Le mois ordinaire : les charges qui reviennent tous les mois, sans les
      coups de chaud. C'est CE chiffre qui dit ce qu'il faut vendre pour vivre. */
-  const chargesOrdinaires = chargesDuMois - structExtra;
+  /* « Ce qu'il faut vendre pour un mois normal » : ni les frais exceptionnels
+     de structure, ni les dettes des mois passés. Un loyer reporté trois fois
+     quadruplait le seuil et rendait le chiffre illisible. */
+  const chargesOrdinaires = chargesDuMois - structExtra - enRetard;
   const seuilOrdinaire = margeMoy > 0 ? chargesOrdinaires / margeMoy : 0;
 
   const [an, mo] = ym.split("-").map(Number);
@@ -2509,10 +2552,35 @@ function calcul(config, entries, ym) {
   const duPlusTard = empruntsDus + capitalCredits;
   const duTotal = duMaintenant + duPlusTard;
 
+  /* Une écriture qui pointe une activité supprimée ne compte dans aucun
+     résultat — mais son argent a bien bougé. Une prime dont le salarié a été
+     retiré ne compte nulle part non plus. On ne devine pas où les mettre :
+     on les compte et on les affiche, pour qu'Amal décide. */
+  const typesImputes = ["vente", "depense", "invest", "reserve"];
+  const orphelinesLignes = inMonth.filter((e) => typesImputes.includes(e.type)
+    && e.affaire && e.affaire !== "structure" && e.affaire !== "foyer" && !A[e.affaire]);
+  const primesOrphelines = primesDuMois
+    .filter((e) => !config.fixes.some((f) => f.id === e.ref))
+    .reduce((t, e) => t + num(e.montant), 0);
+  /* Une charge fixe peut elle aussi pointer une activité disparue : elle
+     continue d'être réclamée dans l'échéancier sans peser sur aucun résultat. */
+  const fixesOrphelines = config.fixes
+    .filter((f) => f.affaire && f.affaire !== "partage" && !A[f.affaire]);
+  const orphelines = {
+    n: orphelinesLignes.length,
+    total: orphelinesLignes.reduce((t, e) => t + num(e.montant), 0),
+    affaires: [...new Set([...orphelinesLignes.map((e) => e.affaire),
+                           ...fixesOrphelines.map((f) => f.affaire)])],
+    primes: primesOrphelines,
+    fixes: fixesOrphelines.reduce((t, f) => t + duLigne(f), 0),
+    fixesLbl: fixesOrphelines.map((f) => f.lbl),
+    cleIncomplete,
+  };
+
   /* Part de chaque affaire dans le résultat positif du mois */
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
-  return { A, keys, caTotal, resAffaires, structure, structFixe, structExtra,
+  return { A, keys, orphelines, caTotal, resAffaires, structure, structFixe, structExtra,
            enveloppe, solidarite, soliVerse, soliReste, soliCumul, detailSorties,
            coutDuMois, empruntNet, dejaPaye, resteAPayer, achatsAcquittes,
            pretsEntreeMois, pretsSortieMois, resultatNet, encaisse, sorties, tresorerie,
@@ -3402,6 +3470,42 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
           engagements théoriques et des projections de fin de mois dans la même
           rangée : illisible. Ici, ce qui est rentré, ce qui est sorti pour de
           bon, ce qui doit encore sortir. Le reste est plus bas, à sa place. */}
+      {(M.orphelines.n > 0 || M.orphelines.primes > 0 || M.orphelines.fixes > 0
+        || M.orphelines.cleIncomplete) && (
+        <div className="card" style={{ background: "#FDF4E7", borderColor: "#EBD7B4",
+                                       color: "#7A5B22", marginBottom: 14 }}>
+          <strong>Des écritures ne sont comptées nulle part.</strong>
+          {M.orphelines.n > 0 && (
+            <div style={{ marginTop: 6 }}>
+              {M.orphelines.n} écriture{M.orphelines.n > 1 ? "s" : ""} de ce mois, pour
+              {" " + fmt(M.orphelines.total)}, pointe{M.orphelines.n > 1 ? "nt" : ""} une
+              activité qui n'existe plus ({M.orphelines.affaires.join(", ")}). L'argent a
+              bougé, mais il ne compte dans aucun résultat.
+            </div>
+          )}
+          {M.orphelines.fixes > 0 && (
+            <div style={{ marginTop: 6 }}>
+              {fmt(M.orphelines.fixes)} de charges fixes ({M.orphelines.fixesLbl.join(", ")})
+              sont rattachées à une activité qui n'existe plus : elles sont encore
+              réclamées dans l'échéancier, mais ne pèsent sur aucun résultat.
+            </div>
+          )}
+          {M.orphelines.primes > 0 && (
+            <div style={{ marginTop: 6 }}>
+              {fmt(M.orphelines.primes)} de primes versées à quelqu'un qui n'est plus dans
+              la liste des salariés : elles ne pèsent nulle part.
+            </div>
+          )}
+          {M.orphelines.cleIncomplete && (
+            <div style={{ marginTop: 6 }}>
+              La clé de répartition du labo ne fait pas 100 %. Les charges du labo sont
+              réparties au prorata en attendant, mais le mieux est de la corriger dans
+              Paramètres.
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="card bandeau" style={{ padding: "26px 24px" }}>
         <div className="heroLbl">{monthLabel(ym)}</div>
 
@@ -6987,6 +7091,7 @@ function ActiviteReglage({ k, a, c, maj }) {
 
   const basculerArchive = () => majA({ archive: !a.archive });
 
+  const [confirmeSuppr, setConfirmeSuppr] = useState(false);
   const supprimer = () => {
     const affaires = { ...c.affaires }; delete affaires[k];
     const cle = { ...c.cle }; delete cle[k];
@@ -7070,10 +7175,30 @@ function ActiviteReglage({ k, a, c, maj }) {
             <button className="pill" onClick={basculerArchive}>
               {a.archive ? "Réactiver" : "Archiver"}
             </button>
-            <button className="pill" onClick={supprimer}
-                    style={{ color: "#D9573F", borderColor: "#EFC7BE" }}>
-              Supprimer définitivement
-            </button>
+            {!confirmeSuppr ? (
+              <button className="pill" onClick={() => setConfirmeSuppr(true)}
+                      style={{ color: "#D9573F", borderColor: "#EFC7BE" }}>
+                Supprimer définitivement
+              </button>
+            ) : (
+              <div style={{ flexBasis: "100%" }}>
+                <div className="mini" style={{ marginBottom: 8, color: "#A4262C" }}>
+                  Ses écritures resteront en base mais ne compteront plus dans aucun
+                  résultat, et ses charges fixes seront perdues. <strong>Archiver</strong>{" "}
+                  la retire des menus sans rien fausser — c'est presque toujours le
+                  bon geste.
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button className="pill" onClick={() => setConfirmeSuppr(false)}>
+                    Annuler
+                  </button>
+                  <button className="pill" onClick={supprimer}
+                          style={{ color: "#D9573F", borderColor: "#EFC7BE" }}>
+                    Oui, supprimer {a.nom}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
