@@ -2475,6 +2475,13 @@ function calcul(config, entries, ym) {
         /* Mettre de côté vide le tiroir, reprendre le remplit. */
         bouge(e.poche || caisse, (e.sens === "retrait" ? 1 : -1) * num(e.montant), d, "Réserve");
         break;
+      case "chantier":
+        /* Amal : « l'argent sort vraiment des enveloppes en cash, avant même
+           d'être déposé à la banque ». Ce n'est donc pas une promesse : le
+           tiroir se vide pour de bon. */
+        bouge(e.poche || caisseDe(config, null), -num(e.montant), d,
+              "Mis de côté pour un chantier");
+        break;
       case "transfert":
         bouge(e.de, -num(e.montant), d, "Transfert");
         bouge(e.vers, num(e.montant), d, "Transfert");
@@ -2757,6 +2764,7 @@ function BarresCA({ M, config, onAller }) {
 function Chantiers({ config, entries, ym, onAdd, onDel }) {
   const [ouvert, setOuvert] = useState("");
   const [montant, setMontant] = useState("");
+  const [poche, setPoche] = useState(caisseDe(config, null) || "");
   const [erreur, setErreur] = useState("");
 
   /* Le rythme vient des trois derniers mois clos qui ont des saisies */
@@ -2780,7 +2788,8 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
   const affecter = (id) => {
     if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
     setErreur("");
-    onAdd({ type: "chantier", chantier: id, date: ym + "-28", montant: num(montant) });
+    onAdd({ type: "chantier", chantier: id, date: ym + "-28", montant: num(montant),
+            poche: poche || caisseDe(config, null) });
     setMontant(""); setOuvert("");
   };
 
@@ -2852,12 +2861,21 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
             </div>
 
             {ouvert === ch.id && (
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 12 }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end",
+                            marginTop: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 150 }}>
                   <label className="f">Montant affecté ce mois-ci</label>
                   <input className="f" autoFocus inputMode="decimal" value={montant}
                          onChange={(e) => { setMontant(e.target.value); setErreur(""); }}
                          onKeyDown={(e) => { if (e.key === "Enter") affecter(ch.id); }} />
+                </div>
+                <div style={{ minWidth: 160 }}>
+                  <label className="f">Sorti de</label>
+                  <select className="f" value={poche} onChange={(e) => setPoche(e.target.value)}>
+                    {lesPoches(config).map((p) => (
+                      <option key={p.id} value={p.id}>{p.nom}</option>
+                    ))}
+                  </select>
                 </div>
                 <button className="btn" style={{ margin: 0 }}
                         onClick={() => affecter(ch.id)}>Affecter</button>
@@ -2869,9 +2887,9 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
       })}
 
       <div className="note">
-        Les chantiers se financent dans l'ordre. Ce que tu affectes ici sort de « Ce qu'il
-        reste », exactement comme une mise en réserve : l'argent est encore là, mais il est
-        promis — tu ne dois plus le compter comme disponible. L'estimation part de la
+        Les chantiers se financent dans l'ordre. Ce que tu affectes ici sort vraiment de
+        la poche que tu indiques — les billets quittent l'enveloppe le jour même — et
+        n'apparaît plus dans « Ce qu'il reste ». L'estimation part de la
         trésorerie réellement dégagée les mois précédents, sans supposer aucune saisonnalité :
         à Marrakech elle change chaque année, et treize mois ne suffisent pas à la connaître.
         La fourchette reflète cette incertitude — elle se resserrera à mesure que tu saisiras.
