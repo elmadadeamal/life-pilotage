@@ -1526,7 +1526,8 @@ function calcul(config, entries, ym) {
         const d = num(e.espece) + num(e.carte);
         return s + (d > 0 ? d : num(e.montant));
       }, 0)
-      + duJour.filter((e) => e.type === "resa").reduce((s, e) => s + num(e.montant), 0);
+      + duJour.filter((e) => e.type === "resa" && !e.aRecevoir)
+               .reduce((s, e) => s + num(e.montant), 0);
     const dep = duJour.filter((e) => e.type === "depense")
       .reduce((s, e) => s + num(e.montant), 0);
     /* Ce qui sort aussi de la caisse ce jour-là, sans être un achat courant.
@@ -1567,6 +1568,7 @@ function calcul(config, entries, ym) {
       anDernier[e.affaire] = (anDernier[e.affaire] || 0) + esp + carte;
     }
     if (e.type === "resa") {
+      if (e.aRecevoir) return;
       const k = (e.affaire && A[e.affaire]) ? e.affaire : defautHeb;
       if (!k) return;
       /* Même périmètre que le mois en cours : séjour + extras vendus.
@@ -1633,13 +1635,17 @@ function calcul(config, entries, ym) {
     hebStats[k].caNuits += num(r.montant);
     hebStats[k].nuitsSejours = (hebStats[k].nuitsSejours || 0) + num(r.nuits);
     if (r.source === "direct") hebStats[k].nuitsDirect += nDansMois;
-    const sejour = num(r.montant);
+    /* Une réservation pas encore encaissée ne compte ni en recette ni en
+       commission : l'app suit la caisse, pas les promesses. Ses nuits, elles,
+       comptent — le client dort bien dans le riad. */
+    if (r.aRecevoir) A[k].caAttente = (A[k].caAttente || 0) + num(r.montant);
+    const sejour = r.aRecevoir ? 0 : num(r.montant);
     /* Anciennes réservations : les repas étaient saisis avec le séjour.
        Elles gardent leur CA restauration ainsi, les nouvelles passent par
        leurs propres écritures « repas ». */
     const extrasAilleurs = (r.reference || "").trim()
       && refsAvecRepas.has((r.reference || "").trim().toLowerCase());
-    const q = (champ) => extrasAilleurs ? 0 : num(r[champ]);
+    const q = (champ) => (extrasAilleurs || r.aRecevoir) ? 0 : num(r[champ]);
     const caEx = q("pdj") * px("pdj", "prix") + q("dej") * px("dej", "prix")
                + q("diner") * px("diner", "prix");
     A[k].ca += sejour + caEx;
@@ -2321,8 +2327,9 @@ function calcul(config, entries, ym) {
         bouge(pocheCartes(config), num(e.carte), d, "Recette par carte");
         break;
       case "resa":
-        bouge(e.source === "direct" ? banqueCartes(config) : banqueAirbnb(config),
-              num(e.montant), d, "Séjour");
+        if (!e.aRecevoir)
+          bouge(e.source === "direct" ? banqueCartes(config) : banqueAirbnb(config),
+                num(e.montant), d, "Séjour");
         break;
       case "repas":
         bouge(e.poche || caisse, num(e.montant), d, "Repas guests");
@@ -3705,9 +3712,21 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
     setStan(""); setMtStan("");
   };
 
+  /* Une journée ne s'encaisse qu'une fois : même jour, même activité, même
+     total, c'est une saisie faite deux fois. */
+  const memeJournee = (entries || []).filter((e) => e.type === "vente"
+      && e.affaire === affaire && (e.date || "") === date
+      && Math.abs(num(e.montant) - total) < 0.01);
+
   const valider = () => {
     if (total <= 0) {
       setErreur("Rien à enregistrer — écris le montant en espèces et/ou par carte.");
+      return;
+    }
+    if (memeJournee.length > 0) {
+      setErreur("Cette journée est déjà enregistrée : " + fmt(total) + " le "
+        + date.slice(8, 10) + "/" + date.slice(5, 7)
+        + ". Vérifie dans le Journal avant de saisir une seconde fois.");
       return;
     }
     setErreur("");
@@ -3845,6 +3864,7 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
   const [nuits, setNuits] = useState("");
   const [montant, setMontant] = useState("");
   const [reference, setReference] = useState("");
+  const [aRecevoir, setARecevoir] = useState(false);
   const [erreur, setErreur] = useState("");
 
   const H = HEB(config, affaire);
@@ -3856,9 +3876,9 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
     if (num(nuits) <= 0)   { setErreur("Nombre de nuits manquant."); return; }
     setErreur("");
     onAdd({ type: "resa", date, affaire, source, nuits: num(nuits), montant: num(montant),
-            reference: reference.trim() });
+            reference: reference.trim(), aRecevoir });
     flash("Réservation enregistrée.");
-    setNuits(""); setMontant(""); setReference("");
+    setNuits(""); setMontant(""); setReference(""); setARecevoir(false);
   };
 
   if (!H) return <div className="card"><div className="empty">Aucun hébergement configuré.</div></div>;
@@ -3896,6 +3916,15 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
       </div>
       <div className="mini" style={{ marginBottom: 14 }}>
         Commission : {fmt(com)} · versé sur ton compte : {fmt(num(montant) - com)}
+      </div>
+      {/* Une réservation saisie le jour où elle est prise n'est pas de l'argent
+          reçu. Tant qu'elle attend, elle ne gonfle ni la recette ni la caisse. */}
+      <label className="f">L'argent est-il arrivé ?</label>
+      <div style={{ display: "flex", gap: 9, marginBottom: 14, flexWrap: "wrap" }}>
+        <button className={"pill" + (!aRecevoir ? " on" : "")}
+                onClick={() => setARecevoir(false)}>Déjà encaissée</button>
+        <button className={"pill" + (aRecevoir ? " on" : "")}
+                onClick={() => setARecevoir(true)}>Pas encore encaissée</button>
       </div>
       <HorsMois date={date} defDate={defDate} />
       <Alerte>{erreur}</Alerte>
@@ -4058,14 +4087,32 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
         && clefNumero(e.numero) === clefNumero(numero)
         && clefTiers(e.fournisseur, e.lbl) === tiersCourant)
     : [];
-  const nomTiers = courant ? courant.nom : (lbl || "Dépense");
+  /* Même chez un fournisseur connu, savoir CE QU'ON a acheté : « Épicerie pro »
+     tout court ne dit rien trois semaines plus tard. */
+  const nomTiers = courant
+    ? (lbl.trim() ? courant.nom + " — " + lbl.trim() : courant.nom)
+    : (lbl.trim() || "Dépense");
   const rappel = (e) => (e.piece === "bl" ? "Bon de livraison" : e.piece === "bon" ? "Bon" : "Facture")
     + " du " + (e.date || "").slice(8, 10) + "/" + (e.date || "").slice(5, 7)
     + " · " + fmt(num(e.montant));
 
+  /* Même jour, même montant, même intitulé : c'est deux fois la même chose.
+     L'app refuse, plutôt que de gonfler le coût matière en silence. */
+  const memeLigne = (entries || []).filter((e) => e.type === "depense"
+      && e.affaire === affaire && (e.date || "") === date
+      && Math.abs(num(e.montant) - num(montant)) < 0.01
+      && String(e.lbl || "").trim().toLowerCase() === nomTiers.trim().toLowerCase());
+
   const valider = () => {
     if (num(montant) <= 0) {
       setErreur("Montant manquant — écris le montant en chiffres avant d'enregistrer.");
+      return;
+    }
+    if (memeLigne.length > 0) {
+      setErreur("Déjà saisi : " + nomTiers + ", " + fmt(num(montant)) + ", le "
+        + date.slice(8, 10) + "/" + date.slice(5, 7)
+        + ". Si c'est bien un second achat identique le même jour, ajoute un mot "
+        + "dans l'intitulé pour les distinguer.");
       return;
     }
     if (dejaSaisi.length > 0) {
@@ -4111,7 +4158,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
               const total = deja(affaire, f.id);
               return (
                 <button key={f.id} className={"pill" + (choix === f.id ? " on" : "")}
-                        onClick={() => { setChoix(f.id); setLbl(""); }}>
+                        onClick={() => setChoix(f.id)}>
                   {f.nom}
                   <span style={{ opacity: .65, fontSize: 14, marginLeft: 8 }}>
                     {total > 0 ? fmt(total) : RYTHMES[f.rythme]}
@@ -4127,11 +4174,10 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
       )}
 
       <div className="grid2">
-        {!courant && (
-          <div><label className="f">Intitulé</label>
-            <input className="f" placeholder="Facture d'électricité, gaz, réparation…"
-                   value={lbl} onChange={(e) => setLbl(e.target.value)} /></div>
-        )}
+        <div><label className="f">Intitulé</label>
+          <input className="f"
+                 placeholder={courant ? "Ce que tu as acheté" : "Facture d'électricité, gaz, réparation…"}
+                 value={lbl} onChange={(e) => { setLbl(e.target.value); setErreur(""); }} /></div>
         <div><label className="f">Montant</label>
           <input className="f" inputMode="decimal" placeholder="1200" value={montant}
                  onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
@@ -4640,11 +4686,14 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
   const [ok, setOk] = useState("");
   const [erreur, setErreur] = useState("");
   const defDate = ym === thisMonth() ? today() : ym + "-01";
+  /* Un mouvement de réserve se fait rarement le jour où on le saisit : la date
+     se choisit, comme partout ailleurs. */
+  const [date, setDate] = useState(defDate);
 
   const verser = () => {
     if (num(montant) <= 0) { setOk(""); setErreur(MSG_MONTANT); return; }
     setErreur("");
-    onAdd({ type: "reserve", affaire: k, date: defDate, sens, montant: num(montant),
+    onAdd({ type: "reserve", affaire: k, date, sens, montant: num(montant),
              ...(motif.trim() ? { motif: motif.trim() } : {}) });
     setOk(sens === "retrait" ? "Sorti de la réserve." : "Mis en réserve.");
     setTimeout(() => setOk(""), 2600);
@@ -4692,6 +4741,11 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
       )}
 
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 14 }}>
+        <div>
+          <label className="f">Date</label>
+          <input className="f" type="date" value={date}
+                 onChange={(e) => setDate(e.target.value)} />
+        </div>
         <div>
           <label className="f">Mouvement</label>
           <select className="f" value={sens} onChange={(e) => setSens(e.target.value)}>
@@ -5008,6 +5062,10 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
             <div className="row"><span className="lbl mut">— dont restauration</span>
               <span className="val mut">{fmt(a.caRestauration || 0)}</span></div>
           </>
+        )}
+        {num(a.caAttente) > 0 && (
+          <div className="row"><span className="lbl mut">Réservations pas encore encaissées</span>
+            <span className="val mut">{fmt(a.caAttente)}</span></div>
         )}
         {a.com > 0 && <div className="row"><span className="lbl">Commissions</span><span className="val neg">− {fmt(a.com)}</span></div>}
         {a.matiere > 0 && (
@@ -6349,7 +6407,8 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
     }
     if (e.type === "resa")    return "Séjour " + (e.nuits || "?") + " nuits — " + nom(e.affaire)
                                      + " · " + (e.source === "direct" ? "direct" : "Airbnb")
-                                     + (e.reference ? " · réf. " + e.reference : "");
+                                     + (e.reference ? " · réf. " + e.reference : "")
+                                     + (e.aRecevoir ? " · pas encore encaissé" : "");
     if (e.type === "repas") {
       const natures = { pdj: "Petit-déjeuner", dej: "Déjeuner", diner: "Dîner",
                          boisson: "Boisson", excursion: "Excursion", transport: "Transport", autre: "Extra" };
@@ -6437,6 +6496,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
   const [nature, setNature] = useState(e.nature || "salaire");
   const [qui, setQui] = useState(e.qui || "");
   const [echeance, setEcheance] = useState(e.echeance || "");
+  const [aRecevoir, setARecevoir] = useState(!!e.aRecevoir);
   const [erreur, setErreur] = useState("");
 
   const entrant = e.type === "vente" || e.type === "resa" || e.type === "repas"
@@ -6459,7 +6519,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
     } else if (e.type === "resa") {
       if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), nuits: num(nuits), source,
-                reference: reference.trim() };
+                reference: reference.trim(), aRecevoir };
     } else if (e.type === "repas") {
       patch = { ...patch, categorie, couverts: num(couverts), statut,
                 motif: motif.trim(), reference: reference.trim(),
@@ -6568,6 +6628,12 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
             <div><label className="f">Référence de séjour</label>
               <input className="f" placeholder="Code Airbnb" value={reference}
                      onChange={(x) => setReference(x.target.value)} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 9, marginBottom: 14, flexWrap: "wrap" }}>
+            <button className={"pill" + (!aRecevoir ? " on" : "")}
+                    onClick={() => setARecevoir(false)}>Déjà encaissée</button>
+            <button className={"pill" + (aRecevoir ? " on" : "")}
+                    onClick={() => setARecevoir(true)}>Pas encore encaissée</button>
           </div>
         </>
       )}
