@@ -2641,6 +2641,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
 
   const sections = [
     ["resultat",   "Vue d'ensemble"],
+    ["treso",      "Trésorerie"],
     ["caisse",     "Caisse"],
     ["reserves",   "Réserves"],
     ["prets",      "Prêts perso"],
@@ -2664,6 +2665,8 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
         </div>
       </div>
 
+      {sous === "treso"      && <Tresorerie M={M} config={config} entries={entries}
+                                            onAdd={onAdd} onDel={onDel} />}
       {sous === "caisse"     && <Poches M={M} config={config} entries={entries}
                                         onTransfert={onTransfert} onCompter={onCompter} onDel={onDel} />}
       {sous === "reserves"   && <ReservesConsolide M={M} config={config} ym={ym} onAdd={onAdd} />}
@@ -5523,6 +5526,178 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
 /* ------------------------------------------------------------------ */
 /*  CAISSE — combien il y a, et où                                     */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/*  TRÉSORERIE COMPTÉE                                                  */
+/* ------------------------------------------------------------------ */
+/* Amal : « combien de cash a disparu ? ». Une photo, à un instant donné, de
+   TOUT ce qu'elle a vraiment — enveloppes, tiroirs, Naps, banques — posée à
+   côté de ce que LIFE calcule qu'elle devrait avoir. Contrairement au
+   comptage d'une caisse, cette photo ne recale rien : l'écart reste visible
+   tant que personne ne l'explique. Un champ laissé vide veut dire « je ne
+   sais pas » : il compte pour zéro et l'écart est marqué provisoire. */
+function Tresorerie({ M, config, entries, onAdd, onDel }) {
+  const banques = M.poches.filter((p) => p.type === "banque");
+  const lignes = [
+    { id: "especes", nom: "Espèces", aide: "toutes les enveloppes + les tiroirs + ce que tu as sur toi",
+      theo: M.especes },
+    { id: "naps", nom: "Naps", aide: "le solde affiché sur ton téléphone", theo: M.enRoute },
+    ...banques.map((p) => ({ id: p.id, nom: p.nom, aide: "le solde du compte", theo: p.solde })),
+  ];
+  const [val, setVal] = useState({});
+  const [note, setNote] = useState("");
+  const [erreur, setErreur] = useState("");
+
+  const theoTotal = lignes.reduce((s, l) => s + l.theo, 0);
+  const remplis = lignes.filter((l) => String(val[l.id] ?? "").trim() !== "");
+  const inconnus = lignes.filter((l) => String(val[l.id] ?? "").trim() === "");
+  const compte = remplis.reduce((s, l) => s + num(val[l.id]), 0);
+  const ecart = compte - theoTotal;
+
+  const enregistrer = () => {
+    if (!remplis.length) { setErreur("Écris au moins un montant."); return; }
+    if (remplis.some((l) => !montantLisible(val[l.id]))) {
+      setErreur("Écris les montants en chiffres."); return;
+    }
+    setErreur("");
+    const detail = {}, theo = {};
+    lignes.forEach((l) => {
+      theo[l.id] = Math.round(l.theo);
+      if (String(val[l.id] ?? "").trim() !== "") detail[l.id] = num(val[l.id]);
+    });
+    onAdd({ type: "treso", date: aujourdhui(), montant: compte, theorique: Math.round(theoTotal),
+            detail, theo, inconnus: inconnus.map((l) => l.nom), note });
+    setVal({}); setNote("");
+  };
+
+  const photos = entries.filter((e) => e.type === "treso")
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.saisiLe || "").localeCompare(a.saisiLe || ""));
+  const derniere = photos[0] || null;
+  const ecartDe = (e) => num(e.montant) - num(e.theorique);
+  const rouge = "#A4262C", ambre = "#B07C1E", vert = "#4A6B1E";
+  const couleur = (d) => Math.abs(d) < 1 ? vert : d < 0 ? rouge : ambre;
+  const phrase = (d) => Math.abs(d) < 1 ? "Ça tombe juste"
+    : d < 0 ? "Il manque " + fmt(-d) : fmt(d) + " de plus que prévu";
+
+  return (
+    <>
+      <div className="card bandeau" style={{ padding: "24px" }}>
+        <div className="heroLbl">Trésorerie comptée</div>
+        <div style={{ display: "grid", gap: 16, margin: "14px 0 2px",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
+          <div>
+            <div className="eyebrow">LIFE dit que tu devrais avoir</div>
+            <div className="heroNum" style={{ fontSize: 31 }}>{fmt(theoTotal)}</div>
+            <div className="mini">espèces + Naps + banques, aujourd'hui</div>
+          </div>
+          {derniere && (
+            <div>
+              <div className="eyebrow">Compté le {joliDate(derniere.date)}</div>
+              <div className="heroNum" style={{ fontSize: 31 }}>{fmt(num(derniere.montant))}</div>
+              <div className="mini">ce que tu avais vraiment</div>
+            </div>
+          )}
+          {derniere && (
+            <div>
+              <div className="eyebrow">Écart</div>
+              <div className="heroNum" style={{ fontSize: 31, color: couleur(ecartDe(derniere)) }}>
+                {Math.abs(ecartDe(derniere)) < 1 ? "juste" : fmt(ecartDe(derniere))}</div>
+              <div className="mini">
+                {(derniere.inconnus || []).length
+                  ? "provisoire : " + derniere.inconnus.join(", ") + " pas renseigné"
+                  : ecartDe(derniere) < 0 ? "disparu sans trace" : "de plus que prévu"}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="mini" style={{ marginTop: 12 }}>
+          Compte tout ce que tu as, où que ce soit, et LIFE te dit ce qui manque.
+          Ce comptage ne corrige rien : l'écart reste affiché tant qu'il n'est pas expliqué.
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="h2">Je compte ce que j'ai aujourd'hui</h2>
+        <div className="note" style={{ marginBottom: 12 }}>
+          Laisse vide ce que tu ne sais pas : il comptera pour zéro et l'écart sera
+          marqué provisoire.
+        </div>
+        {lignes.map((l) => (
+          <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                                   padding: "10px 0", borderBottom: "1px solid #F0F3F8" }}>
+            <span style={{ flex: 1, minWidth: 170 }}>
+              <span style={{ display: "block", fontSize: 17, color: "#3B4F35" }}>{l.nom}</span>
+              <span className="mini">{l.aide} · LIFE dit {fmt(l.theo)}</span>
+            </span>
+            <input className="f" style={{ width: 150 }} inputMode="decimal" placeholder="je ne sais pas"
+                   value={val[l.id] ?? ""}
+                   onChange={(e) => setVal({ ...val, [l.id]: e.target.value })} />
+          </div>
+        ))}
+        <div style={{ marginTop: 12 }}>
+          <label className="f">Une remarque, si tu veux</label>
+          <input className="f" value={note} placeholder="ex. enveloppes de la semaine pas encore récupérées"
+                 onChange={(e) => setNote(e.target.value)} />
+        </div>
+        {remplis.length > 0 && (
+          <div style={{ marginTop: 12, borderRadius: 10, padding: "12px 14px",
+                        background: Math.abs(ecart) < 1 ? "#F1F7E6" : ecart < 0 ? "#FDECEC" : "#FBF3E4",
+                        color: couleur(ecart) }}>
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+              <span><span className="mini" style={{ display: "block" }}>LIFE dit</span>
+                <span className="val">{fmt(theoTotal)}</span></span>
+              <span><span className="mini" style={{ display: "block" }}>Tu as compté</span>
+                <span className="val">{fmt(compte)}</span></span>
+              <span><span className="mini" style={{ display: "block" }}>Résultat</span>
+                <span className="val" style={{ color: couleur(ecart) }}>{phrase(ecart)}</span></span>
+            </div>
+            {inconnus.length > 0 && Math.abs(ecart) >= 1 && (
+              <div className="mini" style={{ marginTop: 8 }}>
+                Provisoire : il manque le chiffre de {inconnus.map((l) => l.nom).join(", ")}.
+                L'écart baissera d'autant.
+              </div>
+            )}
+          </div>
+        )}
+        <Alerte>{erreur}</Alerte>
+        <button className="pill" style={{ marginTop: 12 }} onClick={enregistrer}>Enregistrer</button>
+      </div>
+
+      {photos.length > 0 && (
+        <div className="card">
+          <h2 className="h2">Mes comptages</h2>
+          {photos.map((e, i) => {
+            const d = ecartDe(e);
+            const prec = photos[i + 1];
+            const bouge = prec ? d - ecartDe(prec) : null;
+            return (
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                                       padding: "11px 0", borderBottom: "1px solid #F0F3F8" }}>
+                <span style={{ flex: 1 }}>
+                  <span style={{ display: "block", color: "#5F6E4C", fontSize: 16 }}>
+                    {joliDate(e.date)} · compté {fmt(num(e.montant))} · LIFE disait {fmt(num(e.theorique))}
+                  </span>
+                  <span className="mini">
+                    {(e.inconnus || []).length ? "provisoire (" + e.inconnus.join(", ") + " pas renseigné)" : "complet"}
+                    {bouge !== null && Math.abs(bouge) >= 1
+                      ? " · depuis le comptage précédent : " + (bouge < 0 ? fmt(-bouge) + " de plus disparus"
+                                                                           : fmt(bouge) + " retrouvés")
+                      : ""}
+                    {e.note ? " · " + e.note : ""}
+                    {signature(e) ? " · " + signature(e) : ""}
+                  </span>
+                </span>
+                <span className="val" style={{ color: couleur(d) }}>
+                  {Math.abs(d) < 1 ? "juste" : fmt(d)}</span>
+                <button className="del" aria-label="Supprimer" onClick={() => onDel(e.id)}>×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
   const [ouvert, setOuvert] = useState("");
   /* Un tiroir compté le matin n'a pas encore la recette du jour dedans ; compté
@@ -6656,6 +6831,8 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
       + (e.qui || "?") + " · " + (e.sens === "emprunte" ? "reçu par " : "sorti de ") + nom(e.affaire)
       + (e.motif ? " · " + e.motif : "") + (e.echeance ? " · échéance " + e.echeance : "");
     if (e.type === "remboursement-pret") return "Remboursement de prêt personnel";
+    if (e.type === "treso") return "Trésorerie comptée — LIFE disait " + fmt(num(e.theorique))
+      + " · écart " + fmt(num(e.montant) - num(e.theorique));
     return e.type;
   };
   const sousTitre = (e) => {
