@@ -2151,6 +2151,14 @@ function calcul(config, entries, ym) {
     ["Reporté sur le mois suivant",     -reporteMontant],
   ].filter(([, v]) => Math.abs(v) >= 1);
 
+  /* Le chiffre simple du mois : ce qui est rentré moins TOUTES les charges du
+     mois, payées ou non. Il ne dépend donc d'aucune case cochée, et il ne mêle
+     ni réserve, ni chantier, ni prêt — ce n'est ni du gain ni de la perte. */
+  const reserveNetMois = reserveDepotsMoisTotal - reserveRetraitsMoisTotal;
+  const sortiesPures = sorties - reserveNetMois - chantiersMois - pretsSortieMois + pretsEntreeMois;
+  const resteMois = encaisse - sortiesPures;
+  const detailSimple = detailSorties.filter(([lbl]) => !/réserve|chantier/i.test(lbl));
+
   /* Un emprunt reçu n'est pas un coût en moins : c'est de l'argent qui entre.
      Il était noyé dans les sorties, ce qui faisait paraître le mois 50 000 DH
      moins cher qu'il ne l'est. On le sort du coût et on le montre pour ce
@@ -2612,7 +2620,7 @@ function calcul(config, entries, ym) {
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
   return { A, keys, orphelines, caTotal, resAffaires, structure, structFixe, structExtra,
-           enveloppe, solidarite, soliVerse, soliReste, soliPointe, soliCumul, detailSorties,
+           enveloppe, solidarite, soliVerse, soliReste, soliPointe, soliCumul, detailSorties, resteMois, sortiesPures, detailSimple,
            coutDuMois, empruntNet, dejaPaye, resteAPayer, achatsAcquittes,
            pretsEntreeMois, pretsSortieMois, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
@@ -2665,10 +2673,6 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
 
   const sections = [
     ["resultat",   "Vue d'ensemble"],
-    ["treso",      "Trésorerie"],
-    ["caisse",     "Caisse"],
-    ["reserves",   "Réserves"],
-    ["prets",      "Prêts perso"],
     ["chantiers",  "Chantiers"],
     ["echeancier", "Échéancier"],
     ["paie",       "Paie"],
@@ -2698,7 +2702,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
       {sous === "chantiers"  && <Chantiers config={config} entries={entries} ym={ym}
                                            onAdd={onAdd} onDel={onDel} />}
       {sous === "resultat"   && <Dashboard M={M} config={config} ym={ym} onAller={onAller}
-                                            onRegler={onRegler} onAdd={onAdd} onDel={onDel} onMaj={onMaj}
+                                            onRegler={onRegler} entries={entries} onAdd={onAdd} onDel={onDel} onMaj={onMaj}
                                             onSaveConfig={onSaveConfig}
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
@@ -3037,50 +3041,59 @@ function Rythme({ M, config }) {
   );
 }
 
-/* Ce qui tombe dans les dix jours : la seule question qui se pose le matin.
-   Chaque ligne se coche ici même (loyers en retard compris) ; une erreur de
-   clic s'annule d'un geste. */
-function Bientot({ M, config, onAller, onRegler }) {
+/* Ce qu'il reste à payer ce mois-ci : charges et fournisseurs, au même endroit.
+   On coche dès que c'est payé ; une erreur de clic s'annule d'un geste. Cocher
+   ne change pas le chiffre du mois (toutes les charges y comptent déjà) : ça
+   sert seulement à savoir ce qui reste à sortir. */
+function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   const [annul, setAnnul] = useState(null);
-  const tous = (M.echeances || []).filter((e) => !e.paye);
-  const retards = tous.filter((e) => e.enRetard).sort((a, b) => a.jour - b.jour);
-  const aVenir = tous.filter((e) => !e.enRetard && e.jour >= M.jourActuel && e.jour <= M.jourActuel + 10)
-                     .sort((a, b) => a.jour - b.jour).slice(0, 7);
-  const dix = [...retards, ...aVenir];
-  if (!dix.length && !annul) return null;
-  const total = dix.reduce((s, e) => s + e.montant, 0);
-  const retard = retards.length;
+  const charges = (M.echeances || []).filter((e) => !e.paye)
+    .sort((a, b) => (a.enRetard === b.enRetard ? a.jour - b.jour : a.enRetard ? -1 : 1));
+  const fourn = (entries || []).filter((e) => e.type === "depense" && e.aPayer)
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  if (!charges.length && !fourn.length && !annul) return null;
+  const total = charges.reduce((s, e) => s + e.montant, 0)
+              + fourn.reduce((s, e) => s + num(e.montant), 0);
+  const retard = charges.filter((e) => e.enRetard).length;
 
-  const cocher = (e) => {
+  const garde = (a) => {
+    setAnnul(a);
+    setTimeout(() => setAnnul((x) => (x && x.cle === a.cle ? null : x)), 8000);
+  };
+  const cocherCharge = (e) => {
     if (!onRegler) return;
     onRegler(e.ref, true);
-    setAnnul({ ref: e.ref, lbl: e.lbl });
-    setTimeout(() => setAnnul((a) => (a && a.ref === e.ref ? null : a)), 8000);
+    garde({ cle: "c" + e.ref, lbl: e.lbl, defaire: () => onRegler(e.ref, false) });
+  };
+  const cocherFourn = (e) => {
+    if (!onMaj) return;
+    onMaj(e.id, { aPayer: false, regleLe: aujourdhui() });
+    garde({ cle: "f" + e.id, lbl: e.lbl,
+            defaire: () => onMaj(e.id, { aPayer: true, regleLe: null }) });
   };
 
   return (
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between",
                     alignItems: "baseline", gap: 12, marginBottom: 4 }}>
-        <div className="eyebrow">Ce qui tombe bientôt</div>
-        <span className="mini">{fmt(total)}</span>
+        <div className="eyebrow">Ce qu'il reste à payer</div>
+        <span className="val" style={{ fontSize: 20 }}>{fmt(total)}</span>
       </div>
       {annul && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
                       gap: 10, background: "#EEF4E0", borderRadius: 10, padding: "8px 12px",
                       margin: "6px 0", fontSize: 14.5, color: "#4F6B1F" }}>
           <span>✓ {annul.lbl} : payé</span>
-          <button className="pill" onClick={() => { onRegler(annul.ref, false); setAnnul(null); }}>
+          <button className="pill" onClick={() => { annul.defaire(); setAnnul(null); }}>
             Annuler
           </button>
         </div>
       )}
-      {dix.map((e) => (
+      {charges.length > 0 && <div className="mini" style={{ margin: "12px 0 2px" }}>Loyers, salaires, charges</div>}
+      {charges.map((e) => (
         <div key={e.ref} className="row">
           <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Coche paye={false} retard={e.enRetard} onClick={() => cocher(e)} />
-            <span className="dot" style={{ margin: 0, background: config.affaires[e.groupe]
-              ? lisible(config.affaires[e.groupe].marque) : "#B3C09A" }} />
+            <Coche paye={false} retard={e.enRetard} onClick={() => cocherCharge(e)} />
             {e.lbl}
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -3091,15 +3104,22 @@ function Bientot({ M, config, onAller, onRegler }) {
           </span>
         </div>
       ))}
-      <div className="row rowTot">
-        <span className="lbl">Reste à décaisser ce mois-ci</span>
-        <span className="val">{fmt(M.aCouvrir)}</span>
-      </div>
+      {fourn.length > 0 && <div className="mini" style={{ margin: "14px 0 2px" }}>Fournisseurs</div>}
+      {fourn.map((e) => (
+        <div key={e.id} className="row">
+          <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Coche paye={false} onClick={() => cocherFourn(e)} />
+            <span>{e.lbl}
+              <span className="mini"> · {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}
+                {e.numero ? " · n° " + e.numero : ""}</span>
+            </span>
+          </span>
+          <span className="val">{fmt(num(e.montant))}</span>
+        </div>
+      ))}
       <div className="note">
-        {retard > 0
-          ? retard + (retard > 1 ? " échéances sont passées" : " échéance est passée")
-            + " sans être pointée. Coche la case dès que c'est payé."
-          : "Les prochaines échéances, dans l'ordre. Coche la case dès que c'est payé."}
+        Coche la case dès que c'est payé.
+        {retard > 0 ? " " + retard + (retard > 1 ? " lignes sont en retard." : " ligne est en retard.") : ""}
       </div>
     </div>
   );
@@ -3509,34 +3529,13 @@ function NoteDuMois({ config, ym, onSave }) {
   );
 }
 
-function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSaveConfig,
+function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, onMaj, onSaveConfig,
                     taches, onAddTache, onMajTache, onDelTache }) {
   const [detail, setDetail] = useState(false);
-  const couvert = M.caTotal >= M.seuil;
-  const reste = Math.max(0, M.seuil - M.caTotal);
-  const bonus = Math.max(0, M.caTotal - M.seuil);
-
-  /* Le ton suit la situation, sans jamais alarmer */
-  let phrase;
-  if (M.caTotal === 0) {
-    phrase = "Le mois commence. Saisis ton premier chiffre de caisse ce soir.";
-  } else if (couvert) {
-    phrase = "Le mois est couvert. À partir d'ici, tout ce qui rentre est pour toi.";
-  } else {
-    const attendu = (M.joursMois - M.joursRestants) / M.joursMois;
-    const ou = M.caTotal / (M.seuil || 1);
-    if (ou >= attendu * 0.95) phrase = "Tu es dans le rythme.";
-    else if (M.joursRestants > 7) phrase = "Il reste " + M.joursRestants + " jours pour y arriver.";
-    else phrase = "Dernière ligne droite.";
-  }
+  const enCours = ym >= thisMonth();
 
   return (
     <>
-      {/* Trois chiffres, pas un de plus, et tous les trois de l'argent réel.
-          Les versions précédentes mélangeaient de l'argent qui a bougé, des
-          engagements théoriques et des projections de fin de mois dans la même
-          rangée : illisible. Ici, ce qui est rentré, ce qui est sorti pour de
-          bon, ce qui doit encore sortir. Le reste est plus bas, à sa place. */}
       {(M.orphelines.n > 0 || M.orphelines.primes > 0 || M.orphelines.fixes > 0
         || M.orphelines.cleIncomplete) && (
         <div className="card" style={{ background: "#FDF4E7", borderColor: "#EBD7B4",
@@ -3573,75 +3572,61 @@ function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSa
         </div>
       )}
 
+      {/* Une seule question : combien il me reste ce mois-ci ? Le chiffre compte
+          TOUTES les charges du mois, cochées ou non : il ne bouge pas selon ce
+          qu'on a pensé à pointer. */}
       <div className="card bandeau" style={{ padding: "26px 24px" }}>
         <div className="heroLbl">{monthLabel(ym)}</div>
-
-        <div style={{ display: "grid", gap: 18, margin: "16px 0 4px",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
-          <div>
-            <div className="eyebrow">Ce que j'ai fait rentrer</div>
-            <div className="heroNum pos" style={{ fontSize: 33 }}>{fmt(M.encaisse)}</div>
-            <div className="mini">recettes encaissées, commissions déduites</div>
-          </div>
-          <div>
-            <div className="eyebrow">Ce que j'ai réellement payé</div>
-            <div className="heroNum neg" style={{ fontSize: 33 }}>{fmt(M.dejaPaye)}</div>
-            <div className="mini">sorti de la caisse — achats réglés, échéances pointées, avances, matériel</div>
-          </div>
-          <div>
-            <div className="eyebrow">Ce que je dois payer</div>
-            <div className="heroNum" style={{ fontSize: 33, color: "#B07C1E" }}>
-              {fmt(M.resteAPayer)}
-            </div>
-            <div className="mini">
-              {fmt(M.aCouvrir)} d'échéances non pointées
-              {M.dettes > 0 ? " + " + fmt(M.dettes) + " aux fournisseurs" : ""}
-            </div>
-          </div>
-        </div>
-
-        {/* La caisse du mois se lit en soustrayant le deuxième du premier. On
-            l'écrit plutôt que d'en faire un quatrième gros chiffre : elle se
-            déduit, elle ne s'ajoute pas. */}
-        <div className="mini" style={{ marginTop: 10 }}>
-          {(() => {
-            const caisse = M.encaisse - M.dejaPaye;
-            return "Sur le mois, " + (caisse >= 0 ? "il t'est resté " + fmt(caisse)
-                                                  : "tu as sorti " + fmt(-caisse) + " de plus que tu n'as encaissé")
-                 + (caisse >= 0 ? " en caisse." : ".");
-          })()}
-          {M.pretsEntreeMois > 0 && " Ce chiffre ne compte pas les " + fmt(M.pretsEntreeMois)
-            + " d'emprunt reçu ce mois-ci : c'est de l'argent à rendre, pas de l'argent gagné."}
-        </div>
-
-        <div style={{ height: 18, borderRadius: 9, background: "#EDF0E4",
-                      overflow: "hidden", margin: "20px 0 12px" }}>
-          <div style={{ width: M.avancement + "%", height: "100%", transition: "width .4s",
-                        background: couvert
-                          ? "linear-gradient(90deg,#6BA023,#A4BA31)"
-                          : "linear-gradient(90deg,#A4BA31,#C6D96B)" }} />
-        </div>
-
-        <div style={{ fontSize: 18, fontWeight: 500, color: "#38452F" }}>{phrase}</div>
-        <NoteDuMois config={config} ym={ym} onSave={onSaveConfig} />
-
-        <div className="mini" style={{ marginTop: 7 }}>
-          {fmt(M.caTotal)} de chiffre d'affaires encaissé.
-          {!couvert && M.caTotal > 0
-            ? " Encore " + fmt(reste) + " pour atteindre le seuil de rentabilité."
-            : couvert && bonus > 0
-              ? " " + fmt(bonus) + " au-dessus du seuil de rentabilité."
-              : ""}
-        </div>
-        {M.tresorerie < 0 && (
-          <div className="mini" style={{ marginTop: 5 }}>
-            Si tu honores tout ce qui reste à payer, le mois se termine à {fmt(M.tresorerie)}.
-            C'est une projection de fin de mois, pas ta caisse d'aujourd'hui : les charges
-            comptent dès le 1er, les recettes arrivent jour après jour.
-          </div>
+        {M.resteMois >= 0 ? (
+          <>
+            <div className="eyebrow" style={{ marginTop: 14 }}>Ce qu'il te reste ce mois-ci</div>
+            <div className="heroNum pos" style={{ fontSize: 46 }}>{fmt(M.resteMois)}</div>
+          </>
+        ) : enCours ? (
+          <>
+            <div className="eyebrow" style={{ marginTop: 14 }}>Encore à encaisser pour couvrir le mois</div>
+            <div className="heroNum" style={{ fontSize: 46, color: "#B07C1E" }}>{fmt(-M.resteMois)}</div>
+          </>
+        ) : (
+          <>
+            <div className="eyebrow" style={{ marginTop: 14 }}>Le mois s'est terminé en dessous des charges de</div>
+            <div className="heroNum neg" style={{ fontSize: 46 }}>{fmt(-M.resteMois)}</div>
+          </>
         )}
+        <div className="mini" style={{ marginTop: 6 }}>
+          {fmt(M.encaisse)} encaissés, moins {fmt(M.sortiesPures)} de charges du mois
+          (payées ou pas encore).
+          {M.resteMois < 0 && enCours
+            ? " Le mois n'est pas fini : les charges comptent dès le 1er, les ventes arrivent jour après jour."
+            : ""}
+        </div>
+        <NoteDuMois config={config} ym={ym} onSave={onSaveConfig} />
       </div>
 
+      <div className="card">
+        <h2 className="h2">Où part l'argent</h2>
+        {M.detailSimple.map(([lbl, v]) => (
+          <div className="row" key={lbl}>
+            <span className="lbl">{lbl === "Reporté sur le mois suivant" ? "Dont repoussé au mois suivant" : lbl}</span>
+            <span className="val">{v < 0 ? "− " + fmt(-v) : fmt(v)}</span>
+          </div>
+        ))}
+        <div className="row rowTot">
+          <span className="lbl">Total des charges du mois</span>
+          <span className="val">{fmt(M.sortiesPures)}</span>
+        </div>
+      </div>
+
+      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler}
+               entries={entries} onMaj={onMaj} />
+
+      <button className="pill" onClick={() => setDetail(!detail)}
+              style={{ width: "100%", padding: "13px", margin: "14px 0" }}>
+        {detail ? "Masquer le détail" : "Voir le détail"}
+      </button>
+
+      {detail && (
+        <>
       {/* Le chiffre du mois d'abord, qui fait quoi juste après. */}
       <Taches taches={taches} config={config} onAdd={onAddTache}
               onMaj={onMajTache} onDel={onDelTache} />
@@ -3772,56 +3757,7 @@ function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSa
           </div>
         </div>
       )}
-      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler} />
-
-      <button className="pill" onClick={() => setDetail(!detail)}
-              style={{ width: "100%", padding: "13px", margin: "14px 0" }}>
-        {detail ? "Masquer les états financiers" : "Voir les états financiers"}
-      </button>
-
-      {detail && (
-        <div className="board">
-          <div className="card">
-            <h2 className="h2">Où va l'argent du mois</h2>
-            <div className="row"><span className="lbl">Ce qui rentre, commissions déduites</span>
-              <span className="val pos">{fmt(M.encaisse)}</span></div>
-            {M.empruntNet > 0 && (
-              <div className="row"><span className="lbl">Emprunté à un proche</span>
-                <span className="val pos">+ {fmt(M.empruntNet)}</span></div>
-            )}
-            {M.empruntNet < 0 && (
-              <div className="row"><span className="lbl">Prêté ou remboursé</span>
-                <span className="val neg">− {fmt(-M.empruntNet)}</span></div>
-            )}
-            {M.detailSorties.map(([lbl, v]) => (
-              <div className="row" key={lbl}>
-                <span className="lbl" style={{ paddingLeft: 14 }}>{lbl}</span>
-                <span className={"val " + (v < 0 ? "pos" : "neg")} style={{ fontSize: 16 }}>
-                  {v < 0 ? "+ " + fmt(-v) : "− " + fmt(v)}
-                </span>
-              </div>
-            ))}
-            <div className="row"><span className="lbl">Ce que le mois coûte en tout</span>
-              <span className="val neg">− {fmt(M.coutDuMois)}</span></div>
-            <div className="row rowTot"><span className="lbl">Ce qu'il reste</span>
-              <span className={"val " + (M.tresorerie >= 0 ? "pos" : "neg")}>{fmt(M.tresorerie)}</span></div>
-            {(M.avPerso > 0 || M.invests > 0) && (
-              <div className="note">
-                Dont {M.avPerso > 0 ? fmt(M.avPerso) + " de prélèvements" : ""}
-                {M.avPerso > 0 && M.invests > 0 ? " et " : ""}
-                {M.invests > 0 ? fmt(M.invests) + " de travaux et matériel" : ""} — des sorties
-                de caisse qui ne sont pas des charges du mois.
-              </div>
-            )}
-            <div className="note">
-              Ce que le mois doit sortir compte TOUTES ses charges, réglées ou non, factures
-              fournisseurs en attente comprises — sauf celles que tu as explicitement
-              reportées sur le mois suivant. C'est le solde de fin de mois si tout est
-              honoré, pas ta caisse d'aujourd'hui.
-              {M.dettes > 0 && " Dont " + fmt(M.dettes) + " encore dus à tes fournisseurs."}
-            </div>
-          </div>
-        </div>
+        </>
       )}
     </>
   );
