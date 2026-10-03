@@ -1405,8 +1405,10 @@ export default function App({ session, onLogout }) {
     ids.includes(e.id)
       ? { ...e, aPayer: false, regleLe: aujourdhui(), majPar: moi, majLe: aujourdhui() }
       : e));
+  /* id peut être une liste : payer une facture solde du même coup tous ses bons de livraison. */
   const majEntry = (id, champs) => gesteEntries((l) => l.map((e) =>
-    e.id === id ? { ...e, ...champs, majPar: moi, majLe: aujourdhui() } : e));
+    (Array.isArray(id) ? id.includes(e.id) : e.id === id)
+      ? { ...e, ...champs, majPar: moi, majLe: aujourdhui() } : e));
 
   /* Si l'activité ouverte vient d'être archivée ou supprimée, on revient au tableau de bord */
   useEffect(() => {
@@ -3090,11 +3092,27 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   const dues = echs.filter((e) => !e.paye && e.enRetard).sort((a, b) => a.jour - b.jour);
   const avenir = echs.filter((e) => !e.paye && !e.enRetard).sort((a, b) => a.jour - b.jour);
   const comptesPayes = echs.filter((e) => e.paye).sort((a, b) => a.jour - b.jour);
-  const fourn = (entries || []).filter((e) => e.type === "depense" && e.aPayer)
+  const dettes = (entries || []).filter((e) => e.type === "depense" && e.aPayer)
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  if (!dues.length && !avenir.length && !fourn.length && !annul && !comptesPayes.length) return null;
+  /* Un bon de livraison ne se règle pas : on règle la facture qui le couvre.
+     Les bons déjà facturés se regroupent donc sous leur facture, et seule la
+     facture (ou un bon de dépense) a une case. Un bon pas encore facturé reste
+     visible, sans case, « à facturer ». */
+  const estBL = (e) => e.piece === "bl";
+  const bonsDe = (f) => dettes.filter((b) => estBL(b) && b.facture && f.numero
+    && String(b.facture) === String(f.numero) && b.fournisseur === f.fournisseur && b.affaire === f.affaire);
+  const cachés = new Set();
+  const fourn = dettes.filter((e) => !estBL(e)).map((e) => {
+    const bons = e.piece === "facture" ? bonsDe(e) : [];
+    bons.forEach((b) => cachés.add(b.id));
+    return { ...e, bons, montantAffiche: num(e.montant) + bons.reduce((s, b) => s + num(b.montant), 0) };
+  });
+  const aFacturer = dettes.filter((e) => estBL(e) && !cachés.has(e.id));
+  const toutes = [...fourn.map((e) => ({ ...e, genre: "doc" })), ...aFacturer.map((e) => ({ ...e, genre: "bl", montantAffiche: num(e.montant) }))]
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  if (!dues.length && !avenir.length && !toutes.length && !annul && !comptesPayes.length) return null;
   const total = dues.reduce((s, e) => s + e.montant, 0)
-              + fourn.reduce((s, e) => s + num(e.montant), 0);
+              + toutes.reduce((s, e) => s + e.montantAffiche, 0);
   const totalAvenir = avenir.reduce((s, e) => s + e.montant, 0);
 
   const garde = (a) => {
@@ -3113,9 +3131,10 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   };
   const cocherFourn = (e) => {
     if (!onMaj) return;
-    onMaj(e.id, { aPayer: false, regleLe: aujourdhui() });
+    const ids = [e.id, ...(e.bons || []).map((b) => b.id)];
+    onMaj(ids, { aPayer: false, regleLe: aujourdhui() });
     garde({ cle: "f" + e.id, txt: e.lbl + " : payé",
-            defaire: () => onMaj(e.id, { aPayer: true, regleLe: null }) });
+            defaire: () => onMaj(ids, { aPayer: true, regleLe: null }) });
   };
 
   const ligne = (e, action, paye) => (
@@ -3151,17 +3170,21 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
           </button>
         </div>
       )}
-      {fourn.length > 0 && <div className="mini" style={{ margin: "12px 0 2px" }}>Fournisseurs</div>}
-      {fourn.map((e) => (
+      {toutes.length > 0 && <div className="mini" style={{ margin: "12px 0 2px" }}>Fournisseurs</div>}
+      {toutes.map((e) => (
         <div key={e.id} className="row">
           <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Coche paye={false} onClick={() => cocherFourn(e)} />
+            {e.genre === "doc"
+              ? <Coche paye={false} onClick={() => cocherFourn(e)} />
+              : <span style={{ width: 22, display: "inline-block" }} />}
             <span>{e.lbl}
               <span className="mini"> · {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}
-                {e.numero ? " · n° " + e.numero : ""}</span>
+                {e.numero ? " · n° " + e.numero : ""}
+                {e.genre === "bl" ? " · bon de livraison, à facturer" : ""}
+                {e.bons && e.bons.length > 0 ? " · couvre " + e.bons.length + " bons de livraison" : ""}</span>
             </span>
           </span>
-          <span className="val">{fmt(num(e.montant))}</span>
+          <span className="val">{fmt(e.montantAffiche)}</span>
         </div>
       ))}
       {dues.length > 0 && <div className="mini" style={{ margin: "14px 0 2px" }}>Signalé non payé</div>}
