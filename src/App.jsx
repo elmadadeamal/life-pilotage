@@ -3504,6 +3504,253 @@ function Jauge({ lbl, ratio, seuil, etat }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  CONTRÔLE — l'audit de cohérence                                    */
+/* ------------------------------------------------------------------ */
+/* Pas de nouveau calcul : seulement des vérifications de LIENS entre les
+   écritures (une facture et ses bons, un numéro et son fournisseur, un jour
+   et sa vente). Chaque anomalie dit quoi, où, et propose son remède. */
+const cleNum = (v) => String(v || "").replace(/\s/g, "").toLowerCase().replace(/^0+(?=.)/, "");
+function auditer(entries, config, ym) {
+  const L = entries || [];
+  const auj = new Date().toISOString().slice(0, 10);
+  const pm = shiftMonth(ym, -1);
+  const recents = L.filter((e) => ["depense", "invest"].includes(e.type)
+                                  && [ym, pm].includes((e.date || "").slice(0, 7)));
+  const nomF = (id) => ((config.fournisseurs || []).find((f) => f.id === id) || {}).nom || "";
+  const nomA = (k) => (config.affaires[k] && config.affaires[k].nom) || k;
+  const jj = (d) => (d || "").slice(8, 10) + "/" + (d || "").slice(5, 7);
+  const q = [];
+
+  /* 1 — Une dépense qui ne dit pas ce qu'elle est */
+  recents.filter((e) => e.type === "depense").forEach((e) => {
+    const libre = String(e.lbl || "").trim().toLowerCase();
+    if (!e.fournisseur && (libre === "" || libre === "dépense" || libre === "depense")) {
+      q.push({ id: "anon-" + e.id, gravite: 2, famille: "Identité",
+        titre: "Dépense sans nom", detail: jj(e.date) + " · " + nomA(e.affaire) + " · " + fmt(num(e.montant))
+          + " — on ne sait pas ce qui a été acheté.", ids: [e.id], affaire: e.affaire, fix: "lbl" });
+    }
+  });
+
+  /* 2 — Une pièce sans numéro */
+  recents.filter((e) => e.type === "depense" && (e.piece === "bl" || (e.piece === "facture" && e.aPayer))
+                         && e.fournisseur && !String(e.numero || "").trim()
+                         && num(e.montant) > 0).forEach((e) => {
+    q.push({ id: "sansnum-" + e.id, gravite: 2, famille: "Numéro",
+      titre: "Pièce sans numéro", detail: nomF(e.fournisseur) + " · " + jj(e.date) + " · " + fmt(num(e.montant))
+        + " — impossible de la rapprocher de sa facture ou de repérer un doublon.",
+      ids: [e.id], affaire: e.affaire, fix: "numero" });
+  });
+
+  /* 3 — Marchandise sans fournisseur */
+  recents.filter((e) => e.type === "depense" && e.categorie === "matiere" && !e.fournisseur
+                         && !/solde \d+ BL/.test(e.lbl || "")).forEach((e) => {
+    q.push({ id: "mat-" + e.id, gravite: 1, famille: "Identité",
+      titre: "Marchandise sans fournisseur", detail: jj(e.date) + " · " + (e.lbl || "?") + " · " + fmt(num(e.montant)),
+      ids: [e.id], affaire: e.affaire, fix: "fournisseur" });
+  });
+
+  /* 4 — Doublons probables (tous mois) */
+  const vus = {};
+  L.filter((e) => e.type === "depense" && cleNum(e.numero) && e.fournisseur).forEach((e) => {
+    const c = e.affaire + "|" + e.fournisseur + "|" + cleNum(e.numero);
+    (vus[c] = vus[c] || []).push(e);
+  });
+  Object.values(vus).filter((g) => g.length > 1).forEach((g) => {
+    q.push({ id: "dbl-" + g[0].id, gravite: 3, famille: "Doublon",
+      titre: "Même numéro saisi " + g.length + " fois",
+      detail: nomF(g[0].fournisseur) + " · n° " + g[0].numero + " · "
+        + g.map((x) => jj(x.date) + " " + fmt(num(x.montant))).join(" / "),
+      ids: g.map((x) => x.id), affaire: g[0].affaire });
+  });
+  const vus2 = {};
+  L.filter((e) => ["depense", "avance", "vente"].includes(e.type)).forEach((e) => {
+    const c = [e.type, e.affaire || "", e.date, num(e.montant).toFixed(2), String(e.lbl || e.personne || e.nom || "").trim().toLowerCase(),
+               e.precision || "", e.numero || ""].join("|");
+    (vus2[c] = vus2[c] || []).push(e);
+  });
+  Object.values(vus2).filter((g) => g.length > 1 && num(g[0].montant) > 0
+      && !(g[0].fournisseur && cleNum(g[0].numero))).forEach((g) => {
+    q.push({ id: "dbl2-" + g[0].id, gravite: 3, famille: "Doublon",
+      titre: "Même écriture saisie " + g.length + " fois",
+      detail: jj(g[0].date) + " · " + (g[0].lbl || g[0].personne || g[0].nom || g[0].type) + " · " + fmt(num(g[0].montant))
+        + " — doublon, ou deux vraies opérations identiques ?",
+      ids: g.map((x) => x.id), affaire: g[0].affaire });
+  });
+
+  /* 5 — Facture qui ne tombe pas juste sur ses bons de livraison */
+  L.filter((e) => e.type === "depense" && e.totalFacture && e.fournisseur).forEach((f) => {
+    const bons = L.filter((b) => b.piece === "bl" && b.fournisseur === f.fournisseur && b.affaire === f.affaire
+                                 && b.facture && String(b.facture) === String(f.numero));
+    const somme = bons.reduce((s, b) => s + num(b.montant), 0) + num(f.montant);
+    if (Math.abs(somme - num(f.totalFacture)) > 0.5) {
+      q.push({ id: "fac-" + f.id, gravite: 3, famille: "Rapprochement",
+        titre: "La facture " + f.numero + " ne tombe pas juste",
+        detail: nomF(f.fournisseur) + " : facture " + fmt(num(f.totalFacture)) + ", bons + écart "
+          + fmt(somme) + " (différence " + fmt(Math.abs(somme - num(f.totalFacture))) + ").",
+        ids: [f.id], affaire: f.affaire });
+    }
+  });
+
+  /* 6 — Bons de livraison qui attendent leur facture depuis trop longtemps */
+  const vieux = L.filter((e) => e.type === "depense" && e.piece === "bl" && e.aPayer && !e.facture
+                                && e.date && (new Date(auj) - new Date(e.date)) / 864e5 > 35);
+  const parF = {};
+  vieux.forEach((e) => { (parF[e.fournisseur || "?"] = parF[e.fournisseur || "?"] || []).push(e); });
+  Object.entries(parF).forEach(([f, g]) => {
+    q.push({ id: "vbl-" + f, gravite: 2, famille: "Rapprochement",
+      titre: "Bons de livraison sans facture depuis plus de 35 jours",
+      detail: (nomF(f) || "Fournisseur") + " : " + g.length + " bon" + (g.length > 1 ? "s" : "") + ", "
+        + fmt(g.reduce((s, e) => s + num(e.montant), 0)) + " — la facture du mois est-elle arrivée ?",
+      ids: g.map((e) => e.id), affaire: g[0].affaire });
+  });
+
+  /* 7 — Un mois entier à zéro sur une pièce qui n'est pas un lien */
+  L.filter((e) => e.type === "depense" && num(e.montant) === 0 && !e.totalFacture).forEach((e) => {
+    q.push({ id: "zero-" + e.id, gravite: 1, famille: "Identité",
+      titre: "Dépense à 0 DH", detail: jj(e.date) + " · " + (e.lbl || nomF(e.fournisseur) || "?"),
+      ids: [e.id], affaire: e.affaire });
+  });
+
+  /* 8 — Écritures datées dans le futur */
+  L.filter((e) => e.date && e.date > auj && e.type !== "resa").forEach((e) => {
+    q.push({ id: "fut-" + e.id, gravite: 2, famille: "Date",
+      titre: "Écriture datée dans le futur", detail: jj(e.date) + " · " + (e.lbl || e.type) + " · " + fmt(num(e.montant)),
+      ids: [e.id], affaire: e.affaire });
+  });
+
+  /* 9 — Jours sans vente (ce mois-ci seulement, hors aujourd'hui) */
+  const venteK = {};
+  L.filter((e) => e.type === "vente" && (e.date || "").slice(0, 7) === ym).forEach((e) => { venteK[e.affaire] = true; });
+  Object.keys(venteK).forEach((k) => {
+    const [an, mo] = ym.split("-").map(Number);
+    const fin = ym === auj.slice(0, 7) ? Number(auj.slice(8, 10)) - 1 : new Date(an, mo, 0).getDate();
+    const trous = [];
+    for (let j = 1; j <= fin; j++) {
+      const iso = ym + "-" + String(j).padStart(2, "0");
+      if (!L.some((e) => e.type === "vente" && e.affaire === k && e.date === iso)) trous.push(j);
+    }
+    if (trous.length) q.push({ id: "trou-" + k, gravite: 2, famille: "Ventes",
+      titre: "Ventes non saisies — " + nomA(k),
+      detail: "Jours : " + trous.join(", ") + " (" + trous.length + "). Saisis la vente, ou 0 si fermé.",
+      ids: [], affaire: k });
+  });
+
+  return q.sort((a, b) => b.gravite - a.gravite);
+}
+
+function Controle({ entries, config, ym, onMaj, onAller }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [val, setVal] = useState({});
+  const [msg, setMsg] = useState("");
+  const liste = auditer(entries, config, ym);
+  const ignorees = (() => { try { return JSON.parse(localStorage.getItem("life:ignorees") || "[]"); } catch (e) { return []; } })();
+  const [ign, setIgn] = useState(ignorees);
+  const visibles = liste.filter((x) => !ign.includes(x.id));
+  const ignorer = (id) => { const n = [...ign, id]; setIgn(n); try { localStorage.setItem("life:ignorees", JSON.stringify(n)); } catch (e) {} };
+
+  /* Clôture : trois questions, trois réponses */
+  const L = entries || [];
+  const ventesOk = !liste.some((x) => x.famille === "Ventes");
+  const blsOuverts = L.filter((e) => e.type === "depense" && e.piece === "bl" && e.aPayer && !e.facture);
+  const facturesDues = L.filter((e) => e.type === "depense" && e.aPayer && e.piece === "facture" && num(e.montant) > 0);
+  const graves = visibles.filter((x) => x.gravite >= 2).length;
+  const pret = ventesOk && graves === 0;
+
+  const enregistrer = (x) => {
+    const v = (val[x.id] || "").trim();
+    if (!v) { setMsg("Écris quelque chose avant d'enregistrer."); return; }
+    const id = x.ids[0];
+    const e = L.find((y) => y.id === id);
+    if (x.fix === "numero") {
+      const dup = L.find((y) => y.id !== id && y.type === "depense" && y.affaire === e.affaire
+        && y.fournisseur === e.fournisseur && cleNum(y.numero) === cleNum(v));
+      if (dup) { setMsg("Ce numéro existe déjà chez ce fournisseur (" + jj2(dup.date) + ", " + fmt(num(dup.montant)) + ")."); return; }
+      onMaj(id, { numero: v });
+    } else if (x.fix === "lbl") onMaj(id, { lbl: v });
+    else if (x.fix === "fournisseur") onMaj(id, { fournisseur: v });
+    setMsg("");
+  };
+  const jj2 = (d) => (d || "").slice(8, 10) + "/" + (d || "").slice(5, 7);
+  const couleur = (g) => g >= 3 ? "#C9503A" : g === 2 ? "#B07C1E" : "#8B9678";
+
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+        <div className="eyebrow">Contrôle</div>
+        <span className="tag" style={{ color: visibles.length ? "#C9503A" : "#5E8F1E",
+                                       borderColor: visibles.length ? "#EFC7BE" : "#CFE2B5" }}>
+          {visibles.length ? visibles.length + " à vérifier" : "rien à signaler"}
+        </span>
+      </div>
+
+      {visibles.length > 0 && (
+        <button className="pill" onClick={() => setOuvert(!ouvert)} style={{ marginBottom: 8 }}>
+          {ouvert ? "Masquer la liste" : "Voir la liste"}
+        </button>
+      )}
+      {msg && <div className="mini" style={{ color: "#C9503A", marginBottom: 8 }}>{msg}</div>}
+
+      {ouvert && visibles.map((x) => (
+        <div key={x.id} style={{ borderTop: "1px solid #EEE9DA", padding: "12px 0" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+            <span style={{ width: 9, height: 9, borderRadius: 9, background: couleur(x.gravite), display: "inline-block" }} />
+            <strong style={{ fontSize: 16.5, flex: 1 }}>{x.titre}</strong>
+            <span className="mini">{x.famille}</span>
+          </div>
+          <div className="mini" style={{ margin: "5px 0 8px" }}>{x.detail}</div>
+          {x.fix && x.ids.length === 1 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {x.fix === "fournisseur" ? (
+                <select className="f" style={{ flex: 1, minWidth: 160 }} value={val[x.id] || ""}
+                        onChange={(e) => setVal({ ...val, [x.id]: e.target.value })}>
+                  <option value="">Choisir le fournisseur…</option>
+                  {(config.fournisseurs || []).filter((f) => (f.affaires || []).includes(x.affaire))
+                    .map((f) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+                </select>
+              ) : (
+                <input className="f" style={{ flex: 1, minWidth: 160 }}
+                       placeholder={x.fix === "numero" ? "Numéro de la pièce" : "Ce qui a été acheté"}
+                       value={val[x.id] || ""} onChange={(e) => setVal({ ...val, [x.id]: e.target.value })} />
+              )}
+              <button className="pill on" onClick={() => enregistrer(x)}>Enregistrer</button>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            {x.affaire && config.affaires[x.affaire] && (
+              <button className="pill" onClick={() => onAller(x.affaire)}>Ouvrir {config.affaires[x.affaire].nom}</button>
+            )}
+            <button className="pill" onClick={() => ignorer(x.id)}>C'est normal</button>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ borderTop: "1px solid #EEE9DA", marginTop: 10, paddingTop: 12 }}>
+        <div className="eyebrow" style={{ marginBottom: 6 }}>Clôture de {monthLabel(ym)}</div>
+        {[
+          [ventesOk, ventesOk ? "Toutes les ventes sont saisies" : "Des jours sans vente sont à saisir"],
+          [blsOuverts.length === 0, blsOuverts.length === 0 ? "Tous les bons de livraison sont facturés"
+            : blsOuverts.length + " bon" + (blsOuverts.length > 1 ? "s" : "") + " de livraison " + (blsOuverts.length > 1 ? "attendent" : "attend") + " leur facture ("
+              + fmt(blsOuverts.reduce((s, e) => s + num(e.montant), 0)) + ")"],
+          [facturesDues.length === 0, facturesDues.length === 0 ? "Aucune facture à régler"
+            : facturesDues.length + " facture" + (facturesDues.length > 1 ? "s" : "") + " à régler ("
+              + fmt(facturesDues.reduce((s, e) => s + num(e.montant), 0)) + ")"],
+          [graves === 0, graves === 0 ? "Aucune anomalie importante" : graves + " anomalie" + (graves > 1 ? "s" : "") + " à traiter"],
+        ].map(([ok, t], i) => (
+          <div key={i} style={{ display: "flex", gap: 10, padding: "4px 0", fontSize: 16 }}>
+            <span style={{ color: ok ? "#5E8F1E" : "#B07C1E", width: 18 }}>{ok ? "✓" : "•"}</span>
+            <span>{t}</span>
+          </div>
+        ))}
+        <div className="mini" style={{ marginTop: 6, color: pret ? "#5E8F1E" : "#7A5B22" }}>
+          {pret ? "Le mois peut être clôturé : ventes complètes et aucune anomalie."
+                : "Le mois n'est pas prêt à être clôturé."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Coherence({ M, config, onAller }) {
   const v = (M.voyants || []).filter(Boolean);
   if (!v.length) return null;
@@ -3966,6 +4213,7 @@ function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, on
         <NoteDuMois config={config} ym={ym} onSave={onSaveConfig} />
       </div>
 
+      <Controle entries={entries} config={config} ym={ym} onMaj={onMaj} onAller={onAller} />
       <Signaux M={M} config={config} ym={ym} entries={entries} />
 
       <div className="card">
@@ -4682,6 +4930,15 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const valider = async () => {
     if (num(montant) <= 0) {
       setErreur("Montant manquant — écris le montant en chiffres avant d'enregistrer.");
+      return;
+    }
+    if (!courant && !lbl.trim()) {
+      setErreur("Intitulé manquant — écris ce qui a été acheté, sinon on ne le retrouvera pas.");
+      return;
+    }
+    if (courant && ["bl", "facture"].includes(piece) && !numero.trim()) {
+      setErreur("Numéro manquant — recopie le numéro " + (piece === "bl" ? "du bon de livraison" : "de la facture")
+        + ". S'il n'y en a pas, ajoute-le au stylo sur le papier (1, 2, 3…) et saisis-le ici.");
       return;
     }
     if (memeLigne.length > 0) {
