@@ -431,7 +431,7 @@ const DEFAULT_CONFIG = {
   jourEnveloppe: 30,
   /* Ce qui sort du résultat vers la famille : ni charge d'exploitation,
      ni dépense du ménage. Une destination à part entière. */
-  solidarite: { montant: 10000, jour: 1 },
+  solidarite: { montant: 10000, jour: 20 },
   foyer: {
     fixes: [
       { id: "h1", lbl: "Traite nouvel appartement", montant: 8500, jour: 5,  transitoire: false },
@@ -1027,12 +1027,14 @@ function reprendre(saved) {
   c.societes = (saved.societes && saved.societes.length) ? saved.societes : DEFAULT_CONFIG.societes;
   c.seuils = { ...(saved.seuils || DEFAULT_CONFIG.seuils) };
   c.chantiers = saved.chantiers || DEFAULT_CONFIG.chantiers;
-  c.solidarite = { ...DEFAULT_CONFIG.solidarite, ...(saved.solidarite || {}) };
+  /* La solidarité est versée le 20 de chaque mois : le jour est fixe, même si une
+     ancienne configuration enregistrée portait le 1er. */
+  c.solidarite = { ...DEFAULT_CONFIG.solidarite, ...(saved.solidarite || {}), jour: 20 };
   /* Une configuration ancienne portait la solidarité dans les charges du foyer */
   const ancienneAide = (c.foyer.fixes || []).find((f) => f.id === "h3");
   if (ancienneAide) {
     c.foyer.fixes = c.foyer.fixes.filter((f) => f.id !== "h3");
-    if (!saved.solidarite) c.solidarite = { montant: num(ancienneAide.montant), jour: 1 };
+    if (!saved.solidarite) c.solidarite = { montant: num(ancienneAide.montant), jour: 20 };
   }
   c.notes = { ...(saved.notes || {}) };
   c.poches = (saved.poches && saved.poches.length) ? saved.poches : DEFAULT_CONFIG.poches;
@@ -1316,6 +1318,26 @@ export default function App({ session, onLogout }) {
     return (ym === thisMonth() && prevu > auj) ? auj : prevu;
   };
   const regler = (ref, oui) => gesteEntries((l) => {
+    /* Solidarité : la cocher, c'est DONNER ce qu'il reste à donner ce mois-ci.
+       Avant, le pointage ne créait qu'un « payé » : l'argent sortait mais le don
+       restait à 0, donc la carte affichait toujours « prévu ». On enregistre
+       maintenant un vrai don (marqué `pointe`), qu'on peut annuler en décochant.
+       Un ancien pointage « payé » du mois est remplacé, jamais compté en double. */
+    if (ref === "solidarite") {
+      const dumois = (e) => (e.date || "").startsWith(ym);
+      const sans = l.filter((e) => !((e.type === "paye" && e.ref === "solidarite" && dumois(e))
+                                  || (e.type === "solidarite" && e.pointe && dumois(e))));
+      if (!oui) return sans;
+      /* L'ancien pointage n'a jamais compté comme un don : le reste à donner est
+         donc bien celui que l'app affiche. */
+      const reste = num(M.soliReste);
+      if (reste <= 0) return l;
+      const jj = String(Math.min(31, num((config.solidarite || {}).jour) || 1)).padStart(2, "0");
+      const prevu = ym + "-" + jj;
+      const date = (ym === thisMonth() && prevu > aujourdhui()) ? aujourdhui() : prevu;
+      return [...sans, { id: uid(), type: "solidarite", date, montant: reste, lbl: "Solidarité",
+                         pointe: true, par: moi, saisiLe: aujourdhui() }];
+    }
     const cle = (e) => e.type === "paye" && e.ref === ref && (e.date || "").startsWith(ym);
     /* On enregistre le montant réellement dû au moment du pointage — prime et
        avance comprises, plusieurs mois de retard compris, solidarité déjà
@@ -1961,6 +1983,8 @@ function calcul(config, entries, ym) {
      trésorerie. Si elle donne plus que prévu, c'est le versé qui compte. */
   const solidarite = Math.max(soliVerse, soliFixe);
   const soliReste  = Math.max(0, soliFixe - soliVerse);
+  const soliPointe = inMonth.filter((e) => e.type === "solidarite" && e.pointe)
+                            .reduce((s, e) => s + num(e.montant), 0);
   const soliCumul = entries.filter((e) => e.type === "solidarite"
       && (e.date || "").slice(0, 4) === ym.slice(0, 4))
     .reduce((s, e) => s + num(e.montant), 0);
@@ -2588,7 +2612,7 @@ function calcul(config, entries, ym) {
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
   return { A, keys, orphelines, caTotal, resAffaires, structure, structFixe, structExtra,
-           enveloppe, solidarite, soliVerse, soliReste, soliCumul, detailSorties,
+           enveloppe, solidarite, soliVerse, soliReste, soliPointe, soliCumul, detailSorties,
            coutDuMois, empruntNet, dejaPaye, resteAPayer, achatsAcquittes,
            pretsEntreeMois, pretsSortieMois, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
@@ -2674,7 +2698,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
       {sous === "chantiers"  && <Chantiers config={config} entries={entries} ym={ym}
                                            onAdd={onAdd} onDel={onDel} />}
       {sous === "resultat"   && <Dashboard M={M} config={config} ym={ym} onAller={onAller}
-                                            onAdd={onAdd} onDel={onDel} onMaj={onMaj}
+                                            onRegler={onRegler} onAdd={onAdd} onDel={onDel} onMaj={onMaj}
                                             onSaveConfig={onSaveConfig}
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
@@ -3013,15 +3037,26 @@ function Rythme({ M, config }) {
   );
 }
 
-/* Ce qui tombe dans les dix jours : la seule question qui se pose le matin */
-function Bientot({ M, config, onAller }) {
-  const dix = (M.echeances || [])
-    .filter((e) => !e.paye && (e.enRetard || (e.jour >= M.jourActuel && e.jour <= M.jourActuel + 10)))
-    .sort((a, b) => (a.enRetard === b.enRetard ? a.jour - b.jour : a.enRetard ? -1 : 1))
-    .slice(0, 7);
-  if (!dix.length) return null;
+/* Ce qui tombe dans les dix jours : la seule question qui se pose le matin.
+   Chaque ligne se coche ici même (loyers en retard compris) ; une erreur de
+   clic s'annule d'un geste. */
+function Bientot({ M, config, onAller, onRegler }) {
+  const [annul, setAnnul] = useState(null);
+  const tous = (M.echeances || []).filter((e) => !e.paye);
+  const retards = tous.filter((e) => e.enRetard).sort((a, b) => a.jour - b.jour);
+  const aVenir = tous.filter((e) => !e.enRetard && e.jour >= M.jourActuel && e.jour <= M.jourActuel + 10)
+                     .sort((a, b) => a.jour - b.jour).slice(0, 7);
+  const dix = [...retards, ...aVenir];
+  if (!dix.length && !annul) return null;
   const total = dix.reduce((s, e) => s + e.montant, 0);
-  const retard = dix.filter((e) => e.enRetard).length;
+  const retard = retards.length;
+
+  const cocher = (e) => {
+    if (!onRegler) return;
+    onRegler(e.ref, true);
+    setAnnul({ ref: e.ref, lbl: e.lbl });
+    setTimeout(() => setAnnul((a) => (a && a.ref === e.ref ? null : a)), 8000);
+  };
 
   return (
     <div className="card">
@@ -3030,9 +3065,20 @@ function Bientot({ M, config, onAller }) {
         <div className="eyebrow">Ce qui tombe bientôt</div>
         <span className="mini">{fmt(total)}</span>
       </div>
+      {annul && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                      gap: 10, background: "#EEF4E0", borderRadius: 10, padding: "8px 12px",
+                      margin: "6px 0", fontSize: 14.5, color: "#4F6B1F" }}>
+          <span>✓ {annul.lbl} : payé</span>
+          <button className="pill" onClick={() => { onRegler(annul.ref, false); setAnnul(null); }}>
+            Annuler
+          </button>
+        </div>
+      )}
       {dix.map((e) => (
         <div key={e.ref} className="row">
           <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Coche paye={false} retard={e.enRetard} onClick={() => cocher(e)} />
             <span className="dot" style={{ margin: 0, background: config.affaires[e.groupe]
               ? lisible(config.affaires[e.groupe].marque) : "#B3C09A" }} />
             {e.lbl}
@@ -3052,8 +3098,8 @@ function Bientot({ M, config, onAller }) {
       <div className="note">
         {retard > 0
           ? retard + (retard > 1 ? " échéances sont passées" : " échéance est passée")
-            + " sans être pointée. L'onglet Échéancier permet de les régler."
-          : "Les prochaines échéances, dans l'ordre. À pointer dans l'onglet Échéancier une fois payées."}
+            + " sans être pointée. Coche la case dès que c'est payé."
+          : "Les prochaines échéances, dans l'ordre. Coche la case dès que c'est payé."}
       </div>
     </div>
   );
@@ -3463,7 +3509,7 @@ function NoteDuMois({ config, ym, onSave }) {
   );
 }
 
-function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
+function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSaveConfig,
                     taches, onAddTache, onMajTache, onDelTache }) {
   const [detail, setDetail] = useState(false);
   const couvert = M.caTotal >= M.seuil;
@@ -3726,7 +3772,7 @@ function Dashboard({ M, config, ym, onAller, onAdd, onDel, onMaj, onSaveConfig,
           </div>
         </div>
       )}
-      <Bientot M={M} config={config} onAller={onAller} />
+      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler} />
 
       <button className="pill" onClick={() => setDetail(!detail)}
               style={{ width: "100%", padding: "13px", margin: "14px 0" }}>
@@ -6440,7 +6486,7 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
 
 /* La solidarité n'est ni une facture ni un salaire : elle se décide chaque mois.
    Elle sort de la trésorerie sans peser sur le résultat des commerces. */
-function SolidariteCarte({ M, config, ym, onAdd, flash }) {
+function SolidariteCarte({ M, config, ym, onAdd, onRegler, flash }) {
   const [saisi, setSaisi] = useState("");
   const [erreur, setErreur] = useState("");
   const prevu = num((config.solidarite || {}).montant);
@@ -6462,10 +6508,10 @@ function SolidariteCarte({ M, config, ym, onAdd, flash }) {
         <span className="val">{fmt(M.solidarite)}
           {M.soliVerse === 0 && <span className="tag" style={{ marginLeft: 8 }}>prévu</span>}</span>
       </div>
-      {M.soliCumul > 0 && (
+      {M.soliPointe > 0 && onRegler && (
         <div className="row">
-          <span className="lbl">Depuis janvier</span>
-          <span className="val">{fmt(M.soliCumul)}</span>
+          <span className="lbl">Pointé « fait » : {fmt(M.soliPointe)}</span>
+          <button className="pill" onClick={() => onRegler("solidarite", false)}>Annuler</button>
         </div>
       )}
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 14 }}>
@@ -6597,7 +6643,7 @@ function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
         </div>
       </div>
 
-      <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd} flash={flash} />
+      <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd} onRegler={onRegler} flash={flash} />
 
       {M.doubleLog > 0 && (
         <div className="card" style={{ background: "#FDF6E7", borderColor: "#E9D9AE" }}>
