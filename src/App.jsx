@@ -1294,8 +1294,16 @@ export default function App({ session, onLogout }) {
   const delTache = (id) => gesteTaches((l) => l.filter((t) => t.id !== id));
 
   /* Chaque écriture garde le nom de qui l'a créée et de qui l'a corrigée. */
-  const addEntry = (e) => gesteEntries((l) =>
-    [...l, { ...e, id: uid(), par: moi, saisiLe: aujourdhui() }]);
+  const addEntry = (e) => gesteEntries((l) => {
+    /* Une facture qui solde des bons de livraison les met à jour dans le même
+       geste que son enregistrement : une seule écriture, jamais à moitié faite. */
+    const { solde, ...entree } = e;
+    const base = (solde && solde.ids)
+      ? l.map((x) => solde.ids.includes(x.id)
+          ? { ...x, ...solde.champs, majPar: moi, majLe: aujourdhui() } : x)
+      : l;
+    return [...base, { ...entree, id: uid(), par: moi, saisiLe: aujourdhui() }];
+  });
   const delEntry = (id) => gesteEntries((l) => l.filter((e) => e.id !== id));
   /* Une charge de septembre peut très bien avoir été payée fin août. Tant que le
      pointage ne portait qu'un mois, « ce que j'ai réellement payé » comptait en
@@ -1343,10 +1351,17 @@ export default function App({ session, onLogout }) {
        avance comprises, plusieurs mois de retard compris, solidarité déjà
        versée déduite. Recalculé plus tard, ce montant aurait changé. */
     const ligne = (M.lignesAPayer || []).find((x) => x.id === ref);
-    return oui ? [...l, { id: uid(), type: "paye", ref, date: ym + "-01",
+    const cleI = (e) => e.type === "impaye" && e.ref === ref && (e.date || "").startsWith(ym);
+    if (oui) {
+      return [...l.filter((e) => !cleI(e)), { id: uid(), type: "paye", ref, date: ym + "-01",
                           ...(ligne ? { montant: ligne.montant } : {}),
-                          regleLe: dateReglementParDefaut(ref), par: moi }]
-               : l.filter((e) => !cle(e));
+                          regleLe: dateReglementParDefaut(ref), par: moi }];
+    }
+    /* Décocher une charge, c'est dire « celle-là n'a pas été payée » : sans cette
+       trace, elle redeviendrait payée toute seule à son échéance. */
+    const sans = l.filter((e) => !cle(e));
+    return (String(ref).startsWith("retard:") || sans.some(cleI)) ? sans
+      : [...sans, { id: uid(), type: "impaye", ref, date: ym + "-01", par: moi }];
   });
   /* Corriger après coup la date de sortie d'argent d'une charge déjà pointée. */
   const daterReglement = (ref, quand) => gesteEntries((l) => l.map((e) =>
@@ -2018,7 +2033,28 @@ function calcul(config, entries, ym) {
     .reduce((s, e) => s + num(e.montant), 0);
 
   /* Ce qu'il reste à couvrir : on retire tout ce qui est déjà réglé ce mois-ci. */
-  const regle    = new Set(inMonth.filter((e) => e.type === "paye").map((e) => e.ref));
+  /* Une charge fixe (loyer, salaire, traite, facture récurrente) est considérée
+     PAYÉE à son échéance : on ne signale que l'exception. Avant, tout restait
+     « à payer » tant qu'on ne l'avait pas coché — un total gonflé de ce qui
+     était déjà réglé, qui repartait de zéro chaque mois. Une case décochée
+     (entrée « impaye ») ou un report remet la charge à payer. */
+  const regleExplicite = new Set(inMonth.filter((e) => e.type === "paye").map((e) => e.ref));
+  const impayes = new Set(inMonth.filter((e) => e.type === "impaye").map((e) => e.ref));
+  const [anR, moR] = ym.split("-").map(Number);
+  const aujR = new Date();
+  const rangR = anR * 12 + moR, rangAujR = aujR.getFullYear() * 12 + aujR.getMonth() + 1;
+  const coupureR = rangR < rangAujR ? 99 : (rangR === rangAujR ? aujR.getDate() : 0);
+  const joursMoisR = new Date(anR, moR, 0).getDate();
+  const jourDeR = {};
+  [...config.fixes, ...config.structures, ...config.foyer.fixes].forEach((x) => {
+    jourDeR[x.id] = Math.min(num(x.jour) || 5, joursMoisR); });
+  (config.foyer.remunerations || []).forEach((r) => {
+    jourDeR[r.id] = Math.min(num(r.jour) || 30, joursMoisR); });
+  (config.societes || []).forEach((so) => { jourDeR["cnss:" + so.id] = Math.min(25, joursMoisR); });
+  const regle = new Set(regleExplicite);
+  Object.keys(jourDeR).forEach((id) => {
+    if (!impayes.has(id) && jourDeR[id] <= coupureR) regle.add(id);
+  });
   const reportes = reportesRef;
 
   /* Le catalogue de tout ce qui peut être dû, rangé par propriétaire */
@@ -2155,9 +2191,12 @@ function calcul(config, entries, ym) {
      mois, payées ou non. Il ne dépend donc d'aucune case cochée, et il ne mêle
      ni réserve, ni chantier, ni prêt — ce n'est ni du gain ni de la perte. */
   const reserveNetMois = reserveDepotsMoisTotal - reserveRetraitsMoisTotal;
-  const sortiesPures = sorties - reserveNetMois - chantiersMois - pretsSortieMois + pretsEntreeMois;
+  const sortiesPures = sorties - reserveNetMois + reserveRetraitsMoisTotal - chantiersMois - pretsSortieMois + pretsEntreeMois;
   const resteMois = encaisse - sortiesPures;
-  const detailSimple = detailSorties.filter(([lbl]) => !/réserve|chantier/i.test(lbl));
+  const detailSimple = [
+    ...detailSorties.filter(([lbl]) => !/réserve|chantier/i.test(lbl)),
+    ["Dépensé en piochant dans la réserve", reserveRetraitsMoisTotal],
+  ].filter(([, v]) => Math.abs(v) >= 1);
 
   /* Un emprunt reçu n'est pas un coût en moins : c'est de l'argent qui entre.
      Il était noyé dans les sorties, ce qui faisait paraître le mois 50 000 DH
@@ -2710,7 +2749,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
                                         onRegler={onRegler} onReporter={onReporter} onDater={onDater} onPocher={onPocher}
                                         onChiffrer={onChiffrer} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
-                                      onAdd={onAdd} ym={ym} />}
+                                      onAdd={onAdd} ym={ym} entries={entries} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
                                         onDel={onDel} onMaj={onMaj} />}
       {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
@@ -3041,20 +3080,22 @@ function Rythme({ M, config }) {
   );
 }
 
-/* Ce qu'il reste à payer ce mois-ci : charges et fournisseurs, au même endroit.
-   On coche dès que c'est payé ; une erreur de clic s'annule d'un geste. Cocher
-   ne change pas le chiffre du mois (toutes les charges y comptent déjà) : ça
-   sert seulement à savoir ce qui reste à sortir. */
+/* Ce que tu dois VRAIMENT : tes fournisseurs, plus ce que tu as signalé comme
+   non payé. Les loyers, salaires et traites sont considérés payés à leur date ;
+   ce qui n'est pas encore échu se lit à part, sans entrer dans le total. */
 function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   const [annul, setAnnul] = useState(null);
-  const charges = (M.echeances || []).filter((e) => !e.paye)
-    .sort((a, b) => (a.enRetard === b.enRetard ? a.jour - b.jour : a.enRetard ? -1 : 1));
+  const [voirPayes, setVoirPayes] = useState(false);
+  const echs = M.echeances || [];
+  const dues = echs.filter((e) => !e.paye && e.enRetard).sort((a, b) => a.jour - b.jour);
+  const avenir = echs.filter((e) => !e.paye && !e.enRetard).sort((a, b) => a.jour - b.jour);
+  const comptesPayes = echs.filter((e) => e.paye).sort((a, b) => a.jour - b.jour);
   const fourn = (entries || []).filter((e) => e.type === "depense" && e.aPayer)
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  if (!charges.length && !fourn.length && !annul) return null;
-  const total = charges.reduce((s, e) => s + e.montant, 0)
+  if (!dues.length && !avenir.length && !fourn.length && !annul && !comptesPayes.length) return null;
+  const total = dues.reduce((s, e) => s + e.montant, 0)
               + fourn.reduce((s, e) => s + num(e.montant), 0);
-  const retard = charges.filter((e) => e.enRetard).length;
+  const totalAvenir = avenir.reduce((s, e) => s + e.montant, 0);
 
   const garde = (a) => {
     setAnnul(a);
@@ -3063,48 +3104,54 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   const cocherCharge = (e) => {
     if (!onRegler) return;
     onRegler(e.ref, true);
-    garde({ cle: "c" + e.ref, lbl: e.lbl, defaire: () => onRegler(e.ref, false) });
+    garde({ cle: "c" + e.ref, txt: e.lbl + " : payé", defaire: () => onRegler(e.ref, false) });
+  };
+  const decocherCharge = (e) => {
+    if (!onRegler) return;
+    onRegler(e.ref, false);
+    garde({ cle: "d" + e.ref, txt: e.lbl + " : marqué non payé", defaire: () => onRegler(e.ref, true) });
   };
   const cocherFourn = (e) => {
     if (!onMaj) return;
     onMaj(e.id, { aPayer: false, regleLe: aujourdhui() });
-    garde({ cle: "f" + e.id, lbl: e.lbl,
+    garde({ cle: "f" + e.id, txt: e.lbl + " : payé",
             defaire: () => onMaj(e.id, { aPayer: true, regleLe: null }) });
   };
+
+  const ligne = (e, action, paye) => (
+    <div key={e.ref} className="row">
+      <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Coche paye={paye} retard={e.enRetard} onClick={() => action(e)} />
+        <span style={{ color: paye ? "#9AA487" : undefined }}>{e.lbl}
+          {e.estime && <span className="mini"> · estimation</span>}</span>
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 14.5, color: e.enRetard ? "#C9503A" : "#8B9678" }}>
+          {e.enRetard ? "non payé" : "le " + e.jour}
+        </span>
+        <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>{fmt(e.montant)}</span>
+      </span>
+    </div>
+  );
 
   return (
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between",
                     alignItems: "baseline", gap: 12, marginBottom: 4 }}>
-        <div className="eyebrow">Ce qu'il reste à payer</div>
-        <span className="val" style={{ fontSize: 20 }}>{fmt(total)}</span>
+        <div className="eyebrow">Ce que tu dois</div>
+        <span className="val" style={{ fontSize: 22 }}>{fmt(total)}</span>
       </div>
       {annul && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
                       gap: 10, background: "#EEF4E0", borderRadius: 10, padding: "8px 12px",
                       margin: "6px 0", fontSize: 14.5, color: "#4F6B1F" }}>
-          <span>✓ {annul.lbl} : payé</span>
+          <span>✓ {annul.txt}</span>
           <button className="pill" onClick={() => { annul.defaire(); setAnnul(null); }}>
             Annuler
           </button>
         </div>
       )}
-      {charges.length > 0 && <div className="mini" style={{ margin: "12px 0 2px" }}>Loyers, salaires, charges</div>}
-      {charges.map((e) => (
-        <div key={e.ref} className="row">
-          <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Coche paye={false} retard={e.enRetard} onClick={() => cocherCharge(e)} />
-            {e.lbl}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 14.5, color: e.enRetard ? "#C9503A" : "#8B9678" }}>
-              {e.enRetard ? "en retard" : "le " + e.jour}
-            </span>
-            <span className="val">{fmt(e.montant)}</span>
-          </span>
-        </div>
-      ))}
-      {fourn.length > 0 && <div className="mini" style={{ margin: "14px 0 2px" }}>Fournisseurs</div>}
+      {fourn.length > 0 && <div className="mini" style={{ margin: "12px 0 2px" }}>Fournisseurs</div>}
       {fourn.map((e) => (
         <div key={e.id} className="row">
           <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3117,10 +3164,36 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
           <span className="val">{fmt(num(e.montant))}</span>
         </div>
       ))}
-      <div className="note">
-        Coche la case dès que c'est payé.
-        {retard > 0 ? " " + retard + (retard > 1 ? " lignes sont en retard." : " ligne est en retard.") : ""}
-      </div>
+      {dues.length > 0 && <div className="mini" style={{ margin: "14px 0 2px" }}>Signalé non payé</div>}
+      {dues.map((e) => ligne(e, cocherCharge, false))}
+      {total === 0 && <div className="note">Rien à payer pour le moment.</div>}
+
+      {avenir.length > 0 && (
+        <>
+          <div className="mini" style={{ margin: "16px 0 2px", display: "flex", justifyContent: "space-between" }}>
+            <span>À venir ce mois-ci (pas encore dû)</span><span>{fmt(totalAvenir)}</span>
+          </div>
+          {avenir.map((e) => ligne(e, cocherCharge, false))}
+        </>
+      )}
+
+      {comptesPayes.length > 0 && (
+        <>
+          <button className="pill" onClick={() => setVoirPayes(!voirPayes)}
+                  style={{ width: "100%", margin: "14px 0 4px" }}>
+            {voirPayes ? "Masquer" : "Voir"} ce qui est compté comme payé ({comptesPayes.length})
+          </button>
+          {voirPayes && (
+            <>
+              {comptesPayes.map((e) => ligne(e, decocherCharge, true))}
+              <div className="note">
+                Loyers, salaires et traites sont comptés payés à leur date. Décoche seulement
+                ce qui n'a pas été payé : il passera dans « Ce que tu dois ».
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -3529,6 +3602,242 @@ function NoteDuMois({ config, ym, onSave }) {
   );
 }
 
+
+/* ------------------------------------------------------------------ */
+/*  LES SIGNAUX : quatre dessins pour repérer un problème sans chercher */
+/* ------------------------------------------------------------------ */
+
+/* Ce que chaque jour du mois a rapporté et coûté, jusqu'à aujourd'hui. */
+function parJourDuMois(entries, ym, M, keys) {
+  const [an, mo] = ym.split("-").map(Number);
+  const nbJours = new Date(an, mo, 0).getDate();
+  const auj = new Date().toISOString().slice(0, 10);
+  const dernier = ym === auj.slice(0, 7) ? Number(auj.slice(8, 10)) : (ym < auj.slice(0, 7) ? nbJours : 0);
+  const quota = nbJours > 0 ? (M.chargesDuMois || 0) / nbJours : 0;
+  const duMois = (entries || []).filter((e) => (e.date || "").slice(0, 7) === ym);
+  const jours = [];
+  for (let j = 1; j <= dernier; j++) {
+    const iso = ym + "-" + String(j).padStart(2, "0");
+    const d = duMois.filter((e) => e.date === iso);
+    const venteDe = (e) => { const t = num(e.espece) + num(e.carte); return t > 0 ? t : num(e.montant); };
+    const rec = d.filter((e) => e.type === "vente").reduce((s, e) => s + venteDe(e), 0)
+      + d.filter((e) => e.type === "resa" && !e.aRecevoir).reduce((s, e) => s + num(e.montant), 0);
+    const sortie = d.filter((e) => ["depense", "invest"].includes(e.type)).reduce((s, e) => s + num(e.montant), 0)
+      + d.filter((e) => (e.type === "avance" && e.nature !== "salaire") || e.type === "perso")
+          .reduce((s, e) => s + num(e.montant), 0)
+      + quota;
+    const parK = {};
+    (keys || []).forEach((k) => {
+      const v = d.filter((e) => e.type === "vente" && e.affaire === k);
+      parK[k] = { vente: v.reduce((s, e) => s + venteDe(e), 0), saisi: v.length > 0,
+                  matiere: d.filter((e) => e.type === "depense" && e.affaire === k && e.categorie === "matiere")
+                            .reduce((s, e) => s + num(e.montant), 0) };
+    });
+    jours.push({ j, iso, rec, sortie, parK });
+  }
+  return { jours, nbJours, dernier };
+}
+
+function CourbeMois({ jours, nbJours, M }) {
+  if (!jours.length) return null;
+  const W = 600, H = 190, g = 34, b = 22;
+  let cr = 0, cs = 0;
+  const pts = jours.map((x) => { cr += x.rec; cs += x.sortie; return { j: x.j, cr, cs }; });
+  const haut = Math.max(1, ...pts.map((p) => Math.max(p.cr, p.cs)));
+  const X = (j) => g + ((j - 1) / Math.max(1, nbJours - 1)) * (W - g - 8);
+  const Y = (v) => H - b - (v / haut) * (H - b - 10);
+  const ligne = (cle) => pts.map((p) => X(p.j).toFixed(1) + "," + Y(p[cle]).toFixed(1)).join(" ");
+  const fin = pts[pts.length - 1];
+  const ecart = fin.cr - fin.cs;
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 10 }}>
+        <div className="eyebrow">Ventes contre dépenses, jour après jour</div>
+        <span className="mini" style={{ color: ecart >= 0 ? "#5E8F1E" : "#C9503A" }}>
+          {ecart >= 0 ? "devant de " + fmt(ecart) : "en dessous de " + fmt(-ecart)}
+        </span>
+      </div>
+      <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: "auto", display: "block" }}
+           role="img" aria-label="Ventes et dépenses cumulées depuis le 1er du mois">
+        {[0, .5, 1].map((t) => (
+          <g key={t}>
+            <line x1={g} x2={W - 8} y1={Y(haut * t)} y2={Y(haut * t)} stroke="#E4E9D6" strokeWidth="1" />
+            <text x={g - 5} y={Y(haut * t) + 4} fontSize="11" textAnchor="end" fill="#8A9680">
+              {Math.round(haut * t / 1000)}k
+            </text>
+          </g>
+        ))}
+        {[1, 10, 20, nbJours].map((j) => (
+          <text key={j} x={X(j)} y={H - 6} fontSize="11" textAnchor="middle" fill="#8A9680">{j}</text>
+        ))}
+        <polyline points={ligne("cs")} fill="none" stroke="#C98A1E" strokeWidth="2.5" strokeLinejoin="round" />
+        <polyline points={ligne("cr")} fill="none" stroke="#5E8F1E" strokeWidth="2.5" strokeLinejoin="round" />
+        <circle cx={X(fin.j)} cy={Y(fin.cr)} r="4" fill="#5E8F1E" />
+        <circle cx={X(fin.j)} cy={Y(fin.cs)} r="4" fill="#C98A1E" />
+      </svg>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
+        <span className="mini" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span className="dot" style={{ background: "#5E8F1E", margin: 0 }} />Encaissé : {fmt(fin.cr)}
+        </span>
+        <span className="mini" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span className="dot" style={{ background: "#C98A1E", margin: 0 }} />Sorti : {fmt(fin.cs)}
+        </span>
+      </div>
+      <div className="note">
+        Le vert est tout ce qui est rentré depuis le 1er, l'orange tout ce qui est sorti (achats, charges
+        fixes étalées jour par jour, investissements, prélèvements). Tant que le vert est au-dessus,
+        le mois se paie tout seul. Quand l'orange passe devant, le mois est en train de glisser.
+      </div>
+    </div>
+  );
+}
+
+function MatiereDuJour({ jours, M, config }) {
+  const lignes = (M.keys || []).filter((k) => (config.seuils || {})[k] && M.A[k].ca > 0
+    && jours.some((x) => x.parK[k] && x.parK[k].vente > 0));
+  if (!lignes.length) return null;
+  return (
+    <div className="card">
+      <div className="eyebrow" style={{ marginBottom: 12 }}>Le coût matière, au fil du mois</div>
+      {lignes.map((k) => {
+        const cible = config.seuils[k].matiere;
+        let v = 0, m = 0;
+        const serie = jours.map((x) => { v += x.parK[k].vente; m += x.parK[k].matiere;
+                                         return v > 0 ? (m / v) * 100 : null; });
+        const reel = M.A[k].ca > 0 ? (M.A[k].matiereReelle / M.A[k].ca) * 100 : 0;
+        const etat = reel <= cible ? "#5E8F1E" : reel <= cible * 1.15 ? "#C98A1E" : "#C9503A";
+        const vals = serie.filter((x) => x !== null);
+        const max = Math.max(cible * 1.6, ...vals, 1);
+        const W = 260, H = 46;
+        const X = (i) => (i / Math.max(1, serie.length - 1)) * (W - 4) + 2;
+        const Y = (p) => H - 4 - (Math.min(p, max) / max) * (H - 8);
+        const pts = serie.map((p, i) => p === null ? null : X(i).toFixed(1) + "," + Y(p).toFixed(1)).filter(Boolean).join(" ");
+        return (
+          <div key={k} style={{ display: "flex", alignItems: "center", gap: 14, padding: "8px 0",
+                                borderBottom: "1px solid #EEF1E4", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 130px", minWidth: 120 }}>
+              <div style={{ fontSize: 16.5 }}>{config.affaires[k].nom}</div>
+              <div className="mini">cible {cible} %</div>
+            </div>
+            <svg viewBox={"0 0 " + W + " " + H} style={{ flex: "2 1 160px", width: "100%", maxWidth: 300, height: 46 }}>
+              <line x1="0" x2={W} y1={Y(cible)} y2={Y(cible)} stroke="#B9C2A8" strokeDasharray="4 4" />
+              <polyline points={pts} fill="none" stroke={etat} strokeWidth="2.5" strokeLinejoin="round" />
+            </svg>
+            <div style={{ flex: "0 0 74px", textAlign: "right", fontSize: 20, color: etat }}>
+              {Math.round(reel)} %
+            </div>
+          </div>
+        );
+      })}
+      <div className="note">
+        Pour 100 DH vendus, combien ont été dépensés en marchandise (viande, légumes, boissons…) depuis le 1er.
+        La ligne pointillée est ta cible. Une courbe qui monte au-dessus : on achète trop, ou des ventes
+        ne sont pas saisies.
+      </div>
+    </div>
+  );
+}
+
+function CalendrierSaisies({ jours, nbJours, M, config }) {
+  const lignes = (M.keys || []).filter((k) => jours.some((x) => x.parK[k] && x.parK[k].saisi));
+  if (!lignes.length) return null;
+  const auj = new Date().toISOString().slice(0, 10);
+  return (
+    <div className="card">
+      <div className="eyebrow" style={{ marginBottom: 12 }}>Les jours où les ventes ont été saisies</div>
+      {lignes.map((k) => {
+        const manquants = jours.filter((x) => !x.parK[k].saisi && x.iso !== auj);
+        return (
+          <div key={k} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 16.5 }}>{config.affaires[k].nom}</span>
+              <span className="mini" style={{ color: manquants.length ? "#C9503A" : "#5E8F1E" }}>
+                {manquants.length ? manquants.length + " jour" + (manquants.length > 1 ? "s" : "") + " sans vente"
+                                  : "tout est saisi"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 3 }}>
+              {jours.map((x) => (
+                <div key={x.j} title={x.j + "/" + ym2(x.iso) + (x.parK[k].saisi ? " — " + fmt(x.parK[k].vente) : " — rien saisi")}
+                     style={{ flex: 1, height: 18, borderRadius: 3, minWidth: 0,
+                              background: x.parK[k].saisi ? teinte(config.affaires[k]) : "transparent",
+                              border: x.parK[k].saisi ? "none" : "1.5px solid #C9503A" }} />
+              ))}
+              {Array.from({ length: Math.max(0, nbJours - jours.length) }).map((_, i) => (
+                <div key={"f" + i} style={{ flex: 1, height: 18, borderRadius: 3, minWidth: 0, background: "#F0F2E8" }} />
+              ))}
+            </div>
+            {manquants.length > 0 && (
+              <div className="mini" style={{ marginTop: 5 }}>
+                Sans vente : {manquants.slice(0, 10).map((x) => x.j).join(", ")}{manquants.length > 10 ? "…" : ""}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="note">
+        Un carré plein = une vente saisie ce jour-là. Un carré vide à bordure rouge = rien saisi : oubli,
+        ou jour de fermeture. Un oubli fausse tout le reste (coût matière, résultat), donc ça se voit ici en premier.
+      </div>
+    </div>
+  );
+}
+const ym2 = (iso) => iso.slice(5, 7);
+
+function AchatsParFournisseur({ entries, ym, config }) {
+  const noms = {};
+  (config.fournisseurs || []).forEach((f) => { noms[f.id] = f.nom; });
+  const groupes = {};
+  (entries || []).filter((e) => e.type === "depense" && (e.date || "").slice(0, 7) === ym
+                              && e.affaire !== "foyer").forEach((e) => {
+    const nom = e.fournisseur && noms[e.fournisseur] ? noms[e.fournisseur]
+      : String(e.lbl || "Divers").split(/[—–-]/).pop().trim().slice(0, 28) || "Divers";
+    const g = groupes[nom] || (groupes[nom] = { nom, total: 0, du: 0 });
+    g.total += num(e.montant);
+    if (e.aPayer) g.du += num(e.montant);
+  });
+  const liste = Object.values(groupes).sort((a, b) => b.total - a.total).slice(0, 8);
+  if (!liste.length) return null;
+  const haut = Math.max(1, ...liste.map((g) => g.total));
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
+        <div className="eyebrow">Où vont les achats</div>
+        <span className="mini">partie claire : pas encore payé</span>
+      </div>
+      {liste.map((g) => (
+        <div key={g.nom} style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+            <span style={{ fontSize: 16 }}>{g.nom}</span>
+            <span className="affNum" style={{ fontSize: 16 }}>{fmt(g.total)}</span>
+          </div>
+          <div style={{ display: "flex", height: 11, width: Math.max(2, (g.total / haut) * 100) + "%" }}>
+            <div style={{ flex: g.total - g.du, background: "#C98A1E", borderRadius: "4px 0 0 4px" }} />
+            <div style={{ flex: g.du, background: "#C98A1E", opacity: .3, borderRadius: g.total === g.du ? 4 : "0 4px 4px 0" }} />
+          </div>
+        </div>
+      ))}
+      <div className="note">
+        Les huit plus gros postes d'achats du mois. Un poste qui grossit d'un mois sur l'autre, ou une grosse
+        partie claire (non payée), se repère d'un coup d'œil.
+      </div>
+    </div>
+  );
+}
+
+function Signaux({ M, config, ym, entries }) {
+  const { jours, nbJours } = parJourDuMois(entries, ym, M, M.keys);
+  return (
+    <>
+      <Rythme M={M} config={config} />
+      <CourbeMois jours={jours} nbJours={nbJours} M={M} />
+      <MatiereDuJour jours={jours} M={M} config={config} />
+      <CalendrierSaisies jours={jours} nbJours={nbJours} M={M} config={config} />
+      <AchatsParFournisseur entries={entries} ym={ym} config={config} />
+    </>
+  );
+}
+
 function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, onMaj, onSaveConfig,
                     taches, onAddTache, onMajTache, onDelTache }) {
   const [detail, setDetail] = useState(false);
@@ -3602,6 +3911,8 @@ function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, on
         </div>
         <NoteDuMois config={config} ym={ym} onSave={onSaveConfig} />
       </div>
+
+      <Signaux M={M} config={config} ym={ym} entries={entries} />
 
       <div className="card">
         <h2 className="h2">Où part l'argent</h2>
@@ -3734,14 +4045,7 @@ function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, on
       <Coherence M={M} config={config} onAller={onAller} />
 
       {/* Ligne 2 — ce qui s'est passé, et qu'on peut encore corriger */}
-      <div className="board">
-        <div className="col">
-          <BarresCA M={M} config={config} onAller={onAller} />
-        </div>
-        <div className="col">
-          <Rythme M={M} config={config} />
-        </div>
-      </div>
+      <BarresCA M={M} config={config} onAller={onAller} />
 
       {/* Ligne 3 — ce qui arrive. En deux colonnes, la gauche se vidait et
           laissait une demi-page de creme sous le bloc le plus consulte : les
@@ -3830,10 +4134,10 @@ function Saisie({ config, ym, onAdd, entries }) {
         <div className="pos" style={{ fontSize: 16.5 }}>{ok}</div></div>}
 
       {type === "vente"   && <FVente   config={config} defDate={defDate} onAdd={onAdd} flash={flash} entries={entries} />}
-      {type === "resa"    && <FResa    config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
+      {type === "resa"    && <FResa    config={config} defDate={defDate} onAdd={onAdd} flash={flash} entries={entries} />}
       {type === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
       {type === "depense" && <FDepense config={config} defDate={defDate} onAdd={onAdd} flash={flash} deja={deja} entries={entries} />}
-      {type === "avance"  && <FAvance  defDate={defDate} onAdd={onAdd} flash={flash} config={config} />}
+      {type === "avance"  && <FAvance  defDate={defDate} onAdd={onAdd} flash={flash} config={config} entries={entries} />}
       {type === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
     </>
   );
@@ -4040,7 +4344,7 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
   );
 }
 
-function FResa({ config, defDate, onAdd, flash, fixe }) {
+function FResa({ config, defDate, onAdd, flash, fixe, entries }) {
   const liste = hebergeurs(config);
   const [affaire, setAffaire] = useState(fixe || (liste[0] ? liste[0][0] : ""));
   const [date, setDate] = useState(defDate);
@@ -4058,6 +4362,18 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
   const valider = () => {
     if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
     if (num(nuits) <= 0)   { setErreur("Nombre de nuits manquant."); return; }
+    /* Un code de séjour appartient à une seule réservation : saisi deux fois
+       (par toi puis par SAIB), il gonflerait la recette. On refuse. */
+    const refSaisie = reference.trim().toLowerCase();
+    const dejaResa = refSaisie
+      ? (entries || []).find((x) => x.type === "resa" && (x.reference || "").trim().toLowerCase() === refSaisie)
+      : null;
+    if (dejaResa) {
+      setErreur("Code déjà enregistré : réservation du " + (dejaResa.date || "").slice(8, 10) + "/"
+        + (dejaResa.date || "").slice(5, 7) + " · " + fmt(num(dejaResa.montant))
+        + ". Pas enregistrée une seconde fois.");
+      return;
+    }
     setErreur("");
     onAdd({ type: "resa", date, affaire, source, nuits: num(nuits), montant: num(montant),
             reference: reference.trim(), aRecevoir });
@@ -4239,6 +4555,21 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
   );
 }
 
+/* Les bons de livraison qu'une facture peut solder : ceux du même fournisseur,
+   de la même activité, encore « à régler ». La facture REMPLACE ces BL, elle ne
+   s'ajoute pas : on ne compte que l'écart entre son total et leur somme. */
+function rapprochementBL(entries, affaire, fournisseurId, totalFacture, exclus) {
+  const bls = fournisseurId
+    ? (entries || []).filter((e) => e.type === "depense" && e.aPayer && e.piece === "bl"
+        && e.affaire === affaire && e.fournisseur === fournisseurId)
+        .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+    : [];
+  const choisis = bls.filter((b) => !(exclus || []).includes(b.id));
+  const somme = choisis.reduce((s, b) => s + num(b.montant), 0);
+  const ecart = Math.round((num(totalFacture) - somme) * 100) / 100;
+  return { bls, choisis, somme, ecart };
+}
+
 function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const [date, setDate] = useState(defDate);
   const [affaire, setAffaire] = useState(fixe || "sabich");
@@ -4250,10 +4581,17 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const [aPayer, setAPayer] = useState(false);
   const [poche, setPoche] = useState("");
   const [exceptionnel, setExceptionnel] = useState(false);
+  const [marchandise, setMarchandise] = useState(false);
   const [erreur, setErreur] = useState("");
 
   const liste = (config.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
   const courant = liste.find((f) => f.id === choix);
+
+  const [rapprocher, setRapprocher] = useState(true);
+  const [exclus, setExclus] = useState([]);
+  const rap = rapprochementBL(entries, affaire, piece === "facture" && courant ? courant.id : null,
+                              montant, exclus);
+  const actif = rap.bls.length > 0 && rapprocher && rap.choisis.length > 0;
 
   /* Un numéro de pièce appartient à une seule livraison. Le même numéro chez le
      même fournisseur, c'est la même marchandise : soit le bon de livraison et sa
@@ -4307,18 +4645,30 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
     }
     setErreur("");
     const nom = nomTiers;
-    const ok = await onAdd({ type: "depense", date, affaire,
-            categorie: courant ? "matiere" : "autre",
+    const pocheSortie = aPayer ? "" : (poche || caisseDe(config, affaire));
+    /* Une facture qui solde des BL : elle ne s'ajoute pas au coût, seul l'écart
+       compte. Les BL passent en réglés si la facture l'est, sinon ils restent dus. */
+    const ids = actif ? rap.choisis.map((b) => b.id) : [];
+    const ok = await onAdd(actif
+      ? { type: "depense", date, affaire, categorie: "matiere",
+          fournisseur: courant.id, piece, numero: numero.trim(), aPayer, exceptionnel,
+          poche: pocheSortie,
+          lbl: nom + " — facture solde " + ids.length + " BL",
+          montant: rap.ecart, totalFacture: num(montant), blsSoldes: ids,
+          solde: { ids, champs: { facture: numero.trim(), factureLe: date,
+                    ...(aPayer ? {} : { aPayer: false, regleLe: aujourdhui(), poche: pocheSortie }) } } }
+      : { type: "depense", date, affaire,
+            categorie: (courant || piece === "bl" || marchandise) ? "matiere" : "autre",
             fournisseur: courant ? courant.id : null,
             piece, numero: numero.trim(), aPayer, exceptionnel,
-            poche: aPayer ? "" : (poche || caisseDe(config, affaire)),
+            poche: pocheSortie,
             lbl: nom, montant: num(montant) });
     if (ok === false) {
       setErreur("Pas enregistré — ne quitte pas cette page, vérifie ta connexion et réessaie.");
       return;
     }
     flash(nom + " — enregistré.");
-    setMontant(""); setLbl(""); setNumero(""); setExceptionnel(false);
+    setMontant(""); setLbl(""); setNumero(""); setExceptionnel(false); setMarchandise(false);
   };
 
   return (
@@ -4371,6 +4721,16 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
                  onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
       </div>
 
+      {!courant && piece !== "bl" && (
+        <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+          <button className={"pill" + (marchandise ? " on" : "")}
+                  onClick={() => setMarchandise(!marchandise)}>
+            {marchandise ? "✓ " : ""}Marchandise (nourriture, boissons, ingrédients)
+          </button>
+          <span className="mini">Non cochée = charge (nettoyage, réparation, électricité…)</span>
+        </div>
+      )}
+
       <label className="f">Justificatif</label>
       <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
         <button className={"pill" + (piece === "bl" ? " on" : "")}
@@ -4422,6 +4782,60 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
         </div>
       )}
 
+      {piece === "bl" && !courant && liste.length > 0 && (
+        <div className="mini" style={{ marginBottom: 14, color: "#C9503A" }}>
+          Choisis le fournisseur dans la liste : sans lui, sa facture de fin de mois ne pourra
+          pas solder ce bon de livraison.
+        </div>
+      )}
+
+      {piece === "facture" && rap.bls.length > 0 && (
+        <div style={{ background: "#FDF6E7", border: "1px solid #E9D9AE", borderRadius: 12,
+                      padding: "12px 14px", marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 500, color: "#8A6A1C" }}>
+            {rap.bls.length} bon{rap.bls.length > 1 ? "s" : ""} de livraison non payé
+            {rap.bls.length > 1 ? "s" : ""} chez {courant.nom}
+          </div>
+          <div style={{ display: "flex", gap: 9, margin: "10px 0", flexWrap: "wrap" }}>
+            <button className={"pill" + (rapprocher ? " on" : "")}
+                    onClick={() => setRapprocher(true)}>Cette facture les solde</button>
+            <button className={"pill" + (!rapprocher ? " on" : "")}
+                    onClick={() => setRapprocher(false)}>Non, autre achat</button>
+          </div>
+          {rapprocher && (
+            <>
+              {rap.bls.map((b) => {
+                const pris = !exclus.includes(b.id);
+                return (
+                  <div className="row" key={b.id}>
+                    <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Coche paye={pris} onClick={() => setExclus(pris ? [...exclus, b.id]
+                                                                       : exclus.filter((x) => x !== b.id))} />
+                      <span>BL du {(b.date || "").slice(8, 10)}/{(b.date || "").slice(5, 7)}
+                        {b.numero ? " · n° " + b.numero : ""}</span>
+                    </span>
+                    <span className="val">{fmt(num(b.montant))}</span>
+                  </div>
+                );
+              })}
+              <div className="row rowTot">
+                <span className="lbl">Total des BL cochés</span>
+                <span className="val">{fmt(rap.somme)}</span>
+              </div>
+              {num(montant) > 0 && (
+                <div className="mini" style={{ marginTop: 8, color: "#8A6A1C" }}>
+                  {Math.abs(rap.ecart) < 1
+                    ? "La facture correspond exactement aux BL : aucun coût en plus."
+                    : rap.ecart > 0
+                      ? "La facture dépasse les BL de " + fmt(rap.ecart) + " : seul cet écart s'ajoute au coût. À vérifier avec le fournisseur."
+                      : "La facture est plus basse que les BL de " + fmt(-rap.ecart) + " : le coût du mois baisse d'autant."}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Un achat qui ne reviendra pas le mois prochain ne doit pas peser dans
           ce qu'on croit être le coût normal du mois. */}
       <label className="f">Ça revient tous les mois ?</label>
@@ -4450,16 +4864,24 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   );
 }
 
-function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
+function FAvance({ defDate, onAdd, flash, config, natureFixe, entries }) {
   const [date, setDate] = useState(defDate);
   const [nature, setNature] = useState(natureFixe || "salaire");
   const [ref, setRef] = useState("");
   const [qui, setQui] = useState("");
   const [montant, setMontant] = useState("");
+  const [precision, setPrecision] = useState("");
   const [erreur, setErreur] = useState("");
 
   const salaries = (config.fixes || []).filter((f) => f.sal);
   const perso = salaries.find((s) => s.id === ref);
+
+  /* Chaque avance d'une personne porte un numéro dans le mois (n°1, n°2…) :
+     on voit tout de suite combien ont été données, et une saisie en double saute aux yeux. */
+  const duMois = (entries || []).filter((e) => e.type === "avance" && e.nature === nature
+    && (e.date || "").slice(0, 7) === (date || "").slice(0, 7)
+    && (nature === "salaire" ? e.ref === ref : String(e.qui || "").trim().toLowerCase() === qui.trim().toLowerCase()));
+  const prochain = duMois.length + 1;
 
   const valider = () => {
     if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
@@ -4468,14 +4890,24 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
       setErreur("Choisis la personne — sans elle, l'avance ne sera déduite d'aucun salaire.");
       return;
     }
+    /* Même personne, même jour, même montant, même précision : c'est deux fois la
+       même avance. L'app refuse ; pour une vraie seconde avance, ajoute un mot. */
+    const jumelle = duMois.find((e) => e.date === date && Math.abs(num(e.montant) - num(montant)) < 0.01
+      && String(e.precision || "").trim().toLowerCase() === precision.trim().toLowerCase());
+    if (jumelle) {
+      setErreur("Déjà saisi : avance n°" + (jumelle.numero || "?") + ", " + fmt(num(montant)) + ", le "
+        + date.slice(8, 10) + "/" + date.slice(5, 7)
+        + ". Si c'est bien une seconde avance identique, ajoute un mot dans « Précision » (ex. « le soir »).");
+      return;
+    }
     setErreur("");
-    onAdd({ type: "avance", date, nature,
+    onAdd({ type: "avance", date, nature, numero: prochain, precision: precision.trim(),
             affaire: nature === "perso" ? "foyer" : null,
             ref: nature === "salaire" ? ref : null,
             qui: nature === "salaire" ? (perso ? perso.lbl : "—") : (qui || "—"),
             montant: num(montant) });
-    flash("Avance enregistrée.");
-    setQui(""); setMontant("");
+    flash("Avance n°" + prochain + " enregistrée.");
+    setQui(""); setMontant(""); setPrecision("");
   };
 
   return (
@@ -4511,6 +4943,16 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
           </>
         )}
       </div>
+      <div style={{ marginBottom: 12 }}><label className="f">Précision (facultatif)</label>
+        <input className="f" placeholder="Pour distinguer deux avances identiques" value={precision}
+               onChange={(e) => { setPrecision(e.target.value); setErreur(""); }} /></div>
+      {duMois.length > 0 && (
+        <div className="mini" style={{ marginBottom: 12 }}>
+          Déjà ce mois-ci : {duMois.map((e) => "n°" + (e.numero || "?") + " " + fmt(num(e.montant))
+            + " (" + (e.date || "").slice(8, 10) + "/" + (e.date || "").slice(5, 7) + ")").join(" · ")}.
+          Celle-ci sera la n°{prochain}.
+        </div>
+      )}
       <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
@@ -4718,7 +5160,7 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
         <div style={{ background: c.tint, borderRadius: 12, padding: "4px 16px 16px",
                       marginTop: 12 }}>
           {form === "vente"   && <FVente   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} entries={entries} />}
-          {form === "resa"    && <FResa    config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
+          {form === "resa"    && <FResa    config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} entries={entries} />}
           {form === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
           {form === "depense" && <FDepense config={config} defDate={defDate} onAdd={ajouter} flash={flash} deja={deja} fixe={k} entries={entries} />}
           {form === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
@@ -5225,7 +5667,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                                         onReporter={onReporter} onDater={onDater} onPocher={onPocher}
                                         onChiffrer={onChiffrer} filtre={k} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
-                                      onAdd={onAdd} ym={ym} filtre={k} />}
+                                      onAdd={onAdd} ym={ym} filtre={k} entries={entries} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
                                         onDel={onDel} onMaj={onMaj} filtre={k} />}
       {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
@@ -6127,7 +6569,7 @@ function LigneEcheance({ e, nom, couleur, jourActuel, onRegler, onReporter, onCh
   );
 }
 
-function Paie({ M, config, onRegler, onAdd, ym, filtre }) {
+function Paie({ M, config, onRegler, onAdd, ym, filtre, entries }) {
   const [prime, setPrime] = useState("");
   const [mtPrime, setMtPrime] = useState("");
   const [erreurPrime, setErreurPrime] = useState("");
@@ -6176,7 +6618,7 @@ function Paie({ M, config, onRegler, onAdd, ym, filtre }) {
       </div>
 
       <div className="card">
-        <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="salaire" />
+        <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="salaire" entries={entries} />
       </div>
 
       <div className="card">
@@ -6486,7 +6928,7 @@ function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
         </div>
 
         <div style={{ marginTop: 20 }}>
-          <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="perso" />
+          <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="perso" entries={entries} />
         </div>
       </div>
 
@@ -6767,7 +7209,7 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
 
 function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
   const list = entries.filter((e) => (e.date || "").startsWith(ym)
-                                     && e.type !== "paye" && e.type !== "reporte"
+                                     && e.type !== "paye" && e.type !== "reporte" && e.type !== "impaye"
                                      && (!filtre || e.affaire === filtre))
                       .sort((a, b) => (a.date < b.date ? 1 : -1));
 
