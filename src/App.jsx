@@ -420,10 +420,9 @@ const DEFAULT_CONFIG = {
     { id: "p12", nom: "Produits d'accueil",   affaires: ["riad"],           rythme: "besoin" },
   ],
   cle: { sabich: 50, tmsk: 10, taam: 40 },
-  structures: [
-    { id: "s1", lbl: "Le Mi-Chui — comptable",   montant: 1250, jour: 10, societe: "michui" },
-    { id: "s2", lbl: "Gourmet Souk — existence", montant: 1667, jour: 10, societe: "gourmet" },
-  ],
+  /* Les honoraires de comptable ne sont plus comptés : les factures n'arrivent
+     pas chaque mois et brouillaient le résultat. À rétablir sur demande. */
+  structures: [],
   cnss: {
     michui:  { actif: false, montant: 9930 },
     gourmet: { actif: false, montant: 0 },
@@ -1024,6 +1023,7 @@ function reprendre(saved) {
   delete c.riad;
 
   c.fournisseurs = saved.fournisseurs || DEFAULT_CONFIG.fournisseurs;
+  c.structures = [];
   c.societes = (saved.societes && saved.societes.length) ? saved.societes : DEFAULT_CONFIG.societes;
   c.seuils = { ...(saved.seuils || DEFAULT_CONFIG.seuils) };
   c.chantiers = saved.chantiers || DEFAULT_CONFIG.chantiers;
@@ -2172,7 +2172,7 @@ function calcul(config, entries, ym) {
     ["Commissions et charges variables", keys.reduce((s, k) => s + A[k].variableReelle, 0)],
     ["Charges fixes des activités",      keys.reduce((s, k) => s + A[k].fixes + A[k].partage, 0)],
     ["CNSS",                             keys.reduce((s, k) => s + A[k].cnss, 0)],
-    ["Structure (société, comptable)",   structure],
+    ["Structure (société)",   structure],
     ["La maison et vos rémunérations",   enveloppe],
     ["Solidarité",                       solidarite],
     ["Investissements",                  invests],
@@ -3622,7 +3622,8 @@ function parJourDuMois(entries, ym, M, keys) {
     const venteDe = (e) => { const t = num(e.espece) + num(e.carte); return t > 0 ? t : num(e.montant); };
     const rec = d.filter((e) => e.type === "vente").reduce((s, e) => s + venteDe(e), 0)
       + d.filter((e) => e.type === "resa" && !e.aRecevoir).reduce((s, e) => s + num(e.montant), 0);
-    const sortie = d.filter((e) => ["depense", "invest"].includes(e.type)).reduce((s, e) => s + num(e.montant), 0)
+    const achats = d.filter((e) => ["depense", "invest"].includes(e.type)).reduce((s, e) => s + num(e.montant), 0);
+    const sortie = achats
       + d.filter((e) => (e.type === "avance" && e.nature !== "salaire") || e.type === "perso")
           .reduce((s, e) => s + num(e.montant), 0)
       + quota;
@@ -3633,7 +3634,7 @@ function parJourDuMois(entries, ym, M, keys) {
                   matiere: d.filter((e) => e.type === "depense" && e.affaire === k && e.categorie === "matiere")
                             .reduce((s, e) => s + num(e.montant), 0) };
     });
-    jours.push({ j, iso, rec, sortie, parK });
+    jours.push({ j, iso, rec, sortie, achats, parK });
   }
   return { jours, nbJours, dernier };
 }
@@ -3738,46 +3739,76 @@ function MatiereDuJour({ jours, M, config }) {
   );
 }
 
-function CalendrierSaisies({ jours, nbJours, M, config }) {
+function CalendrierSaisies({ jours, nbJours, M, config, ym }) {
   const lignes = (M.keys || []).filter((k) => jours.some((x) => x.parK[k] && x.parK[k].saisi));
   if (!lignes.length) return null;
   const auj = new Date().toISOString().slice(0, 10);
+  const [an, mo] = ym.split("-").map(Number);
+  /* La semaine commence le lundi : on décale le 1er du mois d'autant de cases. */
+  const decalage = (new Date(an, mo - 1, 1).getDay() + 6) % 7;
+  const parJour = {};
+  jours.forEach((x) => { parJour[x.j] = x; });
+  const court = (v) => v >= 1000 ? (Math.round(v / 100) / 10).toString().replace(".", ",") + "k" : String(Math.round(v));
+  const manquants = jours.filter((x) => x.iso !== auj && lignes.some((k) => !x.parK[k].saisi));
+  const totRec = jours.reduce((s, x) => s + x.rec, 0);
+  const totAch = jours.reduce((s, x) => s + x.achats, 0);
+  const cases = [];
+  for (let i = 0; i < decalage; i++) cases.push(null);
+  for (let j = 1; j <= nbJours; j++) cases.push(j);
   return (
     <div className="card">
-      <div className="eyebrow" style={{ marginBottom: 12 }}>Les jours où les ventes ont été saisies</div>
-      {lignes.map((k) => {
-        const manquants = jours.filter((x) => !x.parK[k].saisi && x.iso !== auj);
-        return (
-          <div key={k} style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: 16.5 }}>{config.affaires[k].nom}</span>
-              <span className="mini" style={{ color: manquants.length ? "#C9503A" : "#5E8F1E" }}>
-                {manquants.length ? manquants.length + " jour" + (manquants.length > 1 ? "s" : "") + " sans vente"
-                                  : "tout est saisi"}
-              </span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <div className="eyebrow">Le mois, jour par jour</div>
+        <span className="mini" style={{ color: manquants.length ? "#C9503A" : "#5E8F1E" }}>
+          {manquants.length ? manquants.length + " jour" + (manquants.length > 1 ? "s" : "") + " avec une vente non saisie"
+                            : "toutes les ventes sont saisies"}
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        {["lun", "mar", "mer", "jeu", "ven", "sam", "dim"].map((n) => (
+          <div key={n} className="mini" style={{ textAlign: "center", fontSize: 12.5 }}>{n}</div>
+        ))}
+        {cases.map((j, i) => {
+          if (j === null) return <div key={"v" + i} />;
+          const x = parJour[j];
+          const iso = ym + "-" + String(j).padStart(2, "0");
+          const futur = !x;
+          const oubli = x && iso !== auj && lignes.some((k) => !x.parK[k].saisi);
+          return (
+            <div key={j} style={{ minHeight: 70, borderRadius: 8, padding: "5px 4px", minWidth: 0,
+                                  background: futur ? "#F4F6EC" : "#FFFFFF",
+                                  border: oubli ? "1.5px solid #C9503A" : iso === auj ? "1.5px solid #5E8F1E" : "1px solid #E4E9D6",
+                                  display: "flex", flexDirection: "column", gap: 2, textAlign: "center" }}>
+              <div style={{ fontSize: 12.5, color: "#8A9680", fontWeight: iso === auj ? 600 : 400 }}>{j}</div>
+              {x && x.rec > 0 && <div style={{ fontSize: 13.5, color: "#5E8F1E", lineHeight: 1.15 }}>{court(x.rec)}</div>}
+              {x && x.achats > 0 && <div style={{ fontSize: 13.5, color: "#C98A1E", lineHeight: 1.15 }}>−{court(x.achats)}</div>}
+              {x && (
+                <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: "auto" }}>
+                  {lignes.map((k) => (
+                    <span key={k} title={config.affaires[k].nom + (x.parK[k].saisi ? " — " + fmt(x.parK[k].vente) : " — rien saisi")}
+                          style={{ width: 9, height: 9, borderRadius: 5, boxSizing: "border-box",
+                                   background: x.parK[k].saisi ? teinte(config.affaires[k]) : "transparent",
+                                   border: x.parK[k].saisi ? "none" : "1.5px solid #C9503A" }} />
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ display: "flex", gap: 3 }}>
-              {jours.map((x) => (
-                <div key={x.j} title={x.j + "/" + ym2(x.iso) + (x.parK[k].saisi ? " — " + fmt(x.parK[k].vente) : " — rien saisi")}
-                     style={{ flex: 1, height: 18, borderRadius: 3, minWidth: 0,
-                              background: x.parK[k].saisi ? teinte(config.affaires[k]) : "transparent",
-                              border: x.parK[k].saisi ? "none" : "1.5px solid #C9503A" }} />
-              ))}
-              {Array.from({ length: Math.max(0, nbJours - jours.length) }).map((_, i) => (
-                <div key={"f" + i} style={{ flex: 1, height: 18, borderRadius: 3, minWidth: 0, background: "#F0F2E8" }} />
-              ))}
-            </div>
-            {manquants.length > 0 && (
-              <div className="mini" style={{ marginTop: 5 }}>
-                Sans vente : {manquants.slice(0, 10).map((x) => x.j).join(", ")}{manquants.length > 10 ? "…" : ""}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12 }}>
+        <span className="mini"><span style={{ color: "#5E8F1E" }}>■</span> encaissé du jour : {fmt(totRec)}</span>
+        <span className="mini"><span style={{ color: "#C98A1E" }}>■</span> achats du jour : {fmt(totAch)}</span>
+        {lignes.map((k) => (
+          <span key={k} className="mini" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="dot" style={{ background: teinte(config.affaires[k]), margin: 0 }} />{config.affaires[k].nom}
+          </span>
+        ))}
+      </div>
       <div className="note">
-        Un carré plein = une vente saisie ce jour-là. Un carré vide à bordure rouge = rien saisi : oubli,
-        ou jour de fermeture. Un oubli fausse tout le reste (coût matière, résultat), donc ça se voit ici en premier.
+        Chaque case est un jour : en vert ce qui est rentré, en orange ce qui a été acheté. Les points
+        du bas disent, activité par activité, si la vente du jour a été saisie. Un point vide à bordure rouge
+        (et la case entourée de rouge) = rien saisi : oubli, ou jour de fermeture.
       </div>
     </div>
   );
@@ -3832,7 +3863,7 @@ function Signaux({ M, config, ym, entries }) {
       <Rythme M={M} config={config} />
       <CourbeMois jours={jours} nbJours={nbJours} M={M} />
       <MatiereDuJour jours={jours} M={M} config={config} />
-      <CalendrierSaisies jours={jours} nbJours={nbJours} M={M} config={config} />
+      <CalendrierSaisies jours={jours} nbJours={nbJours} M={M} config={config} ym={ym} />
       <AchatsParFournisseur entries={entries} ym={ym} config={config} />
     </>
   );
@@ -4560,7 +4591,7 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
    s'ajoute pas : on ne compte que l'écart entre son total et leur somme. */
 function rapprochementBL(entries, affaire, fournisseurId, totalFacture, exclus) {
   const bls = fournisseurId
-    ? (entries || []).filter((e) => e.type === "depense" && e.aPayer && e.piece === "bl"
+    ? (entries || []).filter((e) => e.type === "depense" && e.aPayer && e.piece === "bl" && !e.facture
         && e.affaire === affaire && e.fournisseur === fournisseurId)
         .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
     : [];
@@ -4681,7 +4712,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
             <select className="f" value={affaire}
                     onChange={(e) => { setAffaire(e.target.value); setChoix(""); }}>
               {Object.entries(config.affaires).map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
-              <option value="structure">Structure (comptable, impôts…)</option>
+              <option value="structure">Structure (société, impôts…)</option>
             </select></div>
         )}
         <div style={{ marginBottom: 12 }}><label className="f">Date de la pièce</label>
@@ -7508,7 +7539,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
         <div style={{ marginBottom: 12 }}>
           <label className="f">Activité</label>
           <select className="f" value={affaire} onChange={(x) => setAffaire(x.target.value)}>
-            {e.type === "depense" && <option value="structure">Structure (comptable, impôts…)</option>}
+            {e.type === "depense" && <option value="structure">Structure (société, impôts…)</option>}
             <option value="foyer">La maison</option>
             {Object.entries(config.affaires).map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
           </select>
@@ -8408,12 +8439,14 @@ function Reglages({ config, onSave, session, onLogout }) {
           maj({ ...c, fournisseurs: [...(c.fournisseurs || []), f] })} />
       </div>
 
+      {c.structures.length > 0 && (
       <div className="card">
         <h2 className="h2">Charges de structure</h2>
         {c.structures.map((s) => (
           <Ligne key={s.id} lbl={s.lbl} value={s.montant} onChange={(v) => majStruct(s.id, v)} />
         ))}
       </div>
+      )}
 
       {hebergeurs(c).map(([hk, ha]) => {
         const H = ha.hebergement || { extras: {} };
