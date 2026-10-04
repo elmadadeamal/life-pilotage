@@ -123,6 +123,8 @@ export const CSS = `
 .tab.clair { box-shadow: inset 1.5px 0 0 0 rgba(62,52,42,.22), inset -1.5px 0 0 0 rgba(62,52,42,.22),
                          inset 0 1.5px 0 0 rgba(62,52,42,.22); }
 .tab.on { filter:none; }
+/* TAAM garde son ivoire même au repos : éclairci, il virait au blanc. */
+.tab.garde, .tab.garde:hover { filter:none; }
 .tab .lib { color:#fff; font-size:13px; font-weight:500; letter-spacing:.13em;
   text-transform:uppercase; white-space:nowrap; text-align:center; line-height:1.35; }
 .tab img { max-height:46px; max-width:88px; width:auto; object-fit:contain; display:block; }
@@ -629,7 +631,7 @@ const HABIT = {
   /* Octobre 2026 : nouvelle identité. L'intercalaire se lit à l'envers, comme
      TMSK : logo vert #315A46 sur ivoire #F2E9D8 — en aplat vert il se
      confondait avec Sabich. Le vert vient ensuite, dans l'en-tête. */
-  taam: { fond: "#F2E9D8", clair: true },
+  taam: { fond: "#F2E9D8", clair: true, garde: true },
 };
 
 const habit = (k, c) => HABIT[k]
@@ -671,11 +673,16 @@ const HABIT_FOYER    = { fond: "#F1B597" };
    rend sa course au degrade — le picto passe a l'encre, comme TMSK. */
 const HABIT_REGLAGES = { fond: "#7B797A" };
 
+/* L'ordre des intercalaires suit l'histoire d'Amal : ses affaires dans
+   l'ordre où elle les a créées, la maison après, les paramètres au bout. */
+const ORDRE_ONGLETS = ["sabich", "tmsk", "riad", "taam", "contenu"];
+const rangOnglet = (k) => { const i = ORDRE_ONGLETS.indexOf(k); return i < 0 ? 99 : i; };
+
 function onglets(config) {
   return [
     { id: "dash", nom: "Tableau de bord", ...HABIT_DASH,
       logo: LOGOS.pictoDash, taille: TAILLE_BLANC.dash },
-    ...vivantes(config).map(([k, c]) => {
+    ...vivantes(config).sort(([a], [b]) => rangOnglet(a) - rangOnglet(b)).map(([k, c]) => {
       const cle = LOGO_BLANC[k];
       /* Un aplat pour chacune, sans exception : le dégradé reste sur la fiche */
       return { id: k, nom: c.nom, ...habit(k, c),
@@ -1525,7 +1532,7 @@ export default function App({ session, onLogout }) {
                 onPointer={(iso, patch) => saveConfig({ ...config, pointages: { ...(config.pointages || {}), [iso]: { ...((config.pointages || {})[iso] || {}), ...patch } } })} />
         <div className="tabs">
           {onglets(config).map((o) => (
-            <button key={o.id} className={"tab" + (vue === o.id ? " on" : "") + (o.clair ? " clair" : "")}
+            <button key={o.id} className={"tab" + (vue === o.id ? " on" : "") + (o.clair ? " clair" : "") + (o.garde ? " garde" : "")}
                     onClick={() => setVue(o.id)} aria-label={o.nom} title={o.nom}
                     aria-current={vue === o.id ? "page" : undefined}
                     style={{ background: o.fond }}>
