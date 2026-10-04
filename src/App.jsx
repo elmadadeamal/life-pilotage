@@ -120,15 +120,16 @@ export const CSS = `
    rend le poids des autres, sans lui prendre sa couleur. */
 /* Le liseré des languettes claires court sur le haut et les côtés seulement :
    rien en bas, la languette se fond dans sa feuille. */
-.tab.clair { box-shadow: inset 1.5px 0 0 0 rgba(62,52,42,.22), inset -1.5px 0 0 0 rgba(62,52,42,.22),
-                         inset 0 1.5px 0 0 rgba(62,52,42,.22); }
+.tab.clair { box-shadow: none; }
 .tab.on { filter:none; }
 /* TAAM garde son ivoire même au repos : éclairci, il virait au blanc. */
 .tab.garde, .tab.garde:hover { filter:none; }
 .tab .lib { color:#fff; font-size:13px; font-weight:500; letter-spacing:.13em;
   text-transform:uppercase; white-space:nowrap; text-align:center; line-height:1.35; }
 .tab img { max-height:46px; max-width:88px; width:auto; object-fit:contain; display:block; }
-.tab:focus-visible { outline:2px solid rgba(255,255,255,.92); outline-offset:-5px; }
+/* Pas de cadre blanc intérieur au clic : sur les languettes claires il
+   dessinait un double contour. */
+.tab:focus, .tab:focus-visible { outline:none; }
 
 .nav { display:flex; gap:5px; margin: 22px 0 0; padding: 0 2px;
   align-items:flex-end; overflow-x:auto; scrollbar-width:none; border-bottom:2px solid #E4E9D6; }
