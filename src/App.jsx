@@ -3612,7 +3612,7 @@ function auditer(entries, config, ym) {
   });
 
   /* 3 — Marchandise sans fournisseur */
-  recents.filter((e) => e.type === "depense" && e.categorie === "matiere" && !e.fournisseur
+  recents.filter((e) => e.type === "depense" && e.categorie === "matiere" && !e.fournisseur && e.piece !== "bon"
                          && !/solde \d+ BL/.test(e.lbl || "")).forEach((e) => {
     q.push({ id: "mat-" + e.id, gravite: 1, famille: "Identité",
       titre: "Marchandise sans fournisseur", detail: jj(e.date) + " · " + (e.lbl || "?") + " · " + fmt(num(e.montant)),
@@ -4284,6 +4284,9 @@ function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, on
       </div>
 
       <Controle entries={entries} config={config} ym={ym} onMaj={onMaj} onAller={onAller} />
+      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler}
+               entries={entries} onMaj={onMaj} />
+
       <Signaux M={M} config={config} ym={ym} entries={entries} />
 
       <div className="card">
@@ -4299,9 +4302,6 @@ function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, on
           <span className="val">{fmt(M.sortiesPures)}</span>
         </div>
       </div>
-
-      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler}
-               entries={entries} onMaj={onMaj} />
 
       <button className="pill" onClick={() => setDetail(!detail)}
               style={{ width: "100%", padding: "13px", margin: "14px 0" }}>
@@ -5056,6 +5056,21 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
     <div className="card">
       {!fixe && config.affaires[affaire] && <Crest k={affaire} c={config.affaires[affaire]} />}
 
+      <label className="f">Que veux-tu saisir ?</label>
+      <div style={{ display: "flex", gap: 9, marginBottom: 6, flexWrap: "wrap" }}>
+        <button className={"pill" + (piece === "bl" ? " on" : "")}
+                onClick={() => { setPiece("bl"); setAPayer(true); setErreur(""); }}>Une livraison</button>
+        <button className={"pill" + (piece === "facture" ? " on" : "")}
+                onClick={() => { setPiece("facture"); setAPayer(false); setErreur(""); }}>Une facture du fournisseur</button>
+        <button className={"pill" + (piece === "bon" ? " on" : "")}
+                onClick={() => { setPiece("bon"); setAPayer(false); setErreur(""); }}>Un achat payé sur place</button>
+      </div>
+      <div className="mini" style={{ marginBottom: 16 }}>
+        {piece === "bl" ? "Le bon de livraison que le fournisseur te laisse : rien à payer maintenant, tu règles sa facture en fin de mois."
+          : piece === "facture" ? "La facture que le fournisseur t'envoie (en fin de mois, en général). Elle remplace ses bons de livraison."
+          : "Un achat réglé tout de suite, avec un ticket ou sans papier (pain, courses, petite réparation)."}
+      </div>
+
       <div className={fixe ? "" : "grid2"}>
         {!fixe && (
           <div><label className="f">Activité</label>
@@ -5112,18 +5127,13 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
         </div>
       )}
 
-      <label className="f">Justificatif</label>
-      <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-        <button className={"pill" + (piece === "bl" ? " on" : "")}
-                onClick={() => { setPiece("bl"); setAPayer(true); }}>Bon de livraison</button>
-        <button className={"pill" + (piece === "facture" ? " on" : "")}
-                onClick={() => { setPiece("facture"); setAPayer(false); }}>Facture</button>
-        <button className={"pill" + (piece === "bon" ? " on" : "")}
-                onClick={() => { setPiece("bon"); setAPayer(false); }}>Bon de dépense</button>
-        <input className="f" style={{ width: 170 }}
-               placeholder={piece === "bl" ? "N° du BL" : piece === "facture" ? "N° de facture" : "N° du bon"}
-               value={numero} onChange={(e) => { setNumero(e.target.value); setErreur(""); }} />
-      </div>
+      {piece !== "bon" && (
+        <div style={{ marginBottom: 14 }}>
+          <label className="f">{piece === "bl" ? "Numéro du bon de livraison" : "Numéro de la facture"} (obligatoire)</label>
+          <input className="f" placeholder={piece === "bl" ? "N° du BL — s'il n'y en a pas, numérote au stylo : 1, 2, 3…" : "N° de facture"}
+                 value={numero} onChange={(e) => { setNumero(e.target.value); setErreur(""); }} />
+        </div>
+      )}
 
       {dejaSaisi.length > 0 && (
         <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
@@ -5133,7 +5143,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
         </div>
       )}
 
-      {piece !== "bl" && (
+      {piece === "facture" && (
         <>
           <label className="f">Réglée ?</label>
           <div style={{ display: "flex", gap: 9, marginBottom: 14, flexWrap: "wrap" }}>
@@ -5154,6 +5164,16 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
               </select>
             </>
           )}
+        </>
+      )}
+      {piece === "bon" && (
+        <>
+          <label className="f">Payé depuis</label>
+          <select className="f" style={{ marginBottom: 14 }}
+                  value={poche || caisseDe(config, affaire)}
+                  onChange={(e) => setPoche(e.target.value)}>
+            {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          </select>
         </>
       )}
       {piece === "bl" && (
