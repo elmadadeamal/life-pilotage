@@ -516,12 +516,31 @@ const baseUnivers = (vue, config) => SOUCHE[vue]
    TAAM LIFE ») : ivoire plein jusqu'au tiers, bascule linéaire, vert plein
    à partir des deux tiers. L'en-tête est transparent : le logo vert se pose
    sur l'ivoire de la feuille. Les cartes restent blanches dessus. */
+/* Ses fichiers « BACK » (dossier TREE) : un dégradé linéaire de la couleur
+   de la maison, en haut, jusqu'au blanc en bas. TMSK se lit à l'envers
+   (blanc en haut, grège en bas) — c'est son fichier. */
+const lineaire = (haut, bas) => "linear-gradient(180deg, " + haut + " 0%, " + bas + " 100%)";
 const FEUILLE = {
-  taam: "linear-gradient(180deg, #F2E9D8 0%, #F2E9D8 33%, #315A46 67%, #315A46 100%)",
+  taam:     { haut: "#F2E9D8",
+              fond: "linear-gradient(180deg, #F2E9D8 0%, #F2E9D8 33%, #315A46 67%, #315A46 100%)" },
+  dash:     { haut: "#94D4DD", fond: lineaire("#94D4DD", "#FEFFFF") },
+  sabich:   { haut: "#015227", fond: lineaire("#015227", "#FCFDFD") },
+  riad:     { haut: "#B49A70", fond: lineaire("#B49A70", "#FEFEFD") },
+  tmsk:     { haut: "#FFFFFF", fond: lineaire("#FFFFFF", "#A69E89") },
+  contenu:  { haut: "#A7748C", fond: lineaire("#A7748C", "#FEFDFE") },
+  foyer:    { haut: "#F1B597", fond: lineaire("#F1B597", "#FEFBF9") },
+  reglages: { haut: "#7B797A", fond: lineaire("#7B797A", "#FEFEFE") },
 };
-const DEGRADE = {
-  taam: { clair: "#FFFFFF", fondu: "0px", entete: "transparent" },
-};
+/* Sur une feuille, l'en-tête n'a plus de couleur à lui : il laisse voir la
+   feuille. Ce qui s'y écrit prend du blanc si le haut de la feuille est
+   foncé, l'encre de la maison sinon. La carte suivante part blanche. */
+const DEGRADE = Object.fromEntries(Object.entries(FEUILLE).map(([k, f]) => {
+  const fonce = contraste(f.haut, "#FFFFFF") >= 2.4;
+  return [k, { clair: "#FFFFFF", fondu: "0px", entete: "transparent",
+               surMarque: fonce ? "rgba(255,255,255,.92)" : null,
+               on: fonce ? "#FFFFFF" : null,
+               doux: fonce ? "rgba(255,255,255,.78)" : null }];
+}));
 
 function univers(vue, config) {
   const base = baseUnivers(vue, config);
@@ -567,14 +586,14 @@ function univers(vue, config) {
        une marque foncee, l'encre de l'univers sur une marque claire. */
     "--u-fondu":   DEGRADE[vue] ? DEGRADE[vue].fondu : null,
     "--u-entDoux": DEGRADE[vue] ? DEGRADE[vue].doux : null,
-    "--u-entOn":   DEGRADE[vue] ? DEGRADE[vue].surMarque : null,
+    "--u-entOn":   DEGRADE[vue] ? DEGRADE[vue].on : null,
     "--u-surMarque": (DEGRADE[vue] && DEGRADE[vue].surMarque) ? DEGRADE[vue].surMarque : (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
                        ? "rgba(255,255,255,.88)" : enc,
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
     /* Entre les cartes, rien : le fond de l'application court d'un bord à
        l'autre sans qu'aucun panneau vienne le remplacer par un autre. */
-    "--u-feuille": FEUILLE[vue] || "transparent",
+    "--u-feuille": FEUILLE[vue] ? FEUILLE[vue].fond : "transparent",
     "--u-feuillePad": FEUILLE[vue] ? "0 14px 14px" : "0",
   };
 }
@@ -592,7 +611,10 @@ const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
    pas un accident de contraste. Les logos sont fournis en blanc :
    brightness(0) les repasse à l'encre sans rien redessiner. */
 const HABIT = {
-  tmsk: { fond: "#EDE3CC", sombre: true, opa: 1, texte: "#2E2822", clair: true },
+  /* Chaque languette prend le haut exact de sa feuille (fichiers TREE). */
+  tmsk: { fond: "#FFFFFF", sombre: true, opa: 1, texte: "#2E2822", clair: true },
+  riad: { fond: "#B49A70" },
+  contenu: { fond: "#A7748C" },
   /* Ta'am : son jaune exact, releve sur son logo officiel (#F1C40D sur le
      nacre #FDFAF3). La regle generale l'assombrissait jusqu'a #9F8109 pour
      qu'un blanc tienne dessus — mais c'est precisement ce que fait sa marque,
@@ -640,7 +662,7 @@ const HABIT_FOYER    = { fond: "#F1B597" };
 /* Le gris etait trop sombre pour que le degrade s'eteigne : il tenait toute
    la hauteur du panneau et avalait le texte pose dessus. Un gris perle clair
    rend sa course au degrade — le picto passe a l'encre, comme TMSK. */
-const HABIT_REGLAGES = { fond: "#D9D6D1", sombre: true, opa: .62, clair: true };
+const HABIT_REGLAGES = { fond: "#7B797A" };
 
 function onglets(config) {
   return [
