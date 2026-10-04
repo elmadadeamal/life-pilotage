@@ -279,7 +279,8 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
    haut en bas : c'est elle, et non un titre, qui dit sur quel commerce on est
    en train de saisir. Aucun filet ni blanc au raccord — la languette et sa
    page sont la même feuille. */
-.panneau { margin-top:-1px; background: var(--u-feuille); }
+.panneau { margin-top:-1px; background: var(--u-feuille); padding: var(--u-feuillePad, 0);
+  border-radius: 0 0 18px 18px; }
 .panneau > :first-child {
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   border-top:none !important; border-left:none !important; border-right:none !important;
@@ -509,12 +510,13 @@ const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478" };
 const baseUnivers = (vue, config) => SOUCHE[vue]
   || (config.affaires[vue] ? config.affaires[vue].marque : null);
 
-/* Le fond dessiné par Amal pour TAAM (fichier « BACK TAAM LIFE ») est celui
-   de TOUTE la page, pas de l'en-tête : ivoire plein sur le premier tiers,
-   bascule linéaire jusqu'aux deux tiers, vert plein ensuite — sur la hauteur
-   réelle de la page, qui défile avec elle. L'en-tête devient transparent : le
-   logo vert se pose directement sur l'ivoire de la page. */
-const FOND_PAGE = {
+/* La feuille de chaque intercalaire (l'onglet ouvert et tout ce qui pend
+   dessous) porte le dégradé dessiné par Amal sur toute sa hauteur. Le fond
+   de l'application, lui, reste le même ivoire partout. TAAM (fichier « BACK
+   TAAM LIFE ») : ivoire plein jusqu'au tiers, bascule linéaire, vert plein
+   à partir des deux tiers. L'en-tête est transparent : le logo vert se pose
+   sur l'ivoire de la feuille. Les cartes restent blanches dessus. */
+const FEUILLE = {
   taam: "linear-gradient(180deg, #F2E9D8 0%, #F2E9D8 33%, #315A46 67%, #315A46 100%)",
 };
 const DEGRADE = {
@@ -572,7 +574,8 @@ function univers(vue, config) {
        le fond de l'application reste visible d'un bout à l'autre. */
     /* Entre les cartes, rien : le fond de l'application court d'un bord à
        l'autre sans qu'aucun panneau vienne le remplacer par un autre. */
-    "--u-feuille": "transparent",
+    "--u-feuille": FEUILLE[vue] || "transparent",
+    "--u-feuillePad": FEUILLE[vue] ? "0 14px 14px" : "0",
   };
 }
 
@@ -1456,7 +1459,7 @@ export default function App({ session, onLogout }) {
   }
 
   return (
-    <div className="pil" style={FOND_PAGE[vue] ? { background: FOND_PAGE[vue] } : undefined}>
+    <div className="pil">
       <style>{CSS}</style>
       <div className="wrap">
 
