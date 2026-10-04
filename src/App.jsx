@@ -118,7 +118,10 @@ export const CSS = `
 /* L'ivoire de TMSK est sa marque, pas un accident — mais seul clair d'une
    rangee d'aplats, il se lisait comme un onglet vide. Un filet interieur lui
    rend le poids des autres, sans lui prendre sa couleur. */
-.tab.clair { box-shadow: inset 0 0 0 1.5px rgba(62,52,42,.22), 0 1px 2px rgba(40,30,20,.10); }
+/* Le liseré des languettes claires court sur le haut et les côtés seulement :
+   rien en bas, la languette se fond dans sa feuille. */
+.tab.clair { box-shadow: inset 1.5px 0 0 0 rgba(62,52,42,.22), inset -1.5px 0 0 0 rgba(62,52,42,.22),
+                         inset 0 1.5px 0 0 rgba(62,52,42,.22); }
 .tab.on { filter:none; }
 .tab .lib { color:#fff; font-size:13px; font-weight:500; letter-spacing:.13em;
   text-transform:uppercase; white-space:nowrap; text-align:center; line-height:1.35; }
