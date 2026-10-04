@@ -180,7 +180,12 @@ export const CSS = `
 .affNum { font-size:20.5px; font-weight:400; font-variant-numeric:tabular-nums; white-space:nowrap; }
 
 .crest { display:flex; align-items:center; padding:18px 30px; margin:-24px -26px 18px;
-  border-radius:0; min-height:76px; }
+  border-radius:0; height:98px; }
+/* Toutes les bandes d'en-tête au même gabarit : même hauteur de bande du logo
+   (celle du plus haut, le riad), et la carte d'en-tête à la hauteur de celles
+   qui portent des boutons — les sous-onglets se calent en bas. */
+.card:has(> .crest):has(> .sections) { display:flex; flex-direction:column; min-height:273px; }
+.card:has(> .crest) > .sections { margin-top:auto; }
 .crest img { width:auto; object-fit:contain; display:block; }
 .crestName { font-size:24px; font-weight:300; color:#fff; letter-spacing:.14em;
   text-transform:uppercase; }
@@ -251,7 +256,8 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   .heroNum { font-size:44px; }
   .h1 { font-size:25px; letter-spacing:.07em; }
   .card { padding:20px 18px; border-radius:16px; }
-  .crest { padding:14px 18px; margin:-20px -18px 14px; min-height:64px; }
+  .crest { padding:14px 18px; margin:-20px -18px 14px; height:76px; }
+  .card:has(> .crest):has(> .sections) { min-height:0; }
   .crest img { transform: scale(.78); transform-origin: left center; }
   /* Les onglets reprenaient telles quelles leurs dimensions d'ordinateur :
      sur un téléphone, ça ne laissait voir que 3-4 affaires à la fois et ça
