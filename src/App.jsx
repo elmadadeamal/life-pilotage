@@ -186,6 +186,10 @@ export const CSS = `
    qui portent des boutons — les sous-onglets se calent en bas. */
 .card:has(> .crest):has(> .sections) { display:flex; flex-direction:column; min-height:273px; }
 .card:has(> .crest) > .sections { margin-top:auto; }
+/* Paramètres : pas de sous-onglets, sa liste vit dans la carte d'en-tête.
+   La bande de la feuille descend quand même à la hauteur des autres
+   (273px), la carte blanche commence dessous. */
+.panneau[data-vue="reglages"] .crest { margin-bottom:199px; }
 .crest img { width:auto; object-fit:contain; display:block; }
 .crestName { font-size:24px; font-weight:300; color:#fff; letter-spacing:.14em;
   text-transform:uppercase; }
@@ -258,6 +262,9 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   .card { padding:20px 18px; border-radius:16px; }
   .crest { padding:14px 18px; margin:-20px -18px 14px; height:76px; }
   .card:has(> .crest):has(> .sections) { min-height:0; }
+  .panneau[data-vue="reglages"] .crest { margin-bottom:14px; }
+  .panneau[data-vue="reglages"] .card:has(> .crest) {
+    background: linear-gradient(180deg, rgba(255,255,255,0) 0, rgba(255,255,255,0) 76px, #FFFFFF 76px) !important; }
   .crest img { transform: scale(.78); transform-origin: left center; }
   /* Les onglets reprenaient telles quelles leurs dimensions d'ordinateur :
      sur un téléphone, ça ne laissait voir que 3-4 affaires à la fois et ça
@@ -560,7 +567,7 @@ const DEGRADE = Object.fromEntries(Object.entries(FEUILLE).map(([k, f]) => {
 /* Les Paramètres n'ont pas de sous-onglets : leur liste vit dans la carte
    d'en-tête. Seule la bande du logo y laisse voir la feuille, le reste est
    une carte blanche comme les autres. */
-DEGRADE.reglages.entete = "linear-gradient(180deg, rgba(255,255,255,0) 0, rgba(255,255,255,0) 100px, #FFFFFF 100px)";
+DEGRADE.reglages.entete = "linear-gradient(180deg, rgba(255,255,255,0) 0, rgba(255,255,255,0) 273px, #FFFFFF 273px)";
 
 function univers(vue, config) {
   const base = baseUnivers(vue, config);
@@ -1554,7 +1561,7 @@ export default function App({ session, onLogout }) {
           ))}
         </div>
 
-        <div className="panneau" style={univers(vue, config)}>
+        <div className="panneau" data-vue={vue} style={univers(vue, config)}>
         {vue === "dash"     && <Consolide M={M} config={config} ym={ym} onAller={setVue}
                                           entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                     onPocher={pocherReglement} onChiffrer={chiffrer}
