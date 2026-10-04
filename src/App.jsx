@@ -21,6 +21,7 @@ export const LOGOS = {
   contenuBlanc: "./assets/contenuBlanc.png",
   contenu: "./assets/contenu.png",
   taamBlanc: "./assets/taamBlanc.svg",
+  taamVert:  "./assets/taamVert.svg",
 };
 
 export const MAISON = { nom: "La maison", marque: "#C97F72", tint: "#FDF3EC",
@@ -302,6 +303,11 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
 /* Un libelle pose sur la couleur pleine du bandeau : il prend l'encre qui
    porte sur la marque, pas le gris des textes courants. */
 .surMarque { color: var(--u-surMarque); }
+/* Sous-onglets posés sur l'en-tête : l'encre de l'univers, sauf quand
+   l'en-tête finit dans une couleur foncée (TAAM) — ils passent alors en clair. */
+.card:has(> .crest) .sections button { color: var(--u-entDoux, var(--u-doux)); }
+.card:has(> .crest) .sections button.on { color: var(--u-entOn, var(--u-encre));
+  border-bottom-color: var(--u-entOn, var(--u-encre)); }
 .card:has(> .crest) + .card {
   background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF 70px);
   margin-top:0 !important; border-top:none !important;
@@ -376,7 +382,7 @@ const DEFAULT_CONFIG = {
                    diner: { nom: "Dîner",          prix: 215, matiere: 50, com: 40 },
                  },
                } },
-    taam:    { nom: "Ta'âm",    marque: "#315A46", chip: "#315A46", tint: "#F2E9D8", matierePct: 30, type: "vente", societe: "michui" },
+    taam:    { nom: "Ta'âm",    marque: "#315A46", chip: "#315A46", tint: "#F2E9D8", bouton: "#F2E9D8", matierePct: 30, type: "vente", societe: "michui" },
     contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui" },
   },
   fixes: [
@@ -503,13 +509,12 @@ const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478" };
 const baseUnivers = (vue, config) => SOUCHE[vue]
   || (config.affaires[vue] ? config.affaires[vue].marque : null);
 
-/* Le dégradé dessiné par Amal pour TAAM (fichier « BACK TAAM LIFE ») :
-   ivoire et vert pleins sur un tiers chacun, la bascule au tiers du milieu.
-   Posé dans le sens de l'app — la couleur pleine en haut, sous le logo ivoire —
-   et le ton clair où il s'éteint est son ivoire, pas un blanc. */
+/* Le dégradé dessiné par Amal pour TAAM (fichier « BACK TAAM LIFE »), dans
+   son sens : l'ivoire de l'intercalaire porte le logo vert, puis bascule au
+   vert, sur lequel tout s'écrit en ivoire. La carte suivante part du vert. */
 const DEGRADE = {
-  taam: { clair: "#F2E9D8",
-          entete: "linear-gradient(180deg, #315A46 0%, #315A46 33%, #F2E9D8 67%, #F2E9D8 100%)" },
+  taam: { clair: "#315A46", surMarque: "#F2E9D8", doux: "rgba(242,233,216,.78)",
+          entete: "linear-gradient(180deg, #F2E9D8 0px, #F2E9D8 60px, #315A46 94px, #315A46 100%)" },
 };
 
 function univers(vue, config) {
@@ -554,7 +559,9 @@ function univers(vue, config) {
     /* Ce qui est ecrit sur la couleur pleine du bandeau ne peut pas prendre
        le gris des textes courants, calcule pour un fond clair : blanc sur
        une marque foncee, l'encre de l'univers sur une marque claire. */
-    "--u-surMarque": (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
+    "--u-entDoux": DEGRADE[vue] ? DEGRADE[vue].doux : null,
+    "--u-entOn":   DEGRADE[vue] ? DEGRADE[vue].surMarque : null,
+    "--u-surMarque": DEGRADE[vue] ? DEGRADE[vue].surMarque : (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
                        ? "rgba(255,255,255,.88)" : enc,
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
@@ -569,7 +576,7 @@ function univers(vue, config) {
 const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
                      riad: "riadBlanc", contenu: "contenuBlanc",
                      foyer: "foyerBlanc", dash: "pictoDash",
-                     reglages: "pictoReglages", taam: "taamBlanc" };
+                     reglages: "pictoReglages", taam: "taamVert" };
 
 /* L'habit d'un intercalaire : le fond de la languette et l'encre qui doit s'y
    lire. Toutes les maisons portent leur logo en blanc. Une seule exception,
@@ -582,9 +589,10 @@ const HABIT = {
      nacre #FDFAF3). La regle generale l'assombrissait jusqu'a #9F8109 pour
      qu'un blanc tienne dessus — mais c'est precisement ce que fait sa marque,
      blanc sur jaune plein. On garde donc sa couleur telle qu'elle l'a dessinee. */
-  /* Octobre 2026 : nouvelle identité — vert TAAM #315A46, lettrage ivoire
-     #F2E9D8 (logo fourni par Amal, déjà à l'ivoire : pas de filtre). */
-  taam: { fond: "#315A46" },
+  /* Octobre 2026 : nouvelle identité. L'intercalaire se lit à l'envers, comme
+     TMSK : logo vert #315A46 sur ivoire #F2E9D8 — en aplat vert il se
+     confondait avec Sabich. Le vert vient ensuite, dans l'en-tête. */
+  taam: { fond: "#F2E9D8", clair: true },
 };
 
 const habit = (k, c) => HABIT[k]
@@ -1019,9 +1027,10 @@ function reprendre(saved) {
   }
 
   /* TAAM quitte le jaune pour son vert, y compris dans une config déjà en place. */
-  if (c.affaires.taam && ["#F1C40D", "#F3CB2A"]
-        .includes(String(c.affaires.taam.marque).toUpperCase())) {
-    c.affaires.taam = { ...c.affaires.taam, marque: "#315A46", chip: "#315A46", tint: "#F2E9D8" };
+  if (c.affaires.taam && (["#F1C40D", "#F3CB2A"]
+        .includes(String(c.affaires.taam.marque).toUpperCase()) || !c.affaires.taam.bouton)) {
+    c.affaires.taam = { ...c.affaires.taam, marque: "#315A46", chip: "#315A46", tint: "#F2E9D8",
+                        bouton: "#F2E9D8" };
   }
 
   /* Le Mi-Chui portait une aquarelle — un dégradé, là où toutes les autres
