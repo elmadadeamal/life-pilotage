@@ -20,7 +20,7 @@ export const LOGOS = {
   foyerBlanc:   "./assets/foyerBlanc.png",
   contenuBlanc: "./assets/contenuBlanc.png",
   contenu: "./assets/contenu.png",
-  taamBlanc: "./assets/taamBlanc.png",
+  taamBlanc: "./assets/taamBlanc.svg",
 };
 
 export const MAISON = { nom: "La maison", marque: "#C97F72", tint: "#FDF3EC",
@@ -376,7 +376,7 @@ const DEFAULT_CONFIG = {
                    diner: { nom: "Dîner",          prix: 215, matiere: 50, com: 40 },
                  },
                } },
-    taam:    { nom: "Ta'âm",    marque: "#F1C40D", chip: "#F3CB2A", tint: "#FEFAE9", matierePct: 30, type: "vente", societe: "michui" },
+    taam:    { nom: "Ta'âm",    marque: "#315A46", chip: "#315A46", tint: "#F2E9D8", matierePct: 30, type: "vente", societe: "michui" },
     contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui" },
   },
   fixes: [
@@ -503,6 +503,15 @@ const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478" };
 const baseUnivers = (vue, config) => SOUCHE[vue]
   || (config.affaires[vue] ? config.affaires[vue].marque : null);
 
+/* Le dégradé dessiné par Amal pour TAAM (fichier « BACK TAAM LIFE ») :
+   ivoire et vert pleins sur un tiers chacun, la bascule au tiers du milieu.
+   Posé dans le sens de l'app — la couleur pleine en haut, sous le logo ivoire —
+   et le ton clair où il s'éteint est son ivoire, pas un blanc. */
+const DEGRADE = {
+  taam: { clair: "#F2E9D8",
+          entete: "linear-gradient(180deg, #315A46 0%, #315A46 33%, #F2E9D8 67%, #F2E9D8 100%)" },
+};
+
 function univers(vue, config) {
   const base = baseUnivers(vue, config);
   if (!base) return {};
@@ -536,8 +545,8 @@ function univers(vue, config) {
        l'interieur d'un autre degrade : la carte d'en-tete se retrouvait sans
        fond. On compose donc le fond complet ici, et le voile blanc passe en
        couche par-dessus quand la marque est une aquarelle. */
-    "--u-clair":   melange(marqueHex || base, "#FFFFFF", .90),
-    "--u-entete":  marqueHex
+    "--u-clair":   DEGRADE[vue] ? DEGRADE[vue].clair : melange(marqueHex || base, "#FFFFFF", .90),
+    "--u-entete":  DEGRADE[vue] ? DEGRADE[vue].entete : marqueHex
       ? "linear-gradient(180deg, " + marqueHex + " 0%, " + marqueHex + " 42%, "
         + melange(marqueHex, "#FFFFFF", .90) + " 100%)"
       : "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 42%, "
@@ -573,7 +582,9 @@ const HABIT = {
      nacre #FDFAF3). La regle generale l'assombrissait jusqu'a #9F8109 pour
      qu'un blanc tienne dessus — mais c'est precisement ce que fait sa marque,
      blanc sur jaune plein. On garde donc sa couleur telle qu'elle l'a dessinee. */
-  taam: { fond: "#F1C40D" },
+  /* Octobre 2026 : nouvelle identité — vert TAAM #315A46, lettrage ivoire
+     #F2E9D8 (logo fourni par Amal, déjà à l'ivoire : pas de filtre). */
+  taam: { fond: "#315A46" },
 };
 
 const habit = (k, c) => HABIT[k]
@@ -600,7 +611,7 @@ const TAILLE_BLANC = {
   foyer:    { width: 38, height: 34 },
   dash:     { width: 38, height: 38 },
   reglages: { width: 40, height: 44 },
-  taam:     { width: 78, height: 20 },
+  taam:     { width: 66, height: 24 },
 };
 
 /* Les trois intercalaires qui ne sont pas un commerce se reconnaissent à leur
@@ -1005,6 +1016,12 @@ function reprendre(saved) {
     c.affaires.tmsk = { ...c.affaires.tmsk,
                         marque: "#5E3B26", chip: "#8A5A3C", tint: "#F3E7DA",
                         bouton: "#F2E7D6" };
+  }
+
+  /* TAAM quitte le jaune pour son vert, y compris dans une config déjà en place. */
+  if (c.affaires.taam && ["#F1C40D", "#F3CB2A"]
+        .includes(String(c.affaires.taam.marque).toUpperCase())) {
+    c.affaires.taam = { ...c.affaires.taam, marque: "#315A46", chip: "#315A46", tint: "#F2E9D8" };
   }
 
   /* Le Mi-Chui portait une aquarelle — un dégradé, là où toutes les autres
@@ -3545,9 +3562,9 @@ function Alarme({ entries, config, onPointer, onAller }) {
     if (!m.ventes.length && !m.achats) return null;
     const jour = b.iso.slice(8, 10) + "/" + b.iso.slice(5, 7);
     return (
-      <div key={b.iso} role="alert" style={{ background: b.fort ? "#C9503A" : "#B07C1E", color: "#fff",
+      <div key={b.iso} role="alert" style={{ background: b.fort ? "#7A0E14" : "#9B1B22", color: "#fff",
           padding: "14px 16px", borderRadius: 14, marginBottom: 10,
-          boxShadow: b.fort ? "0 0 0 3px #F3C5BB" : "none" }}>
+          boxShadow: b.fort ? "0 0 0 3px #E8B4B8" : "none" }}>
         <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
           {b.titre} ({jour})
         </div>
@@ -4455,7 +4472,7 @@ const TAILLE_CREST = {
   riad:    { width: 90, height: 61 },
   contenu: { width: 69, height: 57 },
   foyer:   { width: 53, height: 48 },
-  taam:    { width: 105, height: 27 },
+  taam:    { width: 96, height: 35 },
 };
 
 const HABIT_VUE = { dash: HABIT_DASH, foyer: HABIT_FOYER, reglages: HABIT_REGLAGES };
