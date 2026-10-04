@@ -309,7 +309,7 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
 .card:has(> .crest) .sections button.on { color: var(--u-entOn, var(--u-encre));
   border-bottom-color: var(--u-entOn, var(--u-encre)); }
 .card:has(> .crest) + .card {
-  background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF 70px);
+  background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF var(--u-fondu, 70px));
   margin-top:0 !important; border-top:none !important;
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   box-shadow:none !important; }
@@ -513,7 +513,7 @@ const baseUnivers = (vue, config) => SOUCHE[vue]
    son sens : l'ivoire de l'intercalaire porte le logo vert, puis bascule au
    vert, sur lequel tout s'écrit en ivoire. La carte suivante part du vert. */
 const DEGRADE = {
-  taam: { clair: "#315A46", surMarque: "#F2E9D8", doux: "rgba(242,233,216,.78)",
+  taam: { clair: "#315A46", fondu: "26px", surMarque: "#F2E9D8", doux: "rgba(242,233,216,.78)",
           entete: "linear-gradient(180deg, #F2E9D8 0px, #F2E9D8 60px, #315A46 94px, #315A46 100%)" },
 };
 
@@ -559,6 +559,7 @@ function univers(vue, config) {
     /* Ce qui est ecrit sur la couleur pleine du bandeau ne peut pas prendre
        le gris des textes courants, calcule pour un fond clair : blanc sur
        une marque foncee, l'encre de l'univers sur une marque claire. */
+    "--u-fondu":   DEGRADE[vue] ? DEGRADE[vue].fondu : null,
     "--u-entDoux": DEGRADE[vue] ? DEGRADE[vue].doux : null,
     "--u-entOn":   DEGRADE[vue] ? DEGRADE[vue].surMarque : null,
     "--u-surMarque": DEGRADE[vue] ? DEGRADE[vue].surMarque : (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
