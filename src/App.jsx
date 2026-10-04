@@ -6133,7 +6133,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
           {sections.map(([id, lbl]) => (
             <button key={id} className={sous === id ? "on" : ""}
                     onClick={() => setSous(id)}
-                    style={sous === id ? { borderBottomColor: c.marque } : {}}>{lbl}</button>
+                    >{lbl}</button>
           ))}
         </div>
       </div>
