@@ -541,6 +541,10 @@ const DEGRADE = Object.fromEntries(Object.entries(FEUILLE).map(([k, f]) => {
                on: fonce ? "#FFFFFF" : null,
                doux: fonce ? "rgba(255,255,255,.78)" : null }];
 }));
+/* Les Paramètres n'ont pas de sous-onglets : leur liste vit dans la carte
+   d'en-tête. Seule la bande du logo y laisse voir la feuille, le reste est
+   une carte blanche comme les autres. */
+DEGRADE.reglages.entete = "linear-gradient(180deg, rgba(255,255,255,0) 0, rgba(255,255,255,0) 100px, #FFFFFF 100px)";
 
 function univers(vue, config) {
   const base = baseUnivers(vue, config);
