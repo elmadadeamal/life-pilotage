@@ -510,7 +510,11 @@ const voile = (hex, a) => {
    à en déduire les six : c'est ce qui garantit qu'aucun univers ne bave sur
    un autre, et qu'on voit d'un coup d'œil sur quel commerce on saisit.
    Le vert n'appartient donc qu'à Sabich, et nulle part ailleurs. */
-const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478" };
+const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478",
+                 /* TMSK vit en noir et ivoire : ses libellés aussi. */
+                 tmsk: "#1C1A17" };
+/* Boutons de saisie propres à une maison : TMSK noir, lettrage ivoire. */
+const BOUTON = { tmsk: { fond: "#1C1A17", texte: "#F2E9D8" } };
 
 const baseUnivers = (vue, config) => SOUCHE[vue]
   || (config.affaires[vue] ? config.affaires[vue].marque : null);
@@ -5607,9 +5611,9 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
             /* Le bouton doit rester net sur le bandeau coloré de sa page :
                un fond nacré très clair, quelle que soit la marque, pour
                qu'il se détache toujours — jamais la couleur du fond derrière. */
-            const fond = c.bouton || melange(c.marque, "#FFFFFF", .88);
+            const fond = (BOUTON[k] && BOUTON[k].fond) || c.bouton || melange(c.marque, "#FFFFFF", .88);
             const clair = contraste(fond, "#FFFFFF") < 3;
-            const encreBtn = clair ? lisible(c.marque, 7) : "#FFFFFF";
+            const encreBtn = (BOUTON[k] && BOUTON[k].texte) || (clair ? lisible(c.marque, 7) : "#FFFFFF");
             return (
             <button key={id} className={"btnSaisie" + (actif ? " ouvert" : "")}
                     onClick={() => setForm(actif ? null : id)}
