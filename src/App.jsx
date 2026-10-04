@@ -1458,6 +1458,8 @@ export default function App({ session, onLogout }) {
 
         <div className="scene">
 
+        <Alarme entries={entries} config={config} onAller={setVue}
+                onPointer={(iso, patch) => saveConfig({ ...config, pointages: { ...(config.pointages || {}), [iso]: { ...((config.pointages || {})[iso] || {}), ...patch } } })} />
         <div className="tabs">
           {onglets(config).map((o) => (
             <button key={o.id} className={"tab" + (vue === o.id ? " on" : "") + (o.clair ? " clair" : "")}
@@ -3505,6 +3507,73 @@ function Jauge({ lbl, ratio, seuil, etat }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  L'ALARME DU SOIR                                                   */
+/* ------------------------------------------------------------------ */
+/* À partir de 20h, tant que la vente du jour de chaque activité et les achats
+   du jour ne sont pas saisis, un bandeau rouge reste en haut de TOUTES les
+   pages. Il n'a pas de bouton « plus tard ». Pour sortir : saisir, ou dire
+   explicitement « fermé » / « aucun achat » (ce choix est enregistré, donc on
+   distingue un jour sans achat d'un oubli). Le lendemain, « Hier non saisi »
+   reste affiché jusqu'à régularisation. */
+const isoLocal = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+                        + "-" + String(d.getDate()).padStart(2, "0");
+function manquesDuJour(entries, config, iso) {
+  const L = entries || [];
+  const pt = ((config.pointages || {})[iso]) || {};
+  const d0 = new Date(iso + "T12:00:00");
+  const depuis = isoLocal(new Date(d0.getTime() - 14 * 864e5));
+  const actives = Object.keys(config.affaires).filter((k) => !config.affaires[k].archive
+    && L.some((e) => e.type === "vente" && e.affaire === k && e.date >= depuis && e.date < iso));
+  const ventes = actives.filter((k) => !(pt.ferme || {})[k]
+    && !L.some((e) => e.type === "vente" && e.affaire === k && e.date === iso));
+  const achats = !pt.aucunAchat && !L.some((e) => e.type === "depense" && e.date === iso);
+  return { ventes, achats, actives };
+}
+function Alarme({ entries, config, onPointer, onAller }) {
+  const [, tic] = useState(0);
+  useEffect(() => { const t = setInterval(() => tic((n) => n + 1), 60000); return () => clearInterval(t); }, []);
+  const maintenant = new Date();
+  const auj = isoLocal(maintenant);
+  const hier = isoLocal(new Date(maintenant.getTime() - 864e5));
+  const soir = maintenant.getHours() >= 20;
+  const nomA = (k) => (config.affaires[k] && config.affaires[k].nom) || k;
+  const blocs = [];
+  if (soir) blocs.push({ iso: auj, titre: "Il est tard et la journée n'est pas saisie", fort: true });
+  blocs.push({ iso: hier, titre: "Hier n'est pas saisi", fort: false });
+  const rendu = blocs.map((b) => {
+    const m = manquesDuJour(entries, config, b.iso);
+    if (!m.ventes.length && !m.achats) return null;
+    const jour = b.iso.slice(8, 10) + "/" + b.iso.slice(5, 7);
+    return (
+      <div key={b.iso} role="alert" style={{ background: b.fort ? "#C9503A" : "#B07C1E", color: "#fff",
+          padding: "14px 16px", borderRadius: 14, marginBottom: 10,
+          boxShadow: b.fort ? "0 0 0 3px #F3C5BB" : "none" }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+          {b.titre} ({jour})
+        </div>
+        {m.ventes.map((k) => (
+          <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+            <span style={{ flex: 1, minWidth: 160 }}>Vente non saisie : <strong>{nomA(k)}</strong></span>
+            <button className="pill" onClick={() => onAller(k)}>Saisir la vente</button>
+            <button className="pill" onClick={() => onPointer(b.iso, { ferme: { ...((config.pointages || {})[b.iso] || {}).ferme, [k]: true } })}>
+              Fermé ce jour-là</button>
+          </div>
+        ))}
+        {m.achats && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+            <span style={{ flex: 1, minWidth: 160 }}>Achats du jour : <strong>aucun saisi</strong></span>
+            <button className="pill" onClick={() => onAller((m.actives[0]) || "dash")}>Saisir un achat</button>
+            <button className="pill" onClick={() => onPointer(b.iso, { aucunAchat: true })}>Aucun achat ce jour-là</button>
+          </div>
+        )}
+      </div>
+    );
+  }).filter(Boolean);
+  if (!rendu.length) return null;
+  return <div style={{ position: "sticky", top: 0, zIndex: 50, marginBottom: 6 }}>{rendu}</div>;
+}
+
+/* ------------------------------------------------------------------ */
 /*  CONTRÔLE — l'audit de cohérence                                    */
 /* ------------------------------------------------------------------ */
 /* Pas de nouveau calcul : seulement des vérifications de LIENS entre les
@@ -3628,7 +3697,8 @@ function auditer(entries, config, ym) {
     const trous = [];
     for (let j = 1; j <= fin; j++) {
       const iso = ym + "-" + String(j).padStart(2, "0");
-      if (!L.some((e) => e.type === "vente" && e.affaire === k && e.date === iso)) trous.push(j);
+      if (!L.some((e) => e.type === "vente" && e.affaire === k && e.date === iso)
+          && !((((config.pointages || {})[iso]) || {}).ferme || {})[k]) trous.push(j);
     }
     if (trous.length) q.push({ id: "trou-" + k, gravite: 2, famille: "Ventes",
       titre: "Ventes non saisies — " + nomA(k),
@@ -3878,7 +3948,7 @@ function NoteDuMois({ config, ym, onSave }) {
 /* ------------------------------------------------------------------ */
 
 /* Ce que chaque jour du mois a rapporté et coûté, jusqu'à aujourd'hui. */
-function parJourDuMois(entries, ym, M, keys) {
+function parJourDuMois(entries, ym, M, keys, pointages) {
   const [an, mo] = ym.split("-").map(Number);
   const nbJours = new Date(an, mo, 0).getDate();
   const auj = new Date().toISOString().slice(0, 10);
@@ -3900,7 +3970,7 @@ function parJourDuMois(entries, ym, M, keys) {
     const parK = {};
     (keys || []).forEach((k) => {
       const v = d.filter((e) => e.type === "vente" && e.affaire === k);
-      parK[k] = { vente: v.reduce((s, e) => s + venteDe(e), 0), saisi: v.length > 0,
+      parK[k] = { vente: v.reduce((s, e) => s + venteDe(e), 0), saisi: v.length > 0 || !!((((pointages || {})[iso]) || {}).ferme || {})[k], ferme: !!((((pointages || {})[iso]) || {}).ferme || {})[k],
                   matiere: d.filter((e) => e.type === "depense" && e.affaire === k && e.categorie === "matiere")
                             .reduce((s, e) => s + num(e.montant), 0) };
     });
@@ -4127,7 +4197,7 @@ function AchatsParFournisseur({ entries, ym, config }) {
 }
 
 function Signaux({ M, config, ym, entries }) {
-  const { jours, nbJours } = parJourDuMois(entries, ym, M, M.keys);
+  const { jours, nbJours } = parJourDuMois(entries, ym, M, M.keys, config.pointages);
   return (
     <>
       <Rythme M={M} config={config} />
