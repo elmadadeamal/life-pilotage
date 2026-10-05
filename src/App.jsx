@@ -1174,6 +1174,12 @@ function reprendre(saved) {
   c.fixes = c.fixes.map((f) => f.id === "f6" && /médina/i.test(f.lbl || "")
     ? { ...f, lbl: "Loyer Guéliz — Ta'âm et labo" } : f);
 
+  /* TAAM, octobre 2026 (Amal) : plus de pourcentages. TAAM est un restaurant
+     qui va ouvrir ; il porte seul son loyer entier de 14 000 DH, dont la
+     première échéance est le 1er novembre 2026. Plus de labo partagé. */
+  c.fixes = c.fixes.map((f) => f.id === "f6" && !f.tamOk
+    ? { ...f, lbl: "Loyer Guéliz — TAAM", partagePct: 0, jour: 1, depuis: "2026-11", tamOk: true } : f);
+
   /* Le coursier est payé à la tâche, pas au mois : il passe en fournisseur */
   if (c.fixes.some((f) => f.id === "f3" && /coursier/i.test(f.lbl || ""))) {
     c.fixes = c.fixes.filter((f) => f.id !== "f3");
@@ -1929,6 +1935,9 @@ function calcul(config, entries, ym) {
        une estimation : Amal ne veut que des chiffres réels. Tant que sa
        facture n'est pas saisie, elle vaut 0 et n'apparaît nulle part — un
        rappel « Factures attendues » la garde en vue. */
+    /* Une charge qui ne commence qu'à une date future (« depuis ») ne pèse
+       sur aucun mois avant elle. */
+    if (f.depuis && mois < f.depuis) return 0;
     return f.variable ? (r[f.id] !== undefined ? r[f.id] : 0) : num(f.montant);
   };
   const duLigne = (f) => duLigneAu(f, ym);
@@ -6363,7 +6372,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         )}
         {a.fixes > 0 && (
           <Detail titre="Charges fixes" montant={a.fixes}
-                  lignes={config.fixes.filter((f) => f.affaire === k).map((f) => {
+                  lignes={config.fixes.filter((f) => f.affaire === k && !(f.depuis && ym < f.depuis)).map((f) => {
                     const pp = num(f.partagePct) || 0;
                     const propre = num(f.montant) * (100 - pp) / 100;
                     return [f.lbl + (pp > 0 ? " — sa part (" + (100 - pp) + " %)" : ""), propre];
