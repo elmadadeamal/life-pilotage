@@ -121,7 +121,7 @@ export const CSS = `
 /* Le liseré des languettes claires court sur le haut et les côtés seulement :
    rien en bas, la languette se fond dans sa feuille. */
 .tab.clair { box-shadow: none; }
-.tab.on { filter:none; }
+.tab.on { filter:none; z-index:2; }
 /* TAAM garde son ivoire même au repos : éclairci, il virait au blanc. */
 .tab.garde, .tab.garde:hover { filter:none; }
 .tab .lib { color:#fff; font-size:13px; font-weight:500; letter-spacing:.13em;
@@ -298,8 +298,11 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
    haut en bas : c'est elle, et non un titre, qui dit sur quel commerce on est
    en train de saisir. Aucun filet ni blanc au raccord — la languette et sa
    page sont la même feuille. */
+/* La feuille passe DEVANT les languettes fermées (elles s'arrêtent net sur
+   son bord, rien ne déborde dessus) ; seule la languette ouverte passe devant
+   la feuille, pour s'y souder. */
 .panneau { margin-top:-1px; background: var(--u-feuille); padding: var(--u-feuillePad, 0);
-  border-radius: 0 0 18px 18px; }
+  border-radius: 0 0 18px 18px; position:relative; z-index:1; }
 .panneau > :first-child {
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   border-top:none !important; border-left:none !important; border-right:none !important;
