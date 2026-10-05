@@ -5128,9 +5128,15 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const [choix, setChoix] = useState("");
   const [lbl, setLbl] = useState("");
   const [montant, setMontant] = useState("");
-  const [piece, setPiece] = useState("facture");
+  /* La norme, c'est la livraison : si on oublie de choisir, c'est un BL,
+     à payer plus tard avec la facture du fournisseur. */
+  const [piece, setPiece] = useState("bl");
   const [numero, setNumero] = useState("");
-  const [aPayer, setAPayer] = useState(false);
+  const [aPayer, setAPayer] = useState(true);
+  /* Pendant l'enregistrement, la pièce apparaît déjà dans la liste : sans ce
+     drapeau, l'app criait « numéro déjà enregistré » sur la pièce qu'elle
+     venait elle-même d'enregistrer, et un second clic était refusé. */
+  const [envoi, setEnvoi] = useState(false);
   const [poche, setPoche] = useState("");
   const [exceptionnel, setExceptionnel] = useState(false);
   const [marchandise, setMarchandise] = useState(false);
@@ -5178,6 +5184,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
       && String(e.lbl || "").trim().toLowerCase() === nomTiers.trim().toLowerCase());
 
   const valider = async () => {
+    if (envoi) return;
     if (num(montant) <= 0) {
       setErreur("Montant manquant — écris le montant en chiffres avant d'enregistrer.");
       return;
@@ -5210,6 +5217,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
     /* Une facture qui solde des BL : elle ne s'ajoute pas au coût, seul l'écart
        compte. Les BL passent en réglés si la facture l'est, sinon ils restent dus. */
     const ids = actif ? rap.choisis.map((b) => b.id) : [];
+    setEnvoi(true);
     const ok = await onAdd(actif
       ? { type: "depense", date, affaire, categorie: "matiere",
           fournisseur: courant.id, piece, numero: numero.trim(), aPayer, exceptionnel,
@@ -5225,10 +5233,12 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
             poche: pocheSortie,
             lbl: nom, montant: num(montant) });
     if (ok === false) {
+      setEnvoi(false);
       setErreur("Pas enregistré — ne quitte pas cette page, vérifie ta connexion et réessaie.");
       return;
     }
     flash(nom + " — enregistré.");
+    setNumero(""); setEnvoi(false);
     setMontant(""); setLbl(""); setNumero(""); setExceptionnel(false); setMarchandise(false);
   };
 
@@ -5315,7 +5325,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
         </div>
       )}
 
-      {dejaSaisi.length > 0 && (
+      {dejaSaisi.length > 0 && !envoi && (
         <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
                       padding: "10px 12px", marginBottom: 14, fontSize: 15.5 }}>
           Ce numéro est déjà enregistré pour {nomTiers} : {dejaSaisi.map(rappel).join(" — ")}.
