@@ -1103,6 +1103,17 @@ function reprendre(saved) {
                            marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8" };
   }
 
+  /* La maison, octobre 2026 (Amal) : la traite passe le 6, vos deux salaires
+     se versent le 1er, et le carburant n'est plus suivi — il est dans l'argent
+     de poche de chacun. */
+  if (c.foyer) {
+    c.foyer = { ...c.foyer,
+      fixes: (c.foyer.fixes || []).filter((f) => !(f.id === "h6" && /carburant/i.test(f.lbl || "")))
+        .map((f) => (f.id === "h1" && num(f.jour) === 5) ? { ...f, jour: 6 } : f),
+      remunerations: (c.foyer.remunerations || [])
+        .map((r) => num(r.jour) === 30 ? { ...r, jour: 1 } : r) };
+  }
+
   /* Ancienne configuration : le riad avait ses réglages dans un coin à part */
   if (saved.riad && c.affaires.riad) {
     c.affaires.riad.type = "hebergement";
@@ -5515,6 +5526,44 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe, entries }) {
   );
 }
 
+/* Une dépense de la maison au-delà des salaires, prise dans la caisse d'une affaire. */
+function FExtra({ config, defDate, onAdd, flash }) {
+  const affs = Object.keys(config.affaires).filter((k) => !config.affaires[k].archive);
+  const [date, setDate] = useState(defDate);
+  const [source, setSource] = useState(affs[0] || "");
+  const [quoi, setQuoi] = useState("");
+  const [montant, setMontant] = useState("");
+  const [erreur, setErreur] = useState("");
+  const valider = () => {
+    if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    if (!quoi.trim()) { setErreur("Écris pour quoi — santé, cadeau, réparation…"); return; }
+    setErreur("");
+    onAdd({ type: "avance", nature: "perso", date, affaire: "foyer", source, qui: quoi.trim(),
+            poche: caisseDe(config, source) || undefined, montant: num(montant) });
+    flash("Dépense de " + fmt(num(montant)) + " enregistrée, prise sur " + config.affaires[source].nom + ".");
+  };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className="grid3">
+        <div><label className="f">Date</label>
+          <input className="f" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+        <div><label className="f">Pris sur</label>
+          <select className="f" value={source} onChange={(e) => setSource(e.target.value)}>
+            {affs.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
+          </select></div>
+        <div><label className="f">Montant</label>
+          <input className="f" inputMode="decimal" placeholder="800" value={montant}
+                 onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
+      </div>
+      <div style={{ marginBottom: 12 }}><label className="f">Pour quoi</label>
+        <input className="f" placeholder="Santé, cadeau, réparation…" value={quoi}
+               onChange={(e) => { setQuoi(e.target.value); setErreur(""); }} /></div>
+      <Alerte>{erreur}</Alerte>
+      <button className="btn" onClick={valider}>Enregistrer</button>
+    </div>
+  );
+}
+
 function FInvest({ config, defDate, onAdd, flash, fixe }) {
   const [date, setDate] = useState(defDate);
   const [affaire, setAffaire] = useState(fixe || "taam");
@@ -6380,6 +6429,24 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
               onAdd={onAddTache} onMaj={onMajTache} onDel={onDelTache} />
 
       <ARegler config={config} affaire={k} entries={entries} ym={ym} onSolder={onSolder} />
+      {(() => {
+        const pris = (entries || []).filter((e) => e.type === "avance" && e.nature === "perso"
+                                            && e.source === k && (e.date || "").startsWith(ym));
+        if (!pris.length) return null;
+        return (
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <h2 className="h2" style={{ margin: 0 }}>Pioché pour la maison ce mois</h2>
+              <span className="val neg">{fmt(pris.reduce((s, e) => s + num(e.montant), 0))}</span>
+            </div>
+            {pris.map((e) => (
+              <div className="row" key={e.id}><span className="lbl">{e.qui}
+                <span className="mini"> · {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}</span></span>
+                <span className="val">{fmt(num(e.montant))}</span></div>
+            ))}
+          </div>
+        );
+      })()}
       {/* La solidarité se suit sur Le Mi-Chui, plus sur la maison. */}
       {k === "contenu" && <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
                                            onRegler={onRegler} flash={() => {}} />}
@@ -7429,7 +7496,7 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
             ))}
           </div>
         </div>
-        {sous === "resultat"   && <Foyer M={M} config={config} onAdd={onAdd} ym={ym}
+        {sous === "resultat"   && <Foyer M={M} config={config} onAdd={onAdd} ym={ym} onChiffrer={onChiffrer}
                                          onRegler={onRegler} deja={deja} entries={entries} />}
         {sous === "taches"     && <Taches taches={taches} config={config} onAdd={onAddTache}
                                           onMaj={onMajTache} onDel={onDelTache} affaireFixe="foyer" />}
@@ -7494,113 +7561,80 @@ function SolidariteCarte({ M, config, ym, onAdd, onRegler, flash }) {
   );
 }
 
-function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
+function Foyer({ M, config, onAdd, ym, onRegler, onChiffrer, entries }) {
   const [ok, setOk] = useState("");
   const [formOuvert, setFormOuvert] = useState(false);
   const flash = (m) => { setOk(m); setTimeout(() => setOk(""), 2600); };
   const defDate = ym === thisMonth() ? today() : ym + "-01";
+  const nomA = (k) => (config.affaires[k] && config.affaires[k].nom) || k;
+  const ligneCochee = (id) => { const l = M.lignesAPayer.find((x) => x.id === id); return l ? l.paye : false; };
+  /* Ce qui se coche : tout ce qui est fixe. Les factures variables (eau,
+     électricité, téléphone) attendent leur vrai montant, plus bas. */
+  const fixes = config.foyer.fixes.filter((f) => !f.variable);
+  const extras = (entries || []).filter((e) => e.type === "avance" && e.nature === "perso"
+                                         && (e.date || "").startsWith(ym));
+  const totalExtras = extras.reduce((s, e) => s + num(e.montant), 0);
+
+  const ligne = (id, lbl, jour, montant, tag) => {
+    const paye = ligneCochee(id);
+    return (
+      <div className="row" key={id}>
+        <span style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+          <Coche paye={paye} onClick={() => onRegler(id, !paye)} />
+          <span style={{ color: paye ? "#9AA487" : "#5F6E4C", textDecoration: paye ? "line-through" : "none" }}>
+            {lbl} <span className="mini">— le {jour}</span>{tag}
+          </span>
+        </span>
+        <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>{fmt(montant)}</span>
+      </div>
+    );
+  };
 
   return (
     <>
-      <div className="card">
-
-        <div className="heroLbl">Ce que la maison reçoit</div>
-        <div className="heroNum">{fmt(M.enveloppe)}</div>
-        <div className="heroNote">
-          {fmt(M.foyerFixes)} de charges fixes réglées directement, plus {fmt(M.poche)} de salaires.
-        </div>
-
-        <div style={{ marginTop: 20 }}>
-          <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="perso" entries={entries} />
-        </div>
-      </div>
+      {ok && <div className="note" style={{ color: "#4F6B1F" }}>{ok}</div>}
 
       <div className="card">
-        <h2 className="h2">Les trois postes du mois</h2>
-        <div className="row">
-          <span className="lbl">Dépenses fixes du foyer</span>
-          <span className="val">{fmt(M.foyerFixes)}</span>
-        </div>
-        {M.remus.map((r) => {
-          const l = M.lignesAPayer.find((x) => x.id === r.id);
-          const paye = l ? l.paye : false;
-          return (
-            <div className="row" key={r.id}>
-              <span style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-                <Coche paye={paye} onClick={() => onRegler(r.id, !paye)} />
-                <span style={{ color: paye ? "#9AA487" : "#5F6E4C",
-                               textDecoration: paye ? "line-through" : "none" }}>
-                  {r.nom} <span className="mini">— le {r.jour}</span>
-                </span>
-              </span>
-              <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>
-                {fmt(r.montant)}
-              </span>
-            </div>
-          );
-        })}
-        <div className="row rowTot"><span className="lbl">Total versé par les activités</span>
-          <span className="val">{fmt(M.enveloppe)}</span></div>
-        <div className="note">
-          Les dépenses fixes sont payées directement, vous ne les voyez pas passer.
-          Seuls les deux salaires arrivent entre vos mains — c'est eux que la jauge du haut suit.
-        </div>
-      </div>
-
-      <div className="card">
-        <h2 className="h2">Charges fixes personnelles</h2>
-        {config.foyer.fixes.map((f) => {
-          const l = M.lignesAPayer.find((x) => x.id === f.id);
-          const paye = l ? l.paye : false;
-          return (
-            <div className="row" key={f.id}>
-              <span style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-                <Coche paye={paye} onClick={() => onRegler(f.id, !paye)} />
-                <span style={{ color: paye ? "#9AA487" : "#5F6E4C",
-                               textDecoration: paye ? "line-through" : "none" }}>
-                  {f.lbl} <span className="mini">— le {f.jour}</span>
-                  {f.transitoire && <span className="tag" style={{ marginLeft: 8 }}>temporaire</span>}
-                </span>
-              </span>
-              <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>
-                {fmt(f.montant)}
-              </span>
-            </div>
-          );
-        })}
+        <h2 className="h2">Traites et charges fixes</h2>
+        {fixes.map((f) => ligne(f.id, f.lbl, f.jour, num(f.montant),
+          f.transitoire ? <span className="tag" style={{ marginLeft: 8 }}>temporaire</span> : null))}
         <div className="row rowTot"><span className="lbl">Reste à payer</span>
-          <span className="val">
-            {fmt(config.foyer.fixes.filter((f) => {
-              const l = M.lignesAPayer.find((x) => x.id === f.id);
-              return !(l && l.paye);
-            }).reduce((s, f) => s + num(f.montant), 0))}
-          </span>
+          <span className="val">{fmt(fixes.filter((f) => !ligneCochee(f.id)).reduce((s, f) => s + num(f.montant), 0))}</span>
         </div>
+        <FacturesAttendues liste={(M.facturesAttendues || []).filter((f) => f.groupe === "foyer")}
+                           onChiffrer={onChiffrer} />
+      </div>
+
+      <div className="card">
+        <h2 className="h2">Vos salaires — le 1er du mois</h2>
+        {M.remus.map((r) => ligne(r.id, r.nom, r.jour, num(r.montant)))}
         <div className="note">
-          Coche dès que c'est payé, quel que soit celui de vous deux qui règle. Le même pointage
-          se reflète dans l'Échéancier — inutile de le refaire ailleurs.
+          Ils couvrent les courses, l'épicerie, Glovo, l'essence et l'argent de poche de chacun :
+          LIFE ne les suit pas, c'est à chacun de gérer son salaire.
         </div>
       </div>
 
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h2 className="h2" style={{ margin: 0 }}>Dépenses libres de la maison</h2>
-          <span className="val">{fmt(M.foyerDepenseMois || 0)}</span>
+          <h2 className="h2" style={{ margin: 0 }}>Dépenses en plus</h2>
+          <span className="val">{fmt(totalExtras)}</span>
         </div>
-        <button className="pill" style={{ marginTop: 10 }} onClick={() => setFormOuvert(!formOuvert)}>
-          {formOuvert ? "×" : "+"} Dépense
-        </button>
-        {formOuvert && (
-          <div style={{ marginTop: 14 }}>
-            <FDepense config={config} defDate={defDate}
-                      onAdd={(e) => { onAdd(e); setFormOuvert(false); }}
-                      flash={flash} deja={deja} fixe="foyer" />
+        {extras.map((e) => (
+          <div className="row" key={e.id}>
+            <span className="lbl">{e.qui && e.qui !== "—" ? e.qui : "Dépense"}
+              <span className="mini"> · {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}
+                {e.source ? " · pris sur " + nomA(e.source) : ""}</span></span>
+            <span className="val">{fmt(num(e.montant))}</span>
           </div>
-        )}
+        ))}
+        <button className="pill" style={{ marginTop: 10 }} onClick={() => setFormOuvert(!formOuvert)}>
+          {formOuvert ? "× Fermer" : "+ Dépense en plus"}
+        </button>
+        {formOuvert && <FExtra config={config} defDate={defDate} flash={flash}
+                               onAdd={(e) => { onAdd(e); setFormOuvert(false); }} />}
         <div className="note">
-          Pour tout ce qui n'est ni un salaire ni une charge fixe — une sortie, un achat, un
-          imprévu — avec sa raison. Ça vient de l'enveloppe déjà reçue des affaires, ça ne
-          s'ajoute donc à aucune charge d'affaire.
+          La santé, un cadeau, un imprévu : ce qui dépasse vos salaires. Choisis l'affaire dans
+          laquelle tu pioches — c'est sa caisse qui baisse, et elle le voit sur sa fiche.
         </div>
       </div>
 
@@ -7620,20 +7654,6 @@ function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
         </div>
       )}
 
-      {M.depensesPerso > 0 && (
-        <div className="card">
-          <h2 className="h2">Prélèvements exceptionnels du mois</h2>
-          <div className="row rowTot">
-            <span className="lbl">Sorti de la caisse en plus des salaires</span>
-            <span className="val neg">{fmt(M.depensesPerso)}</span>
-          </div>
-          <div className="note">
-            Ce que vous avez pris au-delà des salaires. S'il y en a trois mois de suite,
-            c'est que les salaires sont sous-évalués — mieux vaut les corriger que puiser
-            dans la trésorerie sans le voir.
-          </div>
-        </div>
-      )}
     </>
   );
 }
