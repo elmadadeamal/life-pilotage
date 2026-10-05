@@ -2186,7 +2186,7 @@ function calcul(config, entries, ym) {
     /* La solidarité manquait ici : le tableau de bord et l'échéancier affichaient
        deux « reste à décaisser » différents, à l'écart de son montant. */
     ...(soliReste > 0 ? [{ id: "solidarite", lbl: "Solidarité",
-                           montant: soliReste, groupe: "solidarite" }] : []),
+                           montant: soliReste, groupe: "contenu" }] : []),
   ].filter((l) => !l.estime);
 
   /* Un report n'est pas une chaîne d'un mois au suivant : c'est une DETTE qui
@@ -2526,7 +2526,7 @@ function calcul(config, entries, ym) {
   /* Ce qui reste à donner, pas la totalité prévue : sinon l'échéancier réclame
      encore 10 000 DH le lendemain du jour où elle en a versé 1 000. */
   if (soliReste > 0) ajoute("solidarite", "Solidarité", soliReste,
-                            num((config.solidarite || {}).jour) || 1, "solidarite");
+                            num((config.solidarite || {}).jour) || 1, "contenu");
   remus.forEach((r) => ajoute(r.id, "Rémunération — " + r.nom, num(r.montant), r.jour, "foyer"));
   (config.societes || []).filter((s) => cnssSoc[s.id] > 0)
     .forEach((s) => ajoute("cnss:" + s.id, "CNSS — " + s.nom, cnssSoc[s.id], 25, "societe"));
@@ -6380,6 +6380,9 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
               onAdd={onAddTache} onMaj={onMajTache} onDel={onDelTache} />
 
       <ARegler config={config} affaire={k} entries={entries} ym={ym} onSolder={onSolder} />
+      {/* La solidarité se suit sur Le Mi-Chui, plus sur la maison. */}
+      {k === "contenu" && <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
+                                           onRegler={onRegler} flash={() => {}} />}
       </>
       )}
     </>
@@ -7600,8 +7603,6 @@ function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
           s'ajoute donc à aucune charge d'affaire.
         </div>
       </div>
-
-      <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd} onRegler={onRegler} flash={flash} />
 
       {M.doubleLog > 0 && (
         <div className="card" style={{ background: "#FDF6E7", borderColor: "#E9D9AE" }}>
