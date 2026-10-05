@@ -3622,6 +3622,10 @@ function manquesDuJour(entries, config, iso) {
     && !L.some((e) => e.type === "depense" && e.affaire === k && e.date === iso));
   return { ventes, achats, actives };
 }
+/* Deux sections dans l'alarme : les ventes, que saisit SAIB, puis les achats,
+   que saisit Amal — chacun voit d'un coup d'œil ce qui le regarde. */
+const SOUS_TITRE_ALARME = { fontSize: 13, fontWeight: 600, letterSpacing: ".12em",
+                            textTransform: "uppercase", opacity: .85, margin: "8px 0 2px" };
 function Alarme({ entries, config, onPointer, onAller }) {
   const [, tic] = useState(0);
   useEffect(() => { const t = setInterval(() => tic((n) => n + 1), 60000); return () => clearInterval(t); }, []);
@@ -3644,14 +3648,16 @@ function Alarme({ entries, config, onPointer, onAller }) {
         <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
           {b.titre} ({jour})
         </div>
+        {m.ventes.length > 0 && <div style={SOUS_TITRE_ALARME}>Ventes — SAIB</div>}
         {m.ventes.map((k) => (
           <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
             <span style={{ flex: 1, minWidth: 160 }}>Vente non saisie : <strong>{nomA(k)}</strong></span>
             <button className="pill" onClick={() => onAller(k)}>Saisir la vente</button>
-            <button className="pill" onClick={() => onPointer(b.iso, { ferme: { ...((config.pointages || {})[b.iso] || {}).ferme, [k]: true } })}>
-              Fermé ce jour-là</button>
           </div>
         ))}
+        {m.achats.length > 0 && <div style={{ ...SOUS_TITRE_ALARME,
+            ...(m.ventes.length > 0 ? { borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 10, marginTop: 10 } : {}) }}>
+          Achats — Amal</div>}
         {m.achats.map((k) => (
           <div key={"a" + k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
             <span style={{ flex: 1, minWidth: 160 }}>Achat non saisi : <strong>{nomA(k)}</strong></span>
