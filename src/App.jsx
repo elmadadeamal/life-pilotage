@@ -1707,7 +1707,13 @@ function calcul(config, entries, ym) {
     const prel = duJour.filter((e) => (e.type === "avance" && e.nature !== "salaire")
                                       || e.type === "perso")
       .reduce((s, e) => s + num(e.montant), 0);
-    jours7.push({ date: iso, rec, dep, inv, prel,
+    /* Les charges fixes comptent le jour où l'argent est vraiment sorti — celui
+       qu'on a coché payé (`regleLe`), pas une part étalée sur le mois. Un jour
+       sans charge réglée n'en porte aucune. */
+    const fixe = entries.filter((e) => e.type === "paye" && (e.regleLe || e.date) === iso)
+      .reduce((s, e) => s + num(e.montant), 0)
+      + duJour.filter((e) => e.type === "solidarite").reduce((s, e) => s + num(e.montant), 0);
+    jours7.push({ date: iso, rec, dep, inv, prel, fixe,
                   par: Object.fromEntries(keys.map((k) => [k,
                     duJour.filter((e) => e.affaire === k && e.type === "depense")
                           .reduce((s, e) => s + num(e.montant), 0)])) });
@@ -3104,16 +3110,14 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
 
 const JOURS_COURTS = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
 
-/* Sept jours en vis-à-vis : ce qui rentre vers le haut, TOUT ce qui sort vers
-   le bas. La barre du bas est empilée, parce qu'une journée ne coûte pas que
-   ses achats : elle porte aussi sa part de loyer, de salaires et de CNSS —
-   des charges mensuelles qui ne s'écrivent nulle part dans la journée mais qui
-   courent quand même. Sans elles, le dessin fait croire qu'une journée à
-   10 DH de pain n'a rien coûté. */
+/* Sept jours en vis-à-vis : ce qui rentre vers le haut, ce qui est vraiment
+   sorti vers le bas, empilé par nature. Les charges fixes y figurent le jour où
+   elles ont été réglées, jamais étalées : le dessin relaie la caisse, il ne
+   suppose rien. */
 
 const SORTIES = [
   { id: "dep",   lbl: "Achats",           couleur: "#C98A1E" },
-  { id: "fixe",  lbl: "Part des charges fixes", couleur: "#E3BE7A" },
+  { id: "fixe",  lbl: "Charges payées",   couleur: "#E3BE7A" },
   { id: "inv",   lbl: "Investissements",  couleur: "#9C6B12" },
   { id: "prel",  lbl: "Prélèvements",     couleur: "#7A4F0C" },
 ];
@@ -3122,14 +3126,9 @@ function Rythme({ M, config }) {
   const j = M.jours7 || [];
   if (!j.length) return null;
 
-  /* La part journalière des charges mensuelles : le loyer ne se paie pas en
-     une fois dans la tête de celui qui regarde sa semaine, il court tous les
-     jours. On l'étale, on ne le plante pas sur son jour d'échéance — sinon
-     une seule journée écrase les six autres et la semaine devient illisible. */
-  const quotaFixe = M.joursMois > 0 ? (M.chargesDuMois || 0) / M.joursMois : 0;
 
   const jours = j.map((x) => {
-    const parts = { dep: x.dep || 0, fixe: quotaFixe, inv: x.inv || 0, prel: x.prel || 0 };
+    const parts = { dep: x.dep || 0, fixe: x.fixe || 0, inv: x.inv || 0, prel: x.prel || 0 };
     return { ...x, parts, sortie: SORTIES.reduce((s, p) => s + parts[p.id], 0) };
   });
 
@@ -3202,13 +3201,12 @@ function Rythme({ M, config }) {
         </>
       )}
       <div className="note">
-        En vert ce qui rentre, en orange tout ce qui sort — achats et factures, la part
-        journalière des charges fixes ({fmt(quotaFixe)} par jour : loyer, salaires, CNSS,
-        abonnements), les investissements et les prélèvements. Quand l'orange dépasse le vert,
-        la journée n'a pas payé ce qu'elle a coûté. Ne sont pas comptés : ce que tu mets en
-        réserve ou de côté pour un chantier — cet argent n'a rien coûté à la journée, même
-        s'il sort bien de « Ce qu'il reste » — ni les avances sur salaire, déjà portées par
-        les charges fixes.
+        En vert ce qui rentre, en orange ce qui est vraiment sorti ce jour-là : les achats,
+        les charges fixes le jour où tu les as cochées payées (loyer, salaires, CNSS, traites,
+        solidarité…), les investissements et les prélèvements. Rien n'est étalé ni estimé :
+        une journée sans charge réglée n'en porte aucune. Ne sont pas comptés : ce que tu mets
+        en réserve ou de côté pour un chantier, ni les avances sur salaire, déjà comprises
+        dans le salaire coché.
       </div>
     </div>
   );
@@ -4381,7 +4379,6 @@ function Signaux({ M, config, ym, entries }) {
   return (
     <>
       <Rythme M={M} config={config} />
-      <CourbeMois jours={jours} nbJours={nbJours} M={M} />
       <MatiereDuJour jours={jours} M={M} config={config} />
       <CalendrierSaisies jours={jours} nbJours={nbJours} M={M} config={config} ym={ym} />
       <AchatsParFournisseur entries={entries} ym={ym} config={config} />
