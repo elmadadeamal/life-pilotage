@@ -3614,7 +3614,12 @@ function manquesDuJour(entries, config, iso) {
     && L.some((e) => e.type === "vente" && e.affaire === k && e.date >= depuis && e.date < iso));
   const ventes = actives.filter((k) => !(pt.ferme || {})[k]
     && !L.some((e) => e.type === "vente" && e.affaire === k && e.date === iso));
-  const achats = !pt.aucunAchat && !L.some((e) => e.type === "depense" && e.date === iso);
+  /* Comme les ventes : un achat attendu par activité. « Aucun achat » se dit
+     activité par activité ; l'ancien pointage global (aucunAchat: true)
+     reste respecté. Une activité fermée ce jour-là n'attend pas d'achat. */
+  const achats = pt.aucunAchat === true ? [] : actives.filter((k) => !(pt.ferme || {})[k]
+    && !((pt.aucunAchat || {})[k])
+    && !L.some((e) => e.type === "depense" && e.affaire === k && e.date === iso));
   return { ventes, achats, actives };
 }
 function Alarme({ entries, config, onPointer, onAller }) {
@@ -3630,7 +3635,7 @@ function Alarme({ entries, config, onPointer, onAller }) {
   blocs.push({ iso: hier, titre: "Hier n'est pas saisi", fort: false });
   const rendu = blocs.map((b) => {
     const m = manquesDuJour(entries, config, b.iso);
-    if (!m.ventes.length && !m.achats) return null;
+    if (!m.ventes.length && !m.achats.length) return null;
     const jour = b.iso.slice(8, 10) + "/" + b.iso.slice(5, 7);
     return (
       <div key={b.iso} role="alert" style={{ background: b.fort ? "#7A0E14" : "#9B1B22", color: "#fff",
@@ -3647,13 +3652,14 @@ function Alarme({ entries, config, onPointer, onAller }) {
               Fermé ce jour-là</button>
           </div>
         ))}
-        {m.achats && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
-            <span style={{ flex: 1, minWidth: 160 }}>Achats du jour : <strong>aucun saisi</strong></span>
-            <button className="pill" onClick={() => onAller((m.actives[0]) || "dash")}>Saisir un achat</button>
-            <button className="pill" onClick={() => onPointer(b.iso, { aucunAchat: true })}>Aucun achat ce jour-là</button>
+        {m.achats.map((k) => (
+          <div key={"a" + k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+            <span style={{ flex: 1, minWidth: 160 }}>Achat non saisi : <strong>{nomA(k)}</strong></span>
+            <button className="pill" onClick={() => onAller(k)}>Saisir un achat</button>
+            <button className="pill" onClick={() => onPointer(b.iso, { aucunAchat: { ...(typeof ((config.pointages || {})[b.iso] || {}).aucunAchat === "object" ? ((config.pointages || {})[b.iso] || {}).aucunAchat : {}), [k]: true } })}>
+              Aucun achat ce jour-là</button>
           </div>
-        )}
+        ))}
       </div>
     );
   }).filter(Boolean);
