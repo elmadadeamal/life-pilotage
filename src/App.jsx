@@ -1103,17 +1103,6 @@ function reprendre(saved) {
                            marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8" };
   }
 
-  /* La maison, octobre 2026 (Amal) : la traite passe le 6, vos deux salaires
-     se versent le 1er, et le carburant n'est plus suivi — il est dans l'argent
-     de poche de chacun. */
-  if (c.foyer) {
-    c.foyer = { ...c.foyer,
-      fixes: (c.foyer.fixes || []).filter((f) => !(f.id === "h6" && /carburant/i.test(f.lbl || "")))
-        .map((f) => (f.id === "h1" && num(f.jour) === 5) ? { ...f, jour: 6 } : f),
-      remunerations: (c.foyer.remunerations || [])
-        .map((r) => num(r.jour) === 30 ? { ...r, jour: 1 } : r) };
-  }
-
   /* Ancienne configuration : le riad avait ses réglages dans un coin à part */
   if (saved.riad && c.affaires.riad) {
     c.affaires.riad.type = "hebergement";
@@ -1193,6 +1182,17 @@ function reprendre(saved) {
   c.cle          = saved.cle || DEFAULT_CONFIG.cle;
   c.foyer = { ...DEFAULT_CONFIG.foyer, ...(saved.foyer || {}) };
   if (saved.foyer && saved.foyer.remunerations) c.foyer.remunerations = saved.foyer.remunerations;
+  /* La maison, octobre 2026 (Amal) : la traite passe le 6, vos deux salaires
+     se versent le 1er, et le carburant n'est plus suivi — il est dans l'argent
+     de poche de chacun. */
+  if (c.foyer) {
+    c.foyer = { ...c.foyer,
+      fixes: (c.foyer.fixes || []).filter((f) => !(f.id === "h6" && /carburant/i.test(f.lbl || "")))
+        .map((f) => (f.id === "h1" && num(f.jour) === 5) ? { ...f, jour: 6 } : f),
+      remunerations: (c.foyer.remunerations || [])
+        .map((r) => num(r.jour) === 30 ? { ...r, jour: 1 } : r) };
+  }
+
   return c;
 }
 
