@@ -8777,6 +8777,8 @@ function NouvelleActivite({ existantes, onAdd }) {
 
 function Reglages({ config, onSave, session, onLogout }) {
   const [c, setC] = useState(config);
+  const assietteLabo = (c.fixes || []).reduce((t, f) => t + (f.affaire === "partage"
+    ? num(f.montant) : num(f.montant) * (num(f.partagePct) || 0) / 100), 0);
   const [ok, setOk] = useState(false);
   const [erreur, setErreur] = useState("");
   /* Tant qu'Amal n'a rien touché, l'écran suit les réglages du serveur : sans
@@ -8832,10 +8834,9 @@ function Reglages({ config, onSave, session, onLogout }) {
         ))}
         <NouvelleCharge affaires={c.affaires} onAdd={(f) => maj({ ...c, fixes: [...c.fixes, f] })} />
         <div className="note">
-          <strong>Dont labo</strong> : la part d'une ligne qui sert à plusieurs activités. Le loyer
-          de Guéliz se règle en une fois, mais la mezzanine est le labo qui produit aussi pour la
-          médina — 50 % rejoignent donc le pot commun et se répartissent selon ta clé. À 0 %,
-          la charge est portée en entier par son activité.
+          <strong>Dont labo</strong> : la part d'une ligne qui sert à plusieurs activités, répartie
+          selon une clé. À 0 %, la charge est portée en entier par son activité — c'est le cas
+          de toutes tes charges aujourd'hui.
           <br /><br />
           Une charge fixe, c'est un montant qui tombe tous les mois, connu d'avance : un loyer,
           un salaire, une traite. Tout ce qui varie selon le mois — un coursier payé à la tâche,
@@ -8843,37 +8844,36 @@ function Reglages({ config, onSave, session, onLogout }) {
         </div>
       </div>
 
-      <div className="card">
-        <h2 className="h2">Clé de répartition du labo</h2>
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 14 }}>
-          <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 80, tmsk: 20, taam: 0 } })}>
-            Ta'âm pas encore ouverte — 80 / 20 / 0
-          </button>
-          <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 50, tmsk: 10, taam: 40 } })}>
-            Ta'âm en activité — 50 / 10 / 40
-          </button>
+      {/* Rien à partager : la carte n'a rien à dire, elle ne s'affiche pas. */}
+      {assietteLabo > 0 && (
+        <div className="card">
+          <h2 className="h2">Clé de répartition du labo</h2>
+          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 14 }}>
+            <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 80, tmsk: 20, taam: 0 } })}>
+              Ta'âm pas encore ouverte — 80 / 20 / 0
+            </button>
+            <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 50, tmsk: 10, taam: 40 } })}>
+              Ta'âm en activité — 50 / 10 / 40
+            </button>
+          </div>
+          {Object.entries(c.cle).map(([k, pct]) => (
+            <Ligne key={k} lbl={c.affaires[k]?.nom || k} value={pct} suffix="%"
+                   onChange={(v) => maj({ ...c, cle: { ...c.cle, [k]: num(v) } })} />
+          ))}
+          <div className="mini" style={{ marginTop: 10 }}>
+            Total : {Object.values(c.cle).reduce((s, v) => s + num(v), 0)} % — il doit faire 100.
+          </div>
+          <div className="row rowTot" style={{ marginTop: 10 }}>
+            <span className="lbl">Assiette à répartir</span>
+            <span className="val">
+              {fmt(assietteLabo)}
+            </span>
+          </div>
+          <div className="note">
+            Ne sert que si une charge a une part « labo ». Sinon cette carte disparaît.
+          </div>
         </div>
-        {Object.entries(c.cle).map(([k, pct]) => (
-          <Ligne key={k} lbl={c.affaires[k]?.nom || k} value={pct} suffix="%"
-                 onChange={(v) => maj({ ...c, cle: { ...c.cle, [k]: num(v) } })} />
-        ))}
-        <div className="mini" style={{ marginTop: 10 }}>
-          Total : {Object.values(c.cle).reduce((s, v) => s + num(v), 0)} % — il doit faire 100.
-        </div>
-        <div className="row rowTot" style={{ marginTop: 10 }}>
-          <span className="lbl">Assiette à répartir</span>
-          <span className="val">
-            {fmt(c.fixes.reduce((s, f) => s + (f.affaire === "partage"
-                   ? num(f.montant)
-                   : num(f.montant) * (num(f.partagePct) || 0) / 100), 0))}
-          </span>
-        </div>
-        <div className="note">
-          Tant que Ta'âm n'accueille pas de clients, lui faire porter la moitié du local la fait
-          paraître catastrophique et rend Sabich trop belle. Bascule sur la clé transitoire, et
-          reviens à 40 / 10 / 50 le jour de l'ouverture.
-        </div>
-      </div>
+      )}
 
       <div className="card">
         <h2 className="h2">Taux de coût matière</h2>
@@ -8881,7 +8881,8 @@ function Reglages({ config, onSave, session, onLogout }) {
           <Ligne key={k} lbl={a.nom} value={a.matierePct} suffix="%"
                  onChange={(v) => maj({ ...c, affaires: { ...c.affaires, [k]: { ...a, matierePct: num(v) } } })} />
         ))}
-        <div className="note">Utilisé seulement tant que tu n'as pas saisi tes achats réels du mois.</div>
+        <div className="note">Ne sert qu'à estimer le seuil d'une activité qui n'a encore rien vendu.
+          Le coût matière affiché ailleurs est toujours celui de tes achats réels.</div>
       </div>
 
       <div className="card">
@@ -8898,21 +8899,28 @@ function Reglages({ config, onSave, session, onLogout }) {
                   <input className="f" value={s.nom}
                          onChange={(e) => maj({ ...c, societes: c.societes.map((x) =>
                            x.id === s.id ? { ...x, nom: e.target.value } : x) })} /></div>
-                <div><label className="f">CNSS mensuelle</label>
-                  <input className="f" inputMode="decimal" value={cn.montant}
-                         onChange={(e) => majCnss({ montant: num(e.target.value) })} /></div>
+                {cn.actif ? (
+                  <div><label className="f">CNSS mensuelle</label>
+                    <input className="f" inputMode="decimal" value={cn.montant}
+                           onChange={(e) => majCnss({ montant: num(e.target.value) })} /></div>
+                ) : (
+                  <div><label className="f">CNSS</label>
+                    <div className="mini" style={{ padding: "12px 0" }}>
+                      Pas déclarée — rien n'est compté.
+                    </div></div>
+                )}
               </div>
               <div className="row" style={{ borderBottom: "none" }}>
                 <span className="lbl">
-                  Déclaration active
-                  <span className="tag" style={{ marginLeft: 8 }}>
-                    {fmt(masse)} de salaires
+                  Salariés déclarés à la CNSS ?
+                  <span className="mini" style={{ marginLeft: 8 }}>
+                    {fmt(masse)} de salaires dans cette société
                   </span>
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <button className={"pill" + (cn.actif ? " on" : "")}
                           onClick={() => majCnss({ actif: !cn.actif })}>
-                    {cn.actif ? "Oui" : "Pas encore"}
+                    {cn.actif ? "Oui" : "Non"}
                   </button>
                   {c.societes.length > 1 && (
                     <button className="del" aria-label={"Retirer " + s.nom}
@@ -8929,7 +8937,8 @@ function Reglages({ config, onSave, session, onLogout }) {
         <div className="note">
           Chaque salarié et chaque activité relèvent d'une société. La CNSS se déclare société
           par société : elle n'est répartie que sur les activités qui portent les salaires de
-          cette société-là. Le riad est chez Gourmet Souk, le reste chez Le Mi-Chui.
+          cette société-là. Le riad est chez Gourmet Souk, le reste chez Le Mi-Chui. Tant que la
+          réponse est « Non », aucune CNSS n'entre dans les calculs.
         </div>
       </div>
 
