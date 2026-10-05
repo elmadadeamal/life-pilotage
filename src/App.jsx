@@ -1894,8 +1894,11 @@ function calcul(config, entries, ym) {
   keys.forEach((k) => {
     const pct = config.affaires[k].matierePct || 0;
     A[k].matiereTheo = (A[k].ca * pct) / 100 + A[k].matiereExtras;
-    if (A[k].matiereReelle > 0) A[k].matiere = A[k].matiereReelle;
-    else if (A[k].matiereTheo > 0) { A[k].matiere = A[k].matiereTheo; A[k].estimee = true; }
+    /* Octobre 2026, règle d'Amal : l'app ne suppose rien, elle relaie la vérité.
+       Le coût matière est ce qui a été réellement acheté et saisi — jamais une
+       provision sur le chiffre d'affaires. Ce qui manque se voit dans la
+       complétude des saisies, pas dans un chiffre inventé. */
+    A[k].matiere = A[k].matiereReelle;
     /* Les frais variables suivent la même règle : le réel quand il existe,
        l'estimation par couvert sinon. Additionner les deux faisait sortir de
        la caisse un argent qui n'en était jamais sorti. */
@@ -2154,7 +2157,10 @@ function calcul(config, entries, ym) {
   const [anR, moR] = ym.split("-").map(Number);
   const aujR = new Date();
   const rangR = anR * 12 + moR, rangAujR = aujR.getFullYear() * 12 + aujR.getMonth() + 1;
-  const coupureR = rangR < rangAujR ? 99 : (rangR === rangAujR ? aujR.getDate() : 0);
+  /* Une charge du mois en cours n'est payée que si quelqu'un l'a cochée : la
+     date ne fait que la passer « en retard ». Les mois passés, clos, restent
+     considérés réglés (ils n'avaient pas toujours de pointage). */
+  const coupureR = rangR < rangAujR ? 99 : 0;
   const joursMoisR = new Date(anR, moR, 0).getDate();
   const jourDeR = {};
   [...config.fixes, ...config.structures, ...config.foyer.fixes].forEach((x) => {
@@ -6304,24 +6310,41 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
             <span className="val mut">{fmt(a.caAttente)}</span></div>
         )}
         {a.com > 0 && <div className="row"><span className="lbl">Commissions</span><span className="val neg">− {fmt(a.com)}</span></div>}
-        {a.matiere > 0 && (
-          <>
-            <div className="row">
-              <span className="lbl">Coût matière {a.estimee &&
-                <span className="tag" style={{ marginLeft: 6 }}>estimation, rien de saisi</span>}</span>
-              <span className="val neg">− {fmt(a.matiere)}</span>
-            </div>
-            {!a.estimee && a.matiereTheo > 0 && (
-              <div className="mini" style={{ margin: "-4px 0 8px" }}>
-                {a.matiere < a.matiereTheo * 0.75
-                  ? "Attention : " + fmt(a.matiereTheo) + " attendus à ce niveau de ventes. "
-                    + "Il manque probablement des factures ou des bons de livraison."
-                  : "Attendu à ce niveau de ventes : " + fmt(a.matiereTheo)
-                    + " (" + config.affaires[k].matierePct + " %)."}
-              </div>
-            )}
-          </>
+        {(a.matiere > 0 || (c.type !== "hebergement" && a.ca > 0)) && (
+          <div className="row">
+            <span className="lbl">Coût matière
+              {a.ca > 0 && <span className="mini"> · {Math.round(a.matiere / a.ca * 100)} % des ventes</span>}</span>
+            <span className="val neg">− {fmt(a.matiere)}</span>
+          </div>
         )}
+        {c.type !== "hebergement" && (() => {
+          /* La complétude : combien de jours du mois ont leurs ventes et leurs
+             achats saisis. Un résultat n'est vrai que si les saisies le sont. */
+          const [an, mo] = ym.split("-").map(Number);
+          const auj = new Date();
+          const enCours = auj.getFullYear() === an && auj.getMonth() + 1 === mo;
+          const jours = enCours ? auj.getDate() - 1 : new Date(an, mo, 0).getDate();
+          if (jours <= 0) return null;
+          const jv = new Set(), ja = new Set();
+          entries.forEach((e) => {
+            if (e.affaire !== k || !(e.date || "").startsWith(ym)) return;
+            const d = Number(e.date.slice(8, 10));
+            if (d > jours) return;
+            if (e.type === "vente") jv.add(d);
+            if (e.type === "depense") ja.add(d);
+          });
+          Object.entries(config.pointages || {}).forEach(([iso, pt]) => {
+            if (!iso.startsWith(ym) || Number(iso.slice(8, 10)) > jours) return;
+            if (pt.aucunAchat === true || (pt.aucunAchat || {})[k]) ja.add(Number(iso.slice(8, 10)));
+          });
+          const complet = jv.size >= jours && ja.size >= jours;
+          return (
+            <div className="mini" style={{ margin: "-2px 0 8px", color: complet ? "#4F6B1F" : "#B07C1E" }}>
+              {complet ? "✓ " : ""}Saisies du mois : ventes {jv.size}/{jours} jours · achats {ja.size}/{jours} jours
+              {complet ? "" : " — le résultat sera juste quand tout sera saisi."}
+            </div>
+          );
+        })()}
         {a.variable > 0 && (
           <Detail titre="Charges variables" montant={a.variable}
                   lignes={(() => {
@@ -6364,14 +6387,6 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
           <span className={"val " + (a.resultat >= 0 ? "pos" : "neg")}>{fmt(a.resultat)}</span>
         </div>
 
-        {a.estimee && (
-          <div className="note">
-            {num(c.matierePct) > 0
-              ? "Le coût matière est une provision à " + c.matierePct + " %."
-              : "Le coût matière est estimé sur les couverts servis."} Saisis tes achats réels
-            du mois et il sera remplacé par le vrai chiffre.
-          </div>
-        )}
 
         {c.type === "hebergement" && M.heb[k] && M.heb[k].nuits > 0 && (
           <div style={{ marginTop: 20 }}>
