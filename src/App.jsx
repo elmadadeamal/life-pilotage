@@ -5529,7 +5529,8 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe, entries }) {
 
 /* Une dépense de la maison au-delà des salaires, prise dans la caisse d'une affaire. */
 function FExtra({ config, defDate, onAdd, flash }) {
-  const affs = Object.keys(config.affaires).filter((k) => !config.affaires[k].archive);
+  const affs = Object.keys(config.affaires).filter((k) => !config.affaires[k].archive)
+    .sort((a, b) => rangOnglet(a) - rangOnglet(b));
   const [date, setDate] = useState(defDate);
   const [source, setSource] = useState(affs[0] || "");
   const [quoi, setQuoi] = useState("");
