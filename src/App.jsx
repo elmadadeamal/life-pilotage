@@ -3178,6 +3178,7 @@ function Rythme({ M, config }) {
 function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   const [annul, setAnnul] = useState(null);
   const [voirPayes, setVoirPayes] = useState(false);
+  const [ouverte, setOuverte] = useState(null);
   const echs = M.echeances || [];
   const dues = echs.filter((e) => !e.paye && e.enRetard).sort((a, b) => a.jour - b.jour);
   const avenir = echs.filter((e) => !e.paye && !e.enRetard).sort((a, b) => a.jour - b.jour);
@@ -3203,6 +3204,19 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   if (!dues.length && !avenir.length && !toutes.length && !annul && !comptesPayes.length) return null;
   const total = dues.reduce((s, e) => s + e.montant, 0)
               + toutes.reduce((s, e) => s + e.montantAffiche, 0);
+  /* Les ardoises : ce qu'on doit, regroupé par fournisseur, le plus gros
+     d'abord. Un « à sortir » sans nom ne veut rien dire ; une ardoise chez
+     le boucher, si. Un clic ouvre le détail des pièces. */
+  const nomF = (id) => ((config.fournisseurs || []).find((f) => f.id === id) || {}).nom;
+  const parArdoise = {};
+  toutes.forEach((e) => {
+    const cle = e.fournisseur ? "f:" + e.fournisseur : "l:" + String(e.lbl || "?").trim().toLowerCase();
+    const x = parArdoise[cle] || (parArdoise[cle] = { cle, nom: nomF(e.fournisseur) || e.lbl || "Sans nom",
+                                                    pieces: [], total: 0, nbBL: 0 });
+    x.pieces.push(e); x.total += e.montantAffiche; if (e.genre === "bl") x.nbBL += 1;
+  });
+  const ardoises = Object.values(parArdoise).sort((a, b) => b.total - a.total);
+  const totalFourn = ardoises.reduce((s, a) => s + a.total, 0);
   const totalAvenir = avenir.reduce((s, e) => s + e.montant, 0);
 
   const garde = (a) => {
@@ -3260,21 +3274,43 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
           </button>
         </div>
       )}
-      {toutes.length > 0 && <div className="mini" style={{ margin: "12px 0 2px" }}>Fournisseurs</div>}
-      {toutes.map((e) => (
-        <div key={e.id} className="row">
-          <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {e.genre === "doc"
-              ? <Coche paye={false} onClick={() => cocherFourn(e)} />
-              : <span style={{ width: 22, display: "inline-block" }} />}
-            <span>{e.lbl}
-              <span className="mini"> · {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}
-                {e.numero ? " · n° " + e.numero : ""}
-                {e.genre === "bl" ? " · bon de livraison, à facturer" : ""}
-                {e.bons && e.bons.length > 0 ? " · couvre " + e.bons.length + " bons de livraison" : ""}</span>
+      {ardoises.length > 0 && (
+        <div className="mini" style={{ margin: "12px 0 2px", display: "flex", justifyContent: "space-between" }}>
+          <span>Fournisseurs</span><span>{fmt(totalFourn)}</span>
+        </div>
+      )}
+      {ardoises.map((a) => (
+        <div key={a.cle}>
+          <button className="row" onClick={() => setOuverte(ouverte === a.cle ? null : a.cle)}
+                  style={{ width: "100%", background: "none", border: "none", cursor: "pointer",
+                           padding: undefined, textAlign: "left", font: "inherit", color: "inherit" }}>
+            <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 22, display: "inline-block", textAlign: "center", fontSize: 13,
+                             color: "#8B9678" }}>{ouverte === a.cle ? "▾" : "▸"}</span>
+              <span><strong style={{ fontWeight: 500 }}>{a.nom}</strong>
+                <span className="mini"> · {a.pieces.length} {a.nbBL === a.pieces.length
+                  ? (a.nbBL > 1 ? "BL" : "BL") : (a.pieces.length > 1 ? "pièces" : "pièce")}
+                  {a.nbBL > 0 && a.nbBL === a.pieces.length ? " · se règle à la facture" : ""}</span>
+              </span>
             </span>
-          </span>
-          <span className="val">{fmt(e.montantAffiche)}</span>
+            <span className="val">{fmt(a.total)}</span>
+          </button>
+          {ouverte === a.cle && a.pieces.map((e) => (
+            <div key={e.id} className="row" style={{ paddingLeft: 32 }}>
+              <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {e.genre === "doc"
+                  ? <Coche paye={false} onClick={() => cocherFourn(e)} />
+                  : <span style={{ width: 22, display: "inline-block" }} />}
+                <span className="mini" style={{ fontSize: 15 }}>
+                  {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}
+                  {e.numero ? " · n° " + e.numero : ""}
+                  {e.genre === "bl" ? " · bon de livraison" : e.piece === "facture" ? " · facture" : ""}
+                  {e.bons && e.bons.length > 0 ? " · couvre " + e.bons.length + " BL" : ""}
+                </span>
+              </span>
+              <span className="val" style={{ fontSize: 15 }}>{fmt(e.montantAffiche)}</span>
+            </div>
+          ))}
         </div>
       ))}
       {dues.length > 0 && <div className="mini" style={{ margin: "14px 0 2px" }}>Signalé non payé</div>}
