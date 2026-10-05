@@ -1907,7 +1907,11 @@ function calcul(config, entries, ym) {
   const reelDuMois = reelParMois[ym] || {};
   const duLigneAu = (f, mois) => {
     const r = reelParMois[mois] || {};
-    return (f.variable && r[f.id] !== undefined) ? r[f.id] : num(f.montant);
+    /* Une charge variable (eau, électricité, téléphone…) ne compte plus pour
+       une estimation : Amal ne veut que des chiffres réels. Tant que sa
+       facture n'est pas saisie, elle vaut 0 et n'apparaît nulle part — un
+       rappel « Factures attendues » la garde en vue. */
+    return f.variable ? (r[f.id] !== undefined ? r[f.id] : 0) : num(f.montant);
   };
   const duLigne = (f) => duLigneAu(f, ym);
   const estEstime = (f) => !!f.variable && reelDuMois[f.id] === undefined;
@@ -2149,6 +2153,14 @@ function calcul(config, entries, ym) {
   });
   const reportes = reportesRef;
 
+  /* Les factures variables pas encore arrivées ce mois-ci */
+  const facturesAttendues = [
+    ...config.fixes.filter(estEstime).map((f) => ({ id: f.id, lbl: f.lbl, jour: f.jour,
+                                  groupe: f.affaire === "partage" ? "labo" : f.affaire })),
+    ...config.structures.filter(estEstime).map((x) => ({ id: x.id, lbl: x.lbl, jour: x.jour, groupe: "societe" })),
+    ...config.foyer.fixes.filter(estEstime).map((x) => ({ id: x.id, lbl: x.lbl, jour: x.jour, groupe: "foyer" })),
+  ];
+
   /* Le catalogue de tout ce qui peut être dû, rangé par propriétaire */
   const base = [
     /* La prime fait partie du salaire du mois : elle pèse dans le résultat,
@@ -2175,7 +2187,7 @@ function calcul(config, entries, ym) {
        deux « reste à décaisser » différents, à l'écart de son montant. */
     ...(soliReste > 0 ? [{ id: "solidarite", lbl: "Solidarité",
                            montant: soliReste, groupe: "solidarite" }] : []),
-  ];
+  ].filter((l) => !l.estime);
 
   /* Un report n'est pas une chaîne d'un mois au suivant : c'est une DETTE qui
      court jusqu'à ce qu'elle soit payée. L'ancienne version ne regardait que
@@ -2766,7 +2778,7 @@ function calcul(config, entries, ym) {
            duMaintenant, duPlusTard, duTotal,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
            marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
-           echeances, resteAPayerMois, jourActuel, cnssSoc,
+           echeances, resteAPayerMois, jourActuel, cnssSoc, facturesAttendues,
            remus, salaires, depensesPerso, doubleLog, primesTotal,
            heb: Object.fromEntries(Object.entries(hebStats).map(([k, s]) => {
                  const lots = Math.max(1, num((config.affaires[k] || {}).logements || 1));
@@ -2834,7 +2846,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
                                            onAdd={onAdd} onDel={onDel} />}
       {sous === "resultat"   && <Dashboard M={M} config={config} ym={ym} onAller={onAller}
                                             onRegler={onRegler} entries={entries} onAdd={onAdd} onDel={onDel} onMaj={onMaj}
-                                            onSaveConfig={onSaveConfig}
+                                            onSaveConfig={onSaveConfig} onChiffrer={onChiffrer}
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym}
@@ -3175,7 +3187,7 @@ function Rythme({ M, config }) {
 /* Ce que tu dois VRAIMENT : tes fournisseurs, plus ce que tu as signalé comme
    non payé. Les loyers, salaires et traites sont considérés payés à leur date ;
    ce qui n'est pas encore échu se lit à part, sans entrer dans le total. */
-function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
+function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
   const [annul, setAnnul] = useState(null);
   const [voirPayes, setVoirPayes] = useState(false);
   const [ouverte, setOuverte] = useState(null);
@@ -3201,7 +3213,8 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
   const aFacturer = dettes.filter((e) => estBL(e) && !cachés.has(e.id));
   const toutes = [...fourn.map((e) => ({ ...e, genre: "doc" })), ...aFacturer.map((e) => ({ ...e, genre: "bl", montantAffiche: num(e.montant) }))]
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  if (!dues.length && !avenir.length && !toutes.length && !annul && !comptesPayes.length) return null;
+  if (!dues.length && !avenir.length && !toutes.length && !annul && !comptesPayes.length
+      && !(M.facturesAttendues || []).length) return null;
   const total = dues.reduce((s, e) => s + e.montant, 0)
               + toutes.reduce((s, e) => s + e.montantAffiche, 0);
   /* Les ardoises : ce qu'on doit, regroupé par fournisseur, le plus gros
@@ -3316,6 +3329,7 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj }) {
       {dues.length > 0 && <div className="mini" style={{ margin: "14px 0 2px" }}>Signalé non payé</div>}
       {dues.map((e) => ligne(e, cocherCharge, false))}
       {total === 0 && <div className="note">Rien à payer pour le moment.</div>}
+      <FacturesAttendues liste={M.facturesAttendues} onChiffrer={onChiffrer} />
 
       {avenir.length > 0 && (
         <>
@@ -4345,7 +4359,7 @@ function Signaux({ M, config, ym, entries }) {
   );
 }
 
-function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, onMaj, onSaveConfig,
+function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, onMaj, onSaveConfig, onChiffrer,
                     taches, onAddTache, onMajTache, onDelTache }) {
   const [detail, setDetail] = useState(false);
   const enCours = ym >= thisMonth();
@@ -4420,7 +4434,7 @@ function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, on
       </div>
 
       <Controle entries={entries} config={config} ym={ym} onMaj={onMaj} onAller={onAller} />
-      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler}
+      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler} onChiffrer={onChiffrer}
                entries={entries} onMaj={onMaj} />
 
       <Signaux M={M} config={config} ym={ym} entries={entries} />
@@ -6376,6 +6390,33 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 /*  FOYER                                                              */
 /* ------------------------------------------------------------------ */
 
+/* Le rappel des factures variables : un bouton, et au clic la liste, chacune
+   avec son champ pour taper le vrai montant dès que la facture arrive. */
+function FacturesAttendues({ liste, onChiffrer }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [saisis, setSaisis] = useState({});
+  if (!liste || !liste.length || !onChiffrer) return null;
+  return (
+    <div style={{ margin: "14px 0 4px" }}>
+      <button className="pill" onClick={() => setOuvert(!ouvert)} style={{ width: "100%" }}>
+        {ouvert ? "Masquer les factures attendues" : "Factures attendues (" + liste.length + ") — eau, électricité, téléphone…"}
+      </button>
+      {ouvert && liste.map((f) => (
+        <div key={f.id} className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <span className="lbl">{f.lbl}<span className="mini"> · vers le {num(f.jour) || 5}</span></span>
+          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input className="f" inputMode="decimal" placeholder="Montant" style={{ width: 120 }}
+                   value={saisis[f.id] || ""} onChange={(e) => setSaisis({ ...saisis, [f.id]: e.target.value })} />
+            <button className="pill" onClick={() => { if (num(saisis[f.id]) > 0) { onChiffrer(f.id, saisis[f.id]);
+                                                      setSaisis({ ...saisis, [f.id]: "" }); } }}>
+              OK</button>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChiffrer, filtre }) {
   const [vue, setVue] = useState("date");
 
@@ -6399,6 +6440,8 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
           {aVenir.length + retard.length} échéances. Coche chaque ligne au moment où tu la paies,
           ou reporte-la sur le mois suivant avec la flèche.
         </div>
+        <FacturesAttendues liste={(M.facturesAttendues || []).filter((f) => !filtre || f.groupe === filtre)}
+                           onChiffrer={onChiffrer} />
       </div>
 
       <div className="navSimple" style={{ marginBottom: 14 }}>
