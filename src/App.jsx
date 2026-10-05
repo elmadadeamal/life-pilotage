@@ -1592,6 +1592,7 @@ export default function App({ session, onLogout }) {
         {vue === "foyer"    && <FoyerComplet M={M} config={config} onAdd={addEntry} ym={ym}
                                     entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                     onDel={delEntry} onMaj={majEntry} deja={deja}
+                                    onPocher={pocherReglement} onChiffrer={chiffrer}
                                     taches={taches} onAddTache={addTache}
                                     onMajTache={majTache} onDelTache={delTache} />}
         {vue === "reglages" && <Reglages config={config} onSave={saveConfig}
