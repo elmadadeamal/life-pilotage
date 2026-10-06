@@ -6484,6 +6484,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         );
       })()}
       {/* La solidarité se suit sur Le Mi-Chui, plus sur la maison. */}
+      {k === "contenu" && <CbParPoint config={config} entries={entries} ym={ym} onMaj={onMaj} />}
       {k === "contenu" && <NapsVirements config={config} entries={entries} ym={ym}
                                          onAdd={onAdd} onDel={onDel} />}
       {k === "contenu" && <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
@@ -7585,6 +7586,90 @@ const cartesEntre = (entries, config, du, au) => {
   });
   return { brut, estimee };
 };
+
+/* La borne Naps est commune à Sabich et TMSK : ce sont les tickets CB de
+   chaque comptoir qui séparent les deux. On reprend ce que SAIB saisit chaque
+   soir dans la recette — Sabich à gauche, TMSK à droite, comme au comptoir —
+   avec le total en bas, à mettre en face des virements. Rien à ressaisir ;
+   une correction ici corrige la recette elle-même (CB + espèces = recette). */
+function CelluleCB({ ventes, onMaj }) {
+  const [edit, setEdit] = useState(false);
+  const [v, setV] = useState("");
+  const total = ventes.reduce((s, e) => s + carteDe(e), 0);
+  if (!ventes.length) return <span className="mini" style={{ textAlign: "right" }}>—</span>;
+  const unique = ventes.length === 1 ? ventes[0] : null;
+  const valider = () => {
+    setEdit(false);
+    if (!unique || !montantLisible(v) || String(v).trim() === "") return;
+    const c = num(v);
+    if (Math.abs(c - total) < 0.5) return;
+    const esp = unique.espece !== undefined ? num(unique.espece) : num(unique.montant) - total;
+    onMaj(unique.id, { carte: c, espece: esp, montant: esp + c, napsMa: undefined, napsEtr: undefined });
+  };
+  if (edit) return (
+    <input className="f" inputMode="decimal" autoFocus value={v}
+           style={{ padding: "6px 8px", textAlign: "right", minWidth: 0 }}
+           onChange={(e) => setV(e.target.value)} onBlur={valider}
+           onKeyDown={(e) => { if (e.key === "Enter") valider(); if (e.key === "Escape") setEdit(false); }} />
+  );
+  return (
+    <button onClick={() => { if (unique) { setV(String(total)); setEdit(true); } }}
+            title={unique ? "Corriger" : ""}
+            style={{ background: "none", border: "none", padding: 0, textAlign: "right",
+                     font: "inherit", color: "inherit", cursor: unique ? "pointer" : "default" }}>
+      {fmt(total)}</button>
+  );
+}
+
+function CbParPoint({ config, entries, ym, onMaj }) {
+  const gauche = "sabich", droite = "tmsk";
+  const nom = (k) => (config.affaires[k] || {}).nom || k;
+  const virements = entries.filter((e) => e.type === "transfert" && e.naps);
+  const ventes = entries.filter((e) => e.type === "vente" && (e.date || "").startsWith(ym)
+                                    && (e.affaire === gauche || e.affaire === droite));
+  const jours = [...new Set(ventes.filter(() => true).map((e) => e.date))].sort();
+  const de = (iso, k) => ventes.filter((e) => e.date === iso && e.affaire === k);
+  const somme = (l) => l.reduce((s, e) => s + carteDe(e), 0);
+  const totG = somme(ventes.filter((e) => e.affaire === gauche));
+  const totD = somme(ventes.filter((e) => e.affaire === droite));
+  const grille = { display: "grid", gridTemplateColumns: "52px 1fr 1fr 1fr 58px", gap: 8,
+                   alignItems: "center", padding: "9px 0", borderBottom: "1px solid rgba(0,0,0,.06)" };
+  const d = { textAlign: "right" };
+
+  return (
+    <div className="card">
+      <h2 className="h2">CB par point de vente</h2>
+      {!jours.length ? <div className="mini">Aucune recette saisie ce mois-ci.</div> : (
+        <>
+          <div style={{ ...grille, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", opacity: .7 }}>
+            <span>Jour</span><span style={d}>{nom(gauche)}</span><span style={d}>{nom(droite)}</span>
+            <span style={d}>Total</span><span style={d}>Viré</span>
+          </div>
+          {jours.map((iso) => {
+            const g = de(iso, gauche), dr = de(iso, droite);
+            const vir = virements.find((x) => x.du <= iso && x.au >= iso);
+            return (
+              <div key={iso} style={grille}>
+                <span>{jjmm(iso)}</span>
+                <span style={d}><CelluleCB ventes={g} onMaj={onMaj} /></span>
+                <span style={d}><CelluleCB ventes={dr} onMaj={onMaj} /></span>
+                <span style={{ ...d, fontWeight: 500 }}>{fmt(somme(g) + somme(dr))}</span>
+                <span className="mini" style={d}>{vir ? "le " + jjmm(vir.date) : "—"}</span>
+              </div>
+            );
+          })}
+          <div style={{ ...grille, borderBottom: "none", fontWeight: 600 }}>
+            <span>Mois</span><span style={d}>{fmt(totG)}</span><span style={d}>{fmt(totD)}</span>
+            <span style={d}>{fmt(totG + totD)}</span><span />
+          </div>
+          <div className="mini" style={{ marginTop: 6 }}>
+            Chiffres saisis par SAIB dans les recettes. Clique un montant pour le corriger.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function NapsVirements({ config, entries, ym, onAdd, onDel }) {
   const virements = entries.filter((e) => e.type === "transfert" && e.naps)
