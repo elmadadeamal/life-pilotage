@@ -7805,7 +7805,12 @@ function CbParPoint({ config, entries, ym, onMaj }) {
   const somme = (l) => l.reduce((s, e) => s + carteDe(e), 0);
   const totG = somme(ventes.filter((e) => e.affaire === gauche));
   const totD = somme(ventes.filter((e) => e.affaire === droite));
-  const grille = { display: "grid", gridTemplateColumns: "minmax(64px, .8fr) 1fr 1fr 1fr minmax(70px, .8fr)",
+  /* Ce que Naps a réellement versé pour les jours du mois (net de commission) */
+  const totRecu = jours.reduce((s, iso) => s + (R.parJour[iso] && napsVerse(R.parJour[iso])
+    ? num(R.parJour[iso].verse) : 0), 0);
+  const fmt2 = (n) => (Math.round(n * 100) / 100).toLocaleString("fr-FR",
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " DH";
+  const grille = { display: "grid", gridTemplateColumns: "minmax(60px, .7fr) 1fr 1fr 1fr 1.15fr minmax(64px, .7fr)",
                    gap: 10, alignItems: "center", padding: "10px 0", whiteSpace: "nowrap",
                    fontSize: 16, borderBottom: "1px solid rgba(0,0,0,.06)" };
   const d = { textAlign: "right" };
@@ -7815,33 +7820,36 @@ function CbParPoint({ config, entries, ym, onMaj }) {
       <h2 className="h2">CB par point de vente</h2>
       {!jours.length ? <div className="mini">Aucune recette saisie ce mois-ci.</div> : (
         <>
-          <div style={{ overflowX: "auto" }}><div style={{ minWidth: 470 }}>
+          <div style={{ overflowX: "auto" }}><div style={{ minWidth: 600 }}>
           <div style={{ ...grille, fontSize: 14, fontWeight: 600, letterSpacing: ".08em",
                         textTransform: "uppercase", color: "var(--u-titre)" }}>
             <span>Jour</span><span style={d}>{nom(gauche)}</span><span style={d}>{nom(droite)}</span>
-            <span style={d}>Total</span><span style={d}>Viré</span>
+            <span style={d}>Total CB</span><span style={d}>Reçu</span><span style={d}>Viré le</span>
           </div>
           {jours.map((iso) => {
             const g = de(iso, gauche), dr = de(iso, droite);
             const vir = R.parJour[iso] && napsVerse(R.parJour[iso])
-              ? { date: R.parJour[iso].dateVir } : null;
+              ? { date: R.parJour[iso].dateVir, verse: num(R.parJour[iso].verse) } : null;
             return (
               <div key={iso} style={grille}>
                 <span>{jjmm(iso)}</span>
                 <span style={d}><CelluleCB ventes={g} onMaj={onMaj} /></span>
                 <span style={d}><CelluleCB ventes={dr} onMaj={onMaj} /></span>
                 <span style={{ ...d, fontWeight: 500 }}>{fmt(somme(g) + somme(dr))}</span>
+                <span style={{ ...d, color: vir ? "#4F6B1F" : undefined }}>{vir ? fmt2(vir.verse) : "—"}</span>
                 <span style={d}>{vir ? jjmm(vir.date) : "—"}</span>
               </div>
             );
           })}
           <div style={{ ...grille, borderBottom: "none", fontWeight: 600 }}>
             <span>Mois</span><span style={d}>{fmt(totG)}</span><span style={d}>{fmt(totD)}</span>
-            <span style={d}>{fmt(totG + totD)}</span><span />
+            <span style={d}>{fmt(totG + totD)}</span>
+            <span style={{ ...d, color: "#4F6B1F" }}>{totRecu > 0 ? fmt2(totRecu) : "—"}</span><span />
           </div>
           </div></div>
           <div className="mini" style={{ marginTop: 6 }}>
-            Chiffres saisis par SAIB dans les recettes. Clique un montant pour le corriger.
+            Total CB = tickets saisis par SAIB (clique un montant pour le corriger). Reçu = ce que Naps
+            a vraiment versé sur Le Mi-Chui, commission déduite, d'après l'export Naps.
           </div>
         </>
       )}
