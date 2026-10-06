@@ -6333,7 +6333,9 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
             <span className="val neg">− {fmt(a.matiere)}</span>
           </div>
         )}
-        {c.type !== "hebergement" && (() => {
+        {/* Le Mi-Chui facture des prestations, pas des ventes de comptoir :
+            pas de « ventes X/J jours » qui le dirait toujours incomplet. */}
+        {c.type !== "hebergement" && k !== "contenu" && (() => {
           /* La complétude : combien de jours du mois ont leurs ventes et leurs
              achats saisis. Un résultat n'est vrai que si les saisies le sont. */
           const [an, mo] = ym.split("-").map(Number);
