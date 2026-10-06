@@ -7805,8 +7805,9 @@ function CbParPoint({ config, entries, ym, onMaj }) {
   const somme = (l) => l.reduce((s, e) => s + carteDe(e), 0);
   const totG = somme(ventes.filter((e) => e.affaire === gauche));
   const totD = somme(ventes.filter((e) => e.affaire === droite));
-  const grille = { display: "grid", gridTemplateColumns: "52px 1fr 1fr 1fr 58px", gap: 8,
-                   alignItems: "center", padding: "9px 0", borderBottom: "1px solid rgba(0,0,0,.06)" };
+  const grille = { display: "grid", gridTemplateColumns: "minmax(64px, .8fr) 1fr 1fr 1fr minmax(70px, .8fr)",
+                   gap: 10, alignItems: "center", padding: "10px 0", whiteSpace: "nowrap",
+                   fontSize: 16, borderBottom: "1px solid rgba(0,0,0,.06)" };
   const d = { textAlign: "right" };
 
   return (
@@ -7814,7 +7815,9 @@ function CbParPoint({ config, entries, ym, onMaj }) {
       <h2 className="h2">CB par point de vente</h2>
       {!jours.length ? <div className="mini">Aucune recette saisie ce mois-ci.</div> : (
         <>
-          <div style={{ ...grille, fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", opacity: .7 }}>
+          <div style={{ overflowX: "auto" }}><div style={{ minWidth: 470 }}>
+          <div style={{ ...grille, fontSize: 14, fontWeight: 600, letterSpacing: ".08em",
+                        textTransform: "uppercase", color: "var(--u-titre)" }}>
             <span>Jour</span><span style={d}>{nom(gauche)}</span><span style={d}>{nom(droite)}</span>
             <span style={d}>Total</span><span style={d}>Viré</span>
           </div>
@@ -7828,7 +7831,7 @@ function CbParPoint({ config, entries, ym, onMaj }) {
                 <span style={d}><CelluleCB ventes={g} onMaj={onMaj} /></span>
                 <span style={d}><CelluleCB ventes={dr} onMaj={onMaj} /></span>
                 <span style={{ ...d, fontWeight: 500 }}>{fmt(somme(g) + somme(dr))}</span>
-                <span className="mini" style={d}>{vir ? "le " + jjmm(vir.date) : "—"}</span>
+                <span style={d}>{vir ? jjmm(vir.date) : "—"}</span>
               </div>
             );
           })}
@@ -7836,6 +7839,7 @@ function CbParPoint({ config, entries, ym, onMaj }) {
             <span>Mois</span><span style={d}>{fmt(totG)}</span><span style={d}>{fmt(totD)}</span>
             <span style={d}>{fmt(totG + totD)}</span><span />
           </div>
+          </div></div>
           <div className="mini" style={{ marginTop: 6 }}>
             Chiffres saisis par SAIB dans les recettes. Clique un montant pour le corriger.
           </div>
