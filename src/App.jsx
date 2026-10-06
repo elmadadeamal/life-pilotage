@@ -1413,6 +1413,22 @@ export default function App({ session, onLogout }) {
     return [...base, { ...entree, id: uid(), par: moi, saisiLe: aujourdhui() }];
   });
   const delEntry = (id) => gesteEntries((l) => l.filter((e) => e.id !== id));
+  /* L'export Naps : une écriture par télécollecte, jamais deux fois la même.
+     Une télécollecte déjà connue est mise à jour (son statut peut passer à
+     « Versé » d'un export à l'autre). Tout l'import tient en un seul geste. */
+  const importerNaps = (lignes) => gesteEntries((l) => {
+    const out = [...l];
+    lignes.forEach((x) => {
+      const champs = { tc: x.tc, nb: x.nb, ventes: x.ventes, commission: x.commission,
+                       ajust: x.ajust, verse: x.verse, statut: x.statut, dateVir: x.dateVir,
+                       date: x.dateVir, pdv: x.pdv };
+      const i = out.findIndex((e) => e.type === "napsTc" && String(e.tc) === x.tc);
+      if (i >= 0) out[i] = { ...out[i], ...champs, majPar: moi, majLe: aujourdhui() };
+      else out.push({ ...champs, type: "napsTc", affaire: "contenu", id: uid(), par: moi,
+                      saisiLe: aujourdhui(), importeLe: aujourdhui() });
+    });
+    return out;
+  });
   /* Une charge de septembre peut très bien avoir été payée fin août. Tant que le
      pointage ne portait qu'un mois, « ce que j'ai réellement payé » comptait en
      septembre de l'argent sorti en août. Le pointage garde donc deux dates :
@@ -1595,7 +1611,7 @@ export default function App({ session, onLogout }) {
                                      ym={ym} onSolder={solder} onAdd={addEntry} deja={deja}
                                      onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                      onPocher={pocherReglement} onChiffrer={chiffrer}
-                                     onDel={delEntry} onMaj={majEntry}
+                                     onDel={delEntry} onMaj={majEntry} onImporterNaps={importerNaps}
                                      taches={taches} onAddTache={addTache}
                                      onMajTache={majTache} onDelTache={delTache} />}
         {vue === "foyer"    && <FoyerComplet M={M} config={config} onAdd={addEntry} ym={ym}
@@ -1630,17 +1646,7 @@ function calcul(config, entries, ym) {
              fixes: 0, partage: 0, cnss: 0, salaires: 0, estimee: false, resultat: 0, charges: 0 };
   });
 
-  /* Une recette se décompose : espèces en caisse, cartes marocaines,
-     cartes étrangères. Naps retient sa commission avant de virer. */
-  const N = config.naps || { ma: 1.5, etr: 3, partEtr: 20 };
-
-  /* Taux moyen d'une activité, selon la part de cartes étrangères qu'elle voit passer */
-  const tauxNaps = (k) => {
-    const a = config.affaires[k] || {};
-    const p = a.partEtr !== undefined ? num(a.partEtr) : num(N.partEtr);
-    return num(N.ma) + (num(N.etr) - num(N.ma)) * p / 100;
-  };
-
+  /* Une recette se décompose : espèces en caisse et cartes (via Naps). */
   let napsBrut = 0, especeTotal = 0, ecartFondsTotal = 0;
   const carteParAffaire = {}, especeParAffaire = {};
   inMonth.filter((e) => e.type === "vente").forEach((v) => {
@@ -1663,15 +1669,27 @@ function calcul(config, entries, ym) {
     }
   });
 
-  /* Naps vire tous les deux ou trois jours, jamais rond : pointer chaque
-     virement serait un travail sans retour. La commission se calcule donc
-     sur le CB compté, au taux de l'activité. */
+  /* La commission Naps n'est plus estimée : c'est celle de l'export Naps,
+     rattachée à son jour de CB, partagée entre Sabich et TMSK au prorata de
+     leurs tickets CB. Tant qu'un jour n'est pas dans un export, sa commission
+     n'est pas connue et ne compte pas. */
   let napsCom = 0;
-  Object.entries(carteParAffaire).forEach(([k, m]) => {
-    const c = m * tauxNaps(k) / 100;
-    napsCom += c;
-    if (A[k]) A[k].com += c;
-  });
+  const comParAffaire = {}, carteVue = {};
+  {
+    const R = rapprocherNaps(entries);
+    R.tcs.forEach((t) => {
+      if (!t.jour || !t.jour.startsWith(ym)) return;
+      const j = R.jours[t.jour];
+      POINTS_NAPS.forEach((k) => {
+        const cb = j.par[k] || 0;
+        const c = j.total > 0 ? t.cout * cb / j.total : 0;
+        comParAffaire[k] = (comParAffaire[k] || 0) + c;
+        carteVue[k] = (carteVue[k] || 0) + cb;
+        napsCom += c;
+        if (A[k]) A[k].com += c;
+      });
+    });
+  }
 
   /* Argent qui dort dans les tiroirs : ni charge ni recette, mais indisponible */
   const fondsCaisse = keys.reduce((s, k) => s + (config.affaires[k].archive ? 0
@@ -1724,7 +1742,8 @@ function calcul(config, entries, ym) {
   const encaissements = {};
   keys.forEach((k) => {
     const carte = carteParAffaire[k] || 0;
-    encaissements[k] = { carte, com: carte * tauxNaps(k) / 100, taux: tauxNaps(k),
+    encaissements[k] = { carte, com: comParAffaire[k] || 0, carteVue: carteVue[k] || 0,
+                         taux: carteVue[k] > 0 ? (comParAffaire[k] || 0) / carteVue[k] * 100 : null,
                          espece: especeParAffaire[k] || 0,
                          fonds: num(config.affaires[k].fonds),
                          ecartFonds: A[k].ecartFonds || 0 };
@@ -2692,6 +2711,14 @@ function calcul(config, entries, ym) {
            tiroir se vide pour de bon. */
         bouge(e.poche || caisseDe(config, null), -num(e.montant), d,
               "Mis de côté pour un chantier");
+        break;
+      case "napsTc":
+        /* Un virement Naps arrivé : le CB du jour quitte « Naps en attente »,
+           le net arrive sur Le Mi-Chui ; la différence est la commission. */
+        if (napsVerse(e)) {
+          bouge(pocheCartes(config), -num(e.ventes), d, "Virement Naps");
+          bouge(banqueCartes(config), num(e.verse), d, "Virement Naps");
+        }
         break;
       case "transfert":
         bouge(e.de, -num(e.montant), d, "Transfert");
@@ -3753,7 +3780,7 @@ function Alarme({ entries, config, onPointer, onAller }) {
   const lundi = isoLocal(new Date(maintenant.getTime() - ((maintenant.getDay() + 6) % 7) * 864e5));
   const lundiPasse = maintenant.getDay() !== 1 || maintenant.getHours() >= 9;
   const napsFait = !!(((config.pointages || {})[lundi] || {}).napsExport)
-    || (entries || []).some((e) => e.type === "napsImport" && (e.importeLe || e.date || "") >= lundi);
+    || (entries || []).some((e) => e.type === "napsTc" && (e.importeLe || e.majLe || "") >= lundi);
   if (lundi >= "2026-10-12" && lundiPasse && !napsFait) {
     rendu.push(
       <div key="naps" role="alert" style={{ background: "#9B1B22", color: "#fff",
@@ -6284,7 +6311,8 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
 
 function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                         taches, onAddTache, onMajTache, onDelTache,
-                         onRegler, onReporter, onDater, onPocher, onChiffrer, onDel, onMaj }) {
+                         onRegler, onReporter, onDater, onPocher, onChiffrer, onDel, onMaj,
+                         onImporterNaps }) {
   const a = M.A[k], c = config.affaires[k];
   const [sous, setSous] = useState("resultat");
 
@@ -6330,7 +6358,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
       {k === "contenu" && <>
         <CbParPoint config={config} entries={entries} ym={ym} onMaj={onMaj} />
         <CashCbCamembert config={config} entries={entries} ym={ym} />
-        <NapsVirements config={config} entries={entries} ym={ym} onAdd={onAdd} onDel={onDel} />
+        <NapsExport entries={entries} ym={ym} onImporter={onImporterNaps} onDel={onDel} />
         <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
                          onRegler={onRegler} flash={() => {}} />
       </>}
@@ -6470,9 +6498,14 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                 <span className="val">{fmt(M.naps.parAffaire[k].carte)}</span></div>
               <div className="row">
                 <span className="lbl">Commission Naps
-                  <span className="tag" style={{ marginLeft: 7 }}>
-                    {M.naps.parAffaire[k].taux.toFixed(1)} %</span></span>
+                  {M.naps.parAffaire[k].taux !== null && <span className="tag" style={{ marginLeft: 7 }}>
+                    {M.naps.parAffaire[k].taux.toFixed(2).replace(".", ",")} %</span>}</span>
                 <span className="val neg">− {fmt(M.naps.parAffaire[k].com)}</span></div>
+              {M.naps.parAffaire[k].carte - M.naps.parAffaire[k].carteVue >= 1 && (
+                <div className="mini" style={{ margin: "-4px 0 6px" }}>
+                  {fmt(M.naps.parAffaire[k].carte - M.naps.parAffaire[k].carteVue)} de CB pas encore
+                  dans un export Naps : leur commission comptera à l'import.</div>
+              )}
             </>}
             {M.naps.parAffaire[k].fonds > 0 && (
               <div className="row"><span className="lbl">Fonds de caisse immobilisé</span>
@@ -7581,44 +7614,103 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
 /* La solidarité n'est ni une facture ni un salaire : elle se décide chaque mois.
    Elle sort de la trésorerie sans peser sur le résultat des commerces. */
 /* ------------------------------------------------------------------ */
-/*  VIREMENTS NAPS — sur Le Mi-Chui                                    */
+/*  NAPS — l'export Excel de l'espace Naps fait foi                     */
 /* ------------------------------------------------------------------ */
-/* Amal : « je veux ajouter sur Le Mi-Chui les virements que je reçois de
-   Naps, et y voir la commission réelle à côté de l'estimée ». Un virement
-   couvre des jours de cartes : on additionne les cartes saisies ces jours-là,
-   on retire ce qui est vraiment arrivé sur le relevé, et c'est la commission
-   réelle. Rien n'est supposé : si l'écart est énorme, c'est qu'une recette
-   carte est mal saisie, et c'est justement ce qu'on veut voir.
-   Le virement est enregistré comme un transfert « Naps en attente » →
-   « Banque Le Mi-Chui » : les poches restent justes. */
-const tauxNapsDe = (config, k) => {
-  const N = config.naps || { ma: 1.5, etr: 3, partEtr: 100 };
-  const a = (config.affaires || {})[k] || {};
-  const p = a.partEtr !== undefined ? num(a.partEtr) : num(N.partEtr);
-  return num(N.ma) + (num(N.etr) - num(N.ma)) * p / 100;
-};
+/* Amal : « je ne veux pas que l'app estime quoi que ce soit ». Naps n'envoie
+   aucun relevé, mais son espace en ligne exporte un Excel : une ligne par
+   télécollecte (la clôture de la borne, une par jour), avec les ventes, la
+   commission TTC, les ajustements, le montant versé et la date du virement.
+   L'export ne dit pas de quel jour est la télécollecte : on la rattache au
+   jour dont le CB saisi par SAIB (Sabich + TMSK, même borne) est EXACTEMENT
+   le même montant, dans les 15 jours avant le virement. Si aucun jour ne
+   colle au dirham près, LIFE le dit — c'est un écart de saisie ou de borne,
+   pas une supposition. La commission réelle est ensuite partagée entre Sabich
+   et TMSK au prorata de leurs tickets CB du jour. */
+const POINTS_NAPS = ["sabich", "tmsk"];
 const jourDecale = (iso, n) => {
   const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 };
 const jjmm = (iso) => (iso || "").slice(8, 10) + "/" + (iso || "").slice(5, 7);
 const carteDe = (v) => v.carte !== undefined ? num(v.carte) : num(v.napsMa) + num(v.napsEtr);
-const cartesEntre = (entries, config, du, au) => {
-  let brut = 0, estimee = 0;
-  entries.forEach((v) => {
-    if (v.type !== "vente" || !v.date || v.date < du || v.date > au) return;
+const napsVerse = (t) => /vers/i.test(String(t.statut || ""));
+function rapprocherNaps(entries) {
+  const jours = {};
+  (entries || []).forEach((v) => {
+    if (v.type !== "vente" || !v.date || !POINTS_NAPS.includes(v.affaire)) return;
     const c = carteDe(v);
-    if (c <= 0) return;
-    brut += c; estimee += c * tauxNapsDe(config, v.affaire) / 100;
+    const j = jours[v.date] || (jours[v.date] = { total: 0, par: {} });
+    j.total += c; j.par[v.affaire] = (j.par[v.affaire] || 0) + c;
   });
-  return { brut, estimee };
-};
+  const tcs = (entries || []).filter((e) => e.type === "napsTc")
+    .sort((a, b) => (a.dateVir || "").localeCompare(b.dateVir || "")
+                    || String(a.tc).localeCompare(String(b.tc)));
+  const parJour = {};
+  const res = tcs.map((t) => {
+    const min = jourDecale(t.dateVir, -15);
+    const cands = Object.keys(jours).filter((d) => !parJour[d] && d < t.dateVir && d >= min
+      && Math.abs(jours[d].total - num(t.ventes)) < 0.5).sort();
+    const jour = cands.length ? cands[cands.length - 1] : null;
+    const r = { ...t, jour, cout: num(t.ventes) - num(t.verse) };
+    if (jour) parJour[jour] = r;
+    return r;
+  });
+  return { tcs: res, parJour, jours };
+}
 
-/* La borne Naps est commune à Sabich et TMSK : ce sont les tickets CB de
-   chaque comptoir qui séparent les deux. On reprend ce que SAIB saisit chaque
-   soir dans la recette — Sabich à gauche, TMSK à droite, comme au comptoir —
-   avec le total en bas, à mettre en face des virements. Rien à ressaisir ;
-   une correction ici corrige la recette elle-même (CB + espèces = recette). */
+/* Lecture de l'Excel Naps, dans le navigateur. On repère les colonnes par
+   leur nom, pas par leur place : si Naps les réordonne, rien ne casse. */
+const sansAccent = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/\s+/g, " ").trim();
+const dateNaps = (v) => {
+  if (typeof v === "number") {            // date Excel
+    const d = new Date(Math.round((v - 25569) * 864e5));
+    return d.toISOString().slice(0, 10);
+  }
+  const m = String(v || "").trim().match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+  if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+  const m2 = String(v || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m2 ? m2[0] : "";
+};
+const r2 = (v) => Math.round(num(v) * 100) / 100;
+async function lireExportNaps(fichier) {
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(await fichier.arrayBuffer(), { type: "array" });
+  const lignes = [];
+  wb.SheetNames.forEach((nomFeuille) => {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nomFeuille], { header: 1, raw: true, defval: "" });
+    const iH = rows.findIndex((r) => r.some((c) => sansAccent(c).includes("telecollecte")));
+    if (iH < 0) return;
+    const H = rows[iH].map(sansAccent);
+    const col = (test) => H.findIndex(test);
+    const C = {
+      tc: col((h) => h.includes("telecollecte")),
+      nb: col((h) => h.includes("transaction")),
+      ventes: col((h) => h === "ventes" || h.startsWith("vente")),
+      commission: col((h) => h.startsWith("commission")),
+      ajust: col((h) => h.startsWith("ajustement")),
+      verse: col((h) => h.includes("verse")),
+      statut: col((h) => h === "statut"),
+      dateVir: col((h) => h.includes("date") && h.includes("virement")),
+      pdv: col((h) => h.includes("point de vente")),
+    };
+    if ([C.tc, C.ventes, C.verse, C.dateVir].some((i) => i < 0)) return;
+    rows.slice(iH + 1).forEach((r) => {
+      const tc = String(r[C.tc] ?? "").trim();
+      if (!tc) return;
+      lignes.push({
+        tc, nb: C.nb >= 0 ? num(r[C.nb]) : 0,
+        ventes: r2(r[C.ventes]), commission: C.commission >= 0 ? r2(r[C.commission]) : 0,
+        ajust: C.ajust >= 0 ? r2(r[C.ajust]) : 0, verse: r2(r[C.verse]),
+        statut: C.statut >= 0 ? String(r[C.statut] || "").trim() : "",
+        dateVir: dateNaps(r[C.dateVir]),
+        pdv: C.pdv >= 0 ? String(r[C.pdv] || "").trim() : "",
+      });
+    });
+  });
+  return lignes.filter((l) => l.dateVir);
+}
+
 /* Espèces ou carte ? La part de chaque mode de paiement sur Sabich + TMSK,
    pour le mois affiché. Un camembert, deux parts, et le détail par comptoir. */
 function CashCbCamembert({ config, entries, ym }) {
@@ -7705,7 +7797,7 @@ function CelluleCB({ ventes, onMaj }) {
 function CbParPoint({ config, entries, ym, onMaj }) {
   const gauche = "sabich", droite = "tmsk";
   const nom = (k) => (config.affaires[k] || {}).nom || k;
-  const virements = entries.filter((e) => e.type === "transfert" && e.naps);
+  const R = rapprocherNaps(entries);
   const ventes = entries.filter((e) => e.type === "vente" && (e.date || "").startsWith(ym)
                                     && (e.affaire === gauche || e.affaire === droite));
   const jours = [...new Set(ventes.filter(() => true).map((e) => e.date))].sort();
@@ -7728,7 +7820,8 @@ function CbParPoint({ config, entries, ym, onMaj }) {
           </div>
           {jours.map((iso) => {
             const g = de(iso, gauche), dr = de(iso, droite);
-            const vir = virements.find((x) => x.du <= iso && x.au >= iso);
+            const vir = R.parJour[iso] && napsVerse(R.parJour[iso])
+              ? { date: R.parJour[iso].dateVir } : null;
             return (
               <div key={iso} style={grille}>
                 <span>{jjmm(iso)}</span>
@@ -7752,129 +7845,121 @@ function CbParPoint({ config, entries, ym, onMaj }) {
   );
 }
 
-function NapsVirements({ config, entries, ym, onAdd, onDel }) {
-  const virements = entries.filter((e) => e.type === "transfert" && e.naps)
-    .sort((a, b) => (a.au || a.date).localeCompare(b.au || b.date));
-  const dernierAu = virements.length ? virements[virements.length - 1].au : "";
-
-  const [montant, setMontant] = useState("");
-  const [date, setDate] = useState(aujourdhui());
-  const [du, setDu] = useState(dernierAu ? jourDecale(dernierAu, 1) : jourDecale(aujourdhui(), -1));
-  const [au, setAu] = useState(jourDecale(aujourdhui(), -1));
+function NapsExport({ entries, ym, onImporter, onDel }) {
+  const [msg, setMsg] = useState("");
   const [erreur, setErreur] = useState("");
-  const [ok, setOk] = useState("");
-
-  const apercu = du && au && du <= au ? cartesEntre(entries, config, du, au) : { brut: 0, estimee: 0 };
-  const recu = num(montant);
-
-  const enregistrer = () => {
-    if (!montantLisible(montant) || recu <= 0) {
-      setErreur("Écris le montant reçu, en chiffres, tel qu'il est sur ton relevé."); return;
-    }
-    if (!du || !au || du > au) { setErreur("Les dates des cartes ne vont pas : « du » doit venir avant « au »."); return; }
-    if (au >= date) { setErreur("Les cartes couvertes s'arrêtent avant le jour du virement."); return; }
-    const double = virements.find((v) => v.date === date && Math.abs(num(v.montant) - recu) < 0.5);
-    if (double) { setErreur("Ce virement est déjà enregistré (" + fmt(recu) + " le " + jjmm(date) + ")."); return; }
-    const chevauche = virements.find((v) => v.du <= au && v.au >= du);
-    if (chevauche) {
-      setErreur("Ces jours sont déjà couverts par le virement du " + jjmm(chevauche.date)
-        + " (cartes du " + jjmm(chevauche.du) + " au " + jjmm(chevauche.au) + ")."); return;
-    }
-    if (apercu.brut <= 0) { setErreur("Aucune carte saisie sur ces jours : vérifie les dates."); return; }
-    onAdd({ type: "transfert", naps: true, affaire: "contenu",
-            de: pocheCartes(config), vers: banqueCartes(config),
-            montant: recu, date, du, au, motif: "Virement Naps" });
-    setErreur(""); setMontant("");
-    setOk("Virement de " + fmt(recu) + " enregistré.");
-    setTimeout(() => setOk(""), 2600);
-    setDu(jourDecale(au, 1)); setAu(jourDecale(aujourdhui(), -1));
-  };
-
-  /* Le mois affiché : les virements arrivés ce mois-ci */
-  const duMois = virements.filter((v) => (v.date || "").startsWith(ym))
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .map((v) => {
-      const c = cartesEntre(entries, config, v.du, v.au);
-      const reelle = c.brut - num(v.montant);
-      return { ...v, brut: c.brut, estimee: c.estimee, reelle };
-    });
-  const T = duMois.reduce((s, v) => ({ brut: s.brut + v.brut, recu: s.recu + num(v.montant),
-    reelle: s.reelle + v.reelle, estimee: s.estimee + v.estimee }),
-    { brut: 0, recu: 0, reelle: 0, estimee: 0 });
+  const [enCours, setEnCours] = useState(false);
+  const R = rapprocherNaps(entries);
   const pct = (a, b) => b > 0 ? (a / b * 100).toFixed(2).replace(".", ",") + " %" : "—";
 
-  /* Ce qui reste chez Naps : les cartes saisies après le dernier jour couvert */
-  const enAttente = dernierAu ? cartesEntre(entries, config, jourDecale(dernierAu, 1), "9999-12-31").brut : 0;
+  const choisir = async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    setErreur(""); setMsg(""); setEnCours(true);
+    try {
+      const lignes = await lireExportNaps(f);
+      if (!lignes.length) {
+        setErreur("Ce fichier ne ressemble pas à l'export des virements Naps (colonne « N° télécollecte » introuvable).");
+      } else {
+        const connus = new Set(entries.filter((e) => e.type === "napsTc").map((e) => String(e.tc)));
+        const nouveaux = lignes.filter((l) => !connus.has(l.tc)).length;
+        onImporter(lignes);
+        setMsg(nouveaux + " télécollecte" + (nouveaux > 1 ? "s" : "") + " ajoutée" + (nouveaux > 1 ? "s" : "")
+          + (lignes.length - nouveaux > 0 ? ", " + (lignes.length - nouveaux) + " déjà connue"
+             + (lignes.length - nouveaux > 1 ? "s" : "") + " (mise à jour)" : "") + ".");
+      }
+    } catch (e) {
+      setErreur("Impossible de lire ce fichier. Vérifie que c'est bien l'Excel téléchargé depuis l'espace Naps.");
+    }
+    setEnCours(false);
+  };
 
-  const ecart = T.reelle - T.estimee;
+  /* Le mois affiché = les jours de CB de ce mois */
+  const duMois = R.tcs.filter((t) => t.jour && t.jour.startsWith(ym))
+    .sort((a, b) => b.jour.localeCompare(a.jour));
+  const T = duMois.reduce((s, t) => ({ ventes: s.ventes + num(t.ventes), cout: s.cout + t.cout,
+    verse: s.verse + (napsVerse(t) ? num(t.verse) : 0) }), { ventes: 0, cout: 0, verse: 0 });
+  const orphelins = R.tcs.filter((t) => !t.jour && (t.dateVir || "") >= jourDecale(ym + "-01", 0)
+                                         && (t.dateVir || "") <= jourDecale(ym + "-01", 45));
+  const auj = aujourdhui();
+  const pasVus = Object.keys(R.jours).filter((d) => d.startsWith(ym) && d < auj
+    && R.jours[d].total > 0 && !R.parJour[d]).sort();
+  const totPasVus = pasVus.reduce((s, d) => s + R.jours[d].total, 0);
+  const dernierImport = entries.filter((e) => e.type === "napsTc")
+    .map((e) => e.importeLe || "").sort().pop();
 
   return (
     <div className="card">
-      <h2 className="h2">Virements Naps</h2>
+      <h2 className="h2">Naps</h2>
+
+      <label className="btn" style={{ display: "inline-block", cursor: enCours ? "wait" : "pointer", margin: 0 }}>
+        {enCours ? "LECTURE…" : "IMPORTER L'EXPORT NAPS"}
+        <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
+               onChange={choisir} disabled={enCours} />
+      </label>
+      <div className="mini" style={{ marginTop: 8 }}>
+        L'Excel des virements, téléchargé depuis l'espace Naps. Le recharger ne crée jamais de doublon.
+        {dernierImport ? " Dernier import : " + jjmm(dernierImport) + "." : ""}
+      </div>
+      <Alerte>{erreur}</Alerte>
+      {msg && <div className="mini" style={{ marginTop: 8, color: "#4F6B1F" }}>{msg}</div>}
 
       {duMois.length > 0 && (
-        <>
+        <div style={{ marginTop: 20 }}>
           <div className="row rowTot">
-            <span className="lbl">Commission réelle</span>
-            <span className="val neg">− {fmt(T.reelle)} <span className="mini">· {pct(T.reelle, T.brut)}</span></span>
+            <span className="lbl">Commission réelle Naps</span>
+            <span className="val neg">− {fmt(T.cout)} <span className="mini">· {pct(T.cout, T.ventes)}</span></span>
           </div>
           <div className="row">
-            <span className="lbl">Commission estimée</span>
-            <span className="val">− {fmt(T.estimee)} <span className="mini">· {pct(T.estimee, T.brut)}</span></span>
+            <span className="lbl">CB vu par Naps <span className="mini">· {duMois.length} jour{duMois.length > 1 ? "s" : ""}</span></span>
+            <span className="val">{fmt(T.ventes)}</span>
           </div>
           <div className="row">
-            <span className="lbl">Écart</span>
-            <span className="val" style={{ color: Math.abs(ecart) < 1 ? undefined : ecart > 0 ? "#A4262C" : "#5F6E4C" }}>
-              {Math.abs(ecart) < 1 ? "aucun"
-                : ecart > 0 ? fmt(ecart) + " de plus que prévu" : fmt(-ecart) + " de moins que prévu"}</span>
+            <span className="lbl">Versé sur Le Mi-Chui</span>
+            <span className="val">{fmt(T.verse)}</span>
           </div>
-          <div className="mini" style={{ margin: "6px 0 16px" }}>
-            Ce mois : {fmt(T.brut)} de cartes → {fmt(T.recu)} reçus sur Le Mi-Chui.
-          </div>
-          {duMois.map((v) => (
-            <div className="row" key={v.id}>
-              <span className="lbl">Le {jjmm(v.date)} · {fmt(num(v.montant))}
-                <span className="mini"> · cartes du {jjmm(v.du)} au {jjmm(v.au)} : {fmt(v.brut)}
-                  {" "}· commission {fmt(v.reelle)} ({pct(v.reelle, v.brut)}), estimée {fmt(v.estimee)}</span></span>
-              <button className="del" aria-label="Supprimer" onClick={() => onDel(v.id)}>×</button>
+          <div className="eyebrow" style={{ margin: "18px 0 6px" }}>Jour par jour</div>
+          {duMois.map((t) => (
+            <div className="row" key={t.id}>
+              <span className="lbl">CB du {jjmm(t.jour)} · {fmt(num(t.ventes))}
+                <span className="mini"> · commission {fmt(t.cout)} ({pct(t.cout, num(t.ventes))})
+                  {" "}· {napsVerse(t) ? "versé " + fmt(num(t.verse)) + " le " + jjmm(t.dateVir)
+                                       : (t.statut || "pas encore versé")}</span></span>
+              <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
             </div>
           ))}
-        </>
-      )}
-
-      {dernierAu && enAttente > 0 && (
-        <div className="row" style={{ marginTop: 6 }}>
-          <span className="lbl">Cartes pas encore virées <span className="mini">· depuis le {jjmm(jourDecale(dernierAu, 1))}</span></span>
-          <span className="val" style={{ color: "#8A7440" }}>{fmt(enAttente)}</span>
         </div>
       )}
 
-      <div style={{ marginTop: 18 }}>
-        <div className="grid2">
-          <div><label className="f">Montant reçu (relevé)</label>
-            <input className="f" inputMode="decimal" placeholder="4 320" value={montant}
-                   onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
-          <div><label className="f">Date du virement</label>
-            <input className="f" type="date" value={date}
-                   onChange={(e) => { setDate(e.target.value); setAu(jourDecale(e.target.value, -1)); setErreur(""); }} /></div>
-          <div><label className="f">Cartes du</label>
-            <input className="f" type="date" value={du}
-                   onChange={(e) => { setDu(e.target.value); setErreur(""); }} /></div>
-          <div><label className="f">Au</label>
-            <input className="f" type="date" value={au}
-                   onChange={(e) => { setAu(e.target.value); setErreur(""); }} /></div>
-        </div>
-        {apercu.brut > 0 && (
-          <div className="mini" style={{ marginTop: 10 }}>
-            Cartes saisies sur ces jours : {fmt(apercu.brut)}
-            {recu > 0 && <> → commission réelle {fmt(apercu.brut - recu)} ({pct(apercu.brut - recu, apercu.brut)}),
-              estimée {fmt(apercu.estimee)}</>}
+      {pasVus.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div className="row">
+            <span className="lbl">CB saisi, pas encore chez Naps
+              <span className="mini"> · {pasVus.map(jjmm).join(", ")}</span></span>
+            <span className="val" style={{ color: "#8A7440" }}>{fmt(totPasVus)}</span>
           </div>
-        )}
-        <Alerte>{erreur}</Alerte>
-        {ok && <div className="mini" style={{ marginTop: 8, color: "#5F6E4C" }}>{ok}</div>}
-        <button className="btn" style={{ marginTop: 12 }} onClick={enregistrer}>ENREGISTRER LE VIREMENT</button>
-      </div>
+          {pasVus.some((d) => d < jourDecale(auj, -15)) && (
+            <div className="mini" style={{ color: "#9B1B22" }}>
+              Plus de 15 jours sans virement pour {pasVus.filter((d) => d < jourDecale(auj, -15)).map(jjmm).join(", ")} :
+              importe un export récent, ou vérifie le CB saisi ce jour-là.
+            </div>
+          )}
+        </div>
+      )}
+
+      {orphelins.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          {orphelins.map((t) => (
+            <div className="row" key={t.id}>
+              <span className="lbl" style={{ color: "#9B1B22" }}>
+                Naps : {fmt(num(t.ventes))} versé le {jjmm(t.dateVir)} — aucun jour saisi ne correspond
+                <span className="mini"> · télécollecte {t.tc}. Vérifie le CB saisi les jours précédents.</span></span>
+              <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -8221,6 +8306,8 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
       + (e.qui || "?") + " · " + (e.sens === "emprunte" ? "reçu par " : "sorti de ") + nom(e.affaire)
       + (e.motif ? " · " + e.motif : "") + (e.echeance ? " · échéance " + e.echeance : "");
     if (e.type === "remboursement-pret") return "Remboursement de prêt personnel";
+    if (e.type === "napsTc") return "Naps — télécollecte " + e.tc + " · ventes " + fmt(num(e.ventes))
+      + " · versé " + fmt(num(e.verse)) + " le " + (e.dateVir || "").slice(8, 10) + "/" + (e.dateVir || "").slice(5, 7);
     if (e.type === "transfert" && e.naps) return "Virement Naps reçu — cartes du "
       + (e.du || "").slice(8, 10) + "/" + (e.du || "").slice(5, 7) + " au "
       + (e.au || "").slice(8, 10) + "/" + (e.au || "").slice(5, 7);
@@ -8737,10 +8824,6 @@ function ActiviteReglage({ k, a, c, maj }) {
             <div><label className="f">Fond de caisse théorique</label>
               <input className="f" inputMode="decimal" value={a.fonds ?? 0}
                      onChange={(e) => majA({ fonds: num(e.target.value) })} /></div>
-            <div><label className="f">Part de cartes étrangères</label>
-              <input className="f" inputMode="decimal"
-                     value={a.partEtr !== undefined ? a.partEtr : c.naps.partEtr}
-                     onChange={(e) => majA({ partEtr: num(e.target.value) })} /></div>
             <div><label className="f">Part du labo partagé</label>
               <input className="f" inputMode="decimal" value={c.cle[k] ?? 0}
                      onChange={(e) => maj({ ...c, cle: { ...c.cle, [k]: num(e.target.value) } })} /></div>
@@ -9292,25 +9375,7 @@ function Reglages({ config, onSave, session, onLogout }) {
         </div>
       </div>
 
-      <div className="card">
-        <h2 className="h2">Naps</h2>
-        <div className="grid2">
-          <div><label className="f">Cartes marocaines</label>
-            <input className="f" inputMode="decimal" value={c.naps.ma}
-                   onChange={(e) => maj({ ...c, naps: { ...c.naps, ma: num(e.target.value) } })} /></div>
-          <div><label className="f">Cartes étrangères</label>
-            <input className="f" inputMode="decimal" value={c.naps.etr}
-                   onChange={(e) => maj({ ...c, naps: { ...c.naps, etr: num(e.target.value) } })} /></div>
-        </div>
-        <Ligne lbl="Part estimée de cartes étrangères" value={c.naps.partEtr} suffix="%"
-               onChange={(v) => maj({ ...c, naps: { ...c.naps, partEtr: num(v) } })} />
-        <div className="note">
-          Ces taux ne servent pas encore : ta caisse ne distingue pas l'origine des cartes, donc
-          l'app ne calcule aucune commission au jour le jour. C'est le virement réel, saisi en fin
-          de mois sur le tableau de bord, qui fait foi — il est réparti entre tes activités au
-          prorata de ce que chacune a encaissé par carte, et compte comme charge variable.
-        </div>
-      </div>
+
 
       <div className="card">
         <h2 className="h2">Seuils de cohérence</h2>
