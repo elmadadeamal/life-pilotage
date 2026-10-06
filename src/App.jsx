@@ -6484,6 +6484,8 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         );
       })()}
       {/* La solidarité se suit sur Le Mi-Chui, plus sur la maison. */}
+      {k === "contenu" && <NapsVirements config={config} entries={entries} ym={ym}
+                                         onAdd={onAdd} onDel={onDel} />}
       {k === "contenu" && <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
                                            onRegler={onRegler} flash={() => {}} />}
       </>
@@ -7550,6 +7552,167 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
 
 /* La solidarité n'est ni une facture ni un salaire : elle se décide chaque mois.
    Elle sort de la trésorerie sans peser sur le résultat des commerces. */
+/* ------------------------------------------------------------------ */
+/*  VIREMENTS NAPS — sur Le Mi-Chui                                    */
+/* ------------------------------------------------------------------ */
+/* Amal : « je veux ajouter sur Le Mi-Chui les virements que je reçois de
+   Naps, et y voir la commission réelle à côté de l'estimée ». Un virement
+   couvre des jours de cartes : on additionne les cartes saisies ces jours-là,
+   on retire ce qui est vraiment arrivé sur le relevé, et c'est la commission
+   réelle. Rien n'est supposé : si l'écart est énorme, c'est qu'une recette
+   carte est mal saisie, et c'est justement ce qu'on veut voir.
+   Le virement est enregistré comme un transfert « Naps en attente » →
+   « Banque Le Mi-Chui » : les poches restent justes. */
+const tauxNapsDe = (config, k) => {
+  const N = config.naps || { ma: 1.5, etr: 3, partEtr: 100 };
+  const a = (config.affaires || {})[k] || {};
+  const p = a.partEtr !== undefined ? num(a.partEtr) : num(N.partEtr);
+  return num(N.ma) + (num(N.etr) - num(N.ma)) * p / 100;
+};
+const jourDecale = (iso, n) => {
+  const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const jjmm = (iso) => (iso || "").slice(8, 10) + "/" + (iso || "").slice(5, 7);
+const carteDe = (v) => v.carte !== undefined ? num(v.carte) : num(v.napsMa) + num(v.napsEtr);
+const cartesEntre = (entries, config, du, au) => {
+  let brut = 0, estimee = 0;
+  entries.forEach((v) => {
+    if (v.type !== "vente" || !v.date || v.date < du || v.date > au) return;
+    const c = carteDe(v);
+    if (c <= 0) return;
+    brut += c; estimee += c * tauxNapsDe(config, v.affaire) / 100;
+  });
+  return { brut, estimee };
+};
+
+function NapsVirements({ config, entries, ym, onAdd, onDel }) {
+  const virements = entries.filter((e) => e.type === "transfert" && e.naps)
+    .sort((a, b) => (a.au || a.date).localeCompare(b.au || b.date));
+  const dernierAu = virements.length ? virements[virements.length - 1].au : "";
+
+  const [montant, setMontant] = useState("");
+  const [date, setDate] = useState(aujourdhui());
+  const [du, setDu] = useState(dernierAu ? jourDecale(dernierAu, 1) : jourDecale(aujourdhui(), -1));
+  const [au, setAu] = useState(jourDecale(aujourdhui(), -1));
+  const [erreur, setErreur] = useState("");
+  const [ok, setOk] = useState("");
+
+  const apercu = du && au && du <= au ? cartesEntre(entries, config, du, au) : { brut: 0, estimee: 0 };
+  const recu = num(montant);
+
+  const enregistrer = () => {
+    if (!montantLisible(montant) || recu <= 0) {
+      setErreur("Écris le montant reçu, en chiffres, tel qu'il est sur ton relevé."); return;
+    }
+    if (!du || !au || du > au) { setErreur("Les dates des cartes ne vont pas : « du » doit venir avant « au »."); return; }
+    if (au >= date) { setErreur("Les cartes couvertes s'arrêtent avant le jour du virement."); return; }
+    const double = virements.find((v) => v.date === date && Math.abs(num(v.montant) - recu) < 0.5);
+    if (double) { setErreur("Ce virement est déjà enregistré (" + fmt(recu) + " le " + jjmm(date) + ")."); return; }
+    const chevauche = virements.find((v) => v.du <= au && v.au >= du);
+    if (chevauche) {
+      setErreur("Ces jours sont déjà couverts par le virement du " + jjmm(chevauche.date)
+        + " (cartes du " + jjmm(chevauche.du) + " au " + jjmm(chevauche.au) + ")."); return;
+    }
+    if (apercu.brut <= 0) { setErreur("Aucune carte saisie sur ces jours : vérifie les dates."); return; }
+    onAdd({ type: "transfert", naps: true, affaire: "contenu",
+            de: pocheCartes(config), vers: banqueCartes(config),
+            montant: recu, date, du, au, motif: "Virement Naps" });
+    setErreur(""); setMontant("");
+    setOk("Virement de " + fmt(recu) + " enregistré.");
+    setTimeout(() => setOk(""), 2600);
+    setDu(jourDecale(au, 1)); setAu(jourDecale(aujourdhui(), -1));
+  };
+
+  /* Le mois affiché : les virements arrivés ce mois-ci */
+  const duMois = virements.filter((v) => (v.date || "").startsWith(ym))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((v) => {
+      const c = cartesEntre(entries, config, v.du, v.au);
+      const reelle = c.brut - num(v.montant);
+      return { ...v, brut: c.brut, estimee: c.estimee, reelle };
+    });
+  const T = duMois.reduce((s, v) => ({ brut: s.brut + v.brut, recu: s.recu + num(v.montant),
+    reelle: s.reelle + v.reelle, estimee: s.estimee + v.estimee }),
+    { brut: 0, recu: 0, reelle: 0, estimee: 0 });
+  const pct = (a, b) => b > 0 ? (a / b * 100).toFixed(2).replace(".", ",") + " %" : "—";
+
+  /* Ce qui reste chez Naps : les cartes saisies après le dernier jour couvert */
+  const enAttente = dernierAu ? cartesEntre(entries, config, jourDecale(dernierAu, 1), "9999-12-31").brut : 0;
+
+  const ecart = T.reelle - T.estimee;
+
+  return (
+    <div className="card">
+      <h2 className="h2">Virements Naps</h2>
+
+      {duMois.length > 0 && (
+        <>
+          <div className="row rowTot">
+            <span className="lbl">Commission réelle</span>
+            <span className="val neg">− {fmt(T.reelle)} <span className="mini">· {pct(T.reelle, T.brut)}</span></span>
+          </div>
+          <div className="row">
+            <span className="lbl">Commission estimée</span>
+            <span className="val">− {fmt(T.estimee)} <span className="mini">· {pct(T.estimee, T.brut)}</span></span>
+          </div>
+          <div className="row">
+            <span className="lbl">Écart</span>
+            <span className="val" style={{ color: Math.abs(ecart) < 1 ? undefined : ecart > 0 ? "#A4262C" : "#5F6E4C" }}>
+              {Math.abs(ecart) < 1 ? "aucun"
+                : ecart > 0 ? fmt(ecart) + " de plus que prévu" : fmt(-ecart) + " de moins que prévu"}</span>
+          </div>
+          <div className="mini" style={{ margin: "6px 0 16px" }}>
+            Ce mois : {fmt(T.brut)} de cartes → {fmt(T.recu)} reçus sur Le Mi-Chui.
+          </div>
+          {duMois.map((v) => (
+            <div className="row" key={v.id}>
+              <span className="lbl">Le {jjmm(v.date)} · {fmt(num(v.montant))}
+                <span className="mini"> · cartes du {jjmm(v.du)} au {jjmm(v.au)} : {fmt(v.brut)}
+                  {" "}· commission {fmt(v.reelle)} ({pct(v.reelle, v.brut)}), estimée {fmt(v.estimee)}</span></span>
+              <button className="del" aria-label="Supprimer" onClick={() => onDel(v.id)}>×</button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {dernierAu && enAttente > 0 && (
+        <div className="row" style={{ marginTop: 6 }}>
+          <span className="lbl">Cartes pas encore virées <span className="mini">· depuis le {jjmm(jourDecale(dernierAu, 1))}</span></span>
+          <span className="val" style={{ color: "#8A7440" }}>{fmt(enAttente)}</span>
+        </div>
+      )}
+
+      <div style={{ marginTop: 18 }}>
+        <div className="grid2">
+          <div><label className="f">Montant reçu (relevé)</label>
+            <input className="f" inputMode="decimal" placeholder="4 320" value={montant}
+                   onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
+          <div><label className="f">Date du virement</label>
+            <input className="f" type="date" value={date}
+                   onChange={(e) => { setDate(e.target.value); setAu(jourDecale(e.target.value, -1)); setErreur(""); }} /></div>
+          <div><label className="f">Cartes du</label>
+            <input className="f" type="date" value={du}
+                   onChange={(e) => { setDu(e.target.value); setErreur(""); }} /></div>
+          <div><label className="f">Au</label>
+            <input className="f" type="date" value={au}
+                   onChange={(e) => { setAu(e.target.value); setErreur(""); }} /></div>
+        </div>
+        {apercu.brut > 0 && (
+          <div className="mini" style={{ marginTop: 10 }}>
+            Cartes saisies sur ces jours : {fmt(apercu.brut)}
+            {recu > 0 && <> → commission réelle {fmt(apercu.brut - recu)} ({pct(apercu.brut - recu, apercu.brut)}),
+              estimée {fmt(apercu.estimee)}</>}
+          </div>
+        )}
+        <Alerte>{erreur}</Alerte>
+        {ok && <div className="mini" style={{ marginTop: 8, color: "#5F6E4C" }}>{ok}</div>}
+        <button className="btn" style={{ marginTop: 12 }} onClick={enregistrer}>ENREGISTRER LE VIREMENT</button>
+      </div>
+    </div>
+  );
+}
+
 function SolidariteCarte({ M, config, ym, onAdd, onRegler, flash }) {
   const [saisi, setSaisi] = useState("");
   const [erreur, setErreur] = useState("");
@@ -7892,6 +8055,9 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
       + (e.qui || "?") + " · " + (e.sens === "emprunte" ? "reçu par " : "sorti de ") + nom(e.affaire)
       + (e.motif ? " · " + e.motif : "") + (e.echeance ? " · échéance " + e.echeance : "");
     if (e.type === "remboursement-pret") return "Remboursement de prêt personnel";
+    if (e.type === "transfert" && e.naps) return "Virement Naps reçu — cartes du "
+      + (e.du || "").slice(8, 10) + "/" + (e.du || "").slice(5, 7) + " au "
+      + (e.au || "").slice(8, 10) + "/" + (e.au || "").slice(5, 7);
     if (e.type === "treso") return "Trésorerie comptée — LIFE disait " + fmt(num(e.theorique))
       + " · écart " + fmt(num(e.montant) - num(e.theorique));
     return e.type;
