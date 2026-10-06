@@ -6303,6 +6303,16 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 
       {sous === "resultat" && (
       <>
+      {/* Le Mi-Chui : le quotidien d'abord (CB des deux comptoirs, virements
+          Naps), la solidarité du mois, puis le résultat des prestations de
+          contenu, qui ne sert qu'une ou deux fois l'an. */}
+      {k === "contenu" && <>
+        <CbParPoint config={config} entries={entries} ym={ym} onMaj={onMaj} />
+        <CashCbCamembert config={config} entries={entries} ym={ym} />
+        <NapsVirements config={config} entries={entries} ym={ym} onAdd={onAdd} onDel={onDel} />
+        <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
+                         onRegler={onRegler} flash={() => {}} />
+      </>}
       <div className="card">
 
         <div style={{ display: "flex", justifyContent: "space-between",
@@ -6485,12 +6495,6 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
           </div>
         );
       })()}
-      {/* La solidarité se suit sur Le Mi-Chui, plus sur la maison. */}
-      {k === "contenu" && <CbParPoint config={config} entries={entries} ym={ym} onMaj={onMaj} />}
-      {k === "contenu" && <NapsVirements config={config} entries={entries} ym={ym}
-                                         onAdd={onAdd} onDel={onDel} />}
-      {k === "contenu" && <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
-                                           onRegler={onRegler} flash={() => {}} />}
       </>
       )}
     </>
@@ -7594,6 +7598,60 @@ const cartesEntre = (entries, config, du, au) => {
    soir dans la recette — Sabich à gauche, TMSK à droite, comme au comptoir —
    avec le total en bas, à mettre en face des virements. Rien à ressaisir ;
    une correction ici corrige la recette elle-même (CB + espèces = recette). */
+/* Espèces ou carte ? La part de chaque mode de paiement sur Sabich + TMSK,
+   pour le mois affiché. Un camembert, deux parts, et le détail par comptoir. */
+function CashCbCamembert({ config, entries, ym }) {
+  const points = ["sabich", "tmsk"];
+  const nom = (k) => (config.affaires[k] || {}).nom || k;
+  const par = {};
+  points.forEach((k) => { par[k] = { esp: 0, cb: 0 }; });
+  entries.forEach((e) => {
+    if (e.type !== "vente" || !par[e.affaire] || !(e.date || "").startsWith(ym)) return;
+    const cb = carteDe(e);
+    const esp = e.espece !== undefined ? num(e.espece) : num(e.montant) - cb;
+    par[e.affaire].esp += Math.max(0, esp); par[e.affaire].cb += Math.max(0, cb);
+  });
+  const esp = points.reduce((s, k) => s + par[k].esp, 0);
+  const cb = points.reduce((s, k) => s + par[k].cb, 0);
+  const tot = esp + cb;
+  const COL_ESP = "#A7748C", COL_CB = "#E3CCD7";
+  const p = (a, b) => b > 0 ? Math.round(a / b * 100) : 0;
+
+  return (
+    <div className="card">
+      <h2 className="h2">Espèces ou carte</h2>
+      {tot <= 0 ? <div className="mini">Aucune recette saisie ce mois-ci.</div> : (
+        <div style={{ display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
+          <div role="img" aria-label={"Espèces " + p(esp, tot) + " %, carte " + p(cb, tot) + " %"}
+               style={{ width: 170, height: 170, borderRadius: "50%", flex: "0 0 auto",
+                        background: `conic-gradient(${COL_ESP} 0 ${esp / tot * 360}deg, ${COL_CB} 0 360deg)`,
+                        boxShadow: "0 0 0 3px #fff inset" }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            {[["Espèces", esp, COL_ESP], ["Carte (CB)", cb, COL_CB]].map(([lbl, v, col]) => (
+              <div className="row" key={lbl}>
+                <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 4, background: col, display: "inline-block" }} />
+                  {lbl}</span>
+                <span className="val"><b style={{ fontWeight: 600 }}>{p(v, tot)} %</b>
+                  <span className="mini"> · {fmt(v)}</span></span>
+              </div>
+            ))}
+            {points.map((k) => {
+              const t = par[k].esp + par[k].cb;
+              if (t <= 0) return null;
+              return (
+                <div className="mini" key={k} style={{ marginTop: 8 }}>
+                  {nom(k)} : {p(par[k].esp, t)} % espèces · {p(par[k].cb, t)} % carte
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CelluleCB({ ventes, onMaj }) {
   const [edit, setEdit] = useState(false);
   const [v, setV] = useState("");
