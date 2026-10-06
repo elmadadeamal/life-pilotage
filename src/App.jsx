@@ -7632,6 +7632,31 @@ const jourDecale = (iso, n) => {
   return d.toISOString().slice(0, 10);
 };
 const jjmm = (iso) => (iso || "").slice(8, 10) + "/" + (iso || "").slice(5, 7);
+const dateFR = (iso) => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "—";
+/* Un tableau sur une seule ligne par rangée : rien ne passe à la ligne, et
+   sur un petit écran il défile sur le côté plutôt que d'écraser les colonnes.
+   cols = [{ t: "Titre", w: "1fr", g: true (aligné à gauche) }], rows = [{ k, c: [cellules], s: style }] */
+function Tableau({ cols, rows, pied, min = 560 }) {
+  const grille = { display: "grid", gridTemplateColumns: cols.map((c) => c.w || "1fr").join(" "),
+                   gap: 12, alignItems: "center", padding: "10px 0", whiteSpace: "nowrap",
+                   fontSize: 16, borderBottom: "1px solid rgba(0,0,0,.06)" };
+  const al = (i) => ({ textAlign: cols[i].g ? "left" : "right" });
+  return (
+    <div style={{ overflowX: "auto" }}><div style={{ minWidth: min }}>
+      <div style={{ ...grille, fontSize: 14, fontWeight: 600, letterSpacing: ".08em",
+                    textTransform: "uppercase", color: "var(--u-titre)" }}>
+        {cols.map((c, i) => <span key={i} style={al(i)}>{c.t}</span>)}
+      </div>
+      {rows.map((r) => (
+        <div key={r.k} style={{ ...grille, ...(r.s || {}) }}>
+          {r.c.map((x, i) => <span key={i} style={al(i)}>{x}</span>)}
+        </div>
+      ))}
+      {pied && <div style={{ ...grille, borderBottom: "none", fontWeight: 600 }}>
+        {pied.map((x, i) => <span key={i} style={al(i)}>{x}</span>)}</div>}
+    </div></div>
+  );
+}
 const carteDe = (v) => v.carte !== undefined ? num(v.carte) : num(v.napsMa) + num(v.napsEtr);
 const napsVerse = (t) => /vers/i.test(String(t.statut || ""));
 function rapprocherNaps(entries) {
@@ -7810,7 +7835,7 @@ function CbParPoint({ config, entries, ym, onMaj }) {
     ? num(R.parJour[iso].verse) : 0), 0);
   const fmt2 = (n) => (Math.round(n * 100) / 100).toLocaleString("fr-FR",
     { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " DH";
-  const grille = { display: "grid", gridTemplateColumns: "minmax(60px, .7fr) 1fr 1fr 1fr 1.15fr minmax(64px, .7fr)",
+  const grille = { display: "grid", gridTemplateColumns: "minmax(110px, 1fr) 1fr 1fr 1fr 1.15fr minmax(110px, 1fr)",
                    gap: 10, alignItems: "center", padding: "10px 0", whiteSpace: "nowrap",
                    fontSize: 16, borderBottom: "1px solid rgba(0,0,0,.06)" };
   const d = { textAlign: "right" };
@@ -7820,7 +7845,7 @@ function CbParPoint({ config, entries, ym, onMaj }) {
       <h2 className="h2">CB par point de vente</h2>
       {!jours.length ? <div className="mini">Aucune recette saisie ce mois-ci.</div> : (
         <>
-          <div style={{ overflowX: "auto" }}><div style={{ minWidth: 600 }}>
+          <div style={{ overflowX: "auto" }}><div style={{ minWidth: 720 }}>
           <div style={{ ...grille, fontSize: 14, fontWeight: 600, letterSpacing: ".08em",
                         textTransform: "uppercase", color: "var(--u-titre)" }}>
             <span>Jour</span><span style={d}>{nom(gauche)}</span><span style={d}>{nom(droite)}</span>
@@ -7832,12 +7857,12 @@ function CbParPoint({ config, entries, ym, onMaj }) {
               ? { date: R.parJour[iso].dateVir, verse: num(R.parJour[iso].verse) } : null;
             return (
               <div key={iso} style={grille}>
-                <span>{jjmm(iso)}</span>
+                <span>{dateFR(iso)}</span>
                 <span style={d}><CelluleCB ventes={g} onMaj={onMaj} /></span>
                 <span style={d}><CelluleCB ventes={dr} onMaj={onMaj} /></span>
                 <span style={{ ...d, fontWeight: 500 }}>{fmt(somme(g) + somme(dr))}</span>
                 <span style={{ ...d, color: vir ? "#4F6B1F" : undefined }}>{vir ? fmt2(vir.verse) : "—"}</span>
-                <span style={d}>{vir ? jjmm(vir.date) : "—"}</span>
+                <span style={d}>{vir ? dateFR(vir.date) : "—"}</span>
               </div>
             );
           })}
@@ -7912,7 +7937,7 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
       </label>
       <div className="mini" style={{ marginTop: 8 }}>
         L'Excel des virements, téléchargé depuis l'espace Naps. Le recharger ne crée jamais de doublon.
-        {dernierImport ? " Dernier import : " + jjmm(dernierImport) + "." : ""}
+        {dernierImport ? " Dernier import : " + dateFR(dernierImport) + "." : ""}
       </div>
       <Alerte>{erreur}</Alerte>
       {msg && <div className="mini" style={{ marginTop: 8, color: "#4F6B1F" }}>{msg}</div>}
@@ -7959,15 +7984,14 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
             {aReclamer.length > 0 && (
               <div style={{ marginTop: 12 }}>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>À leur signaler</div>
-                {aReclamer.map((l) => (
-                  <div className="row" key={l.id}>
-                    <span className="lbl">CB du {jjmm(l.jour)} · télécollecte {l.tc}
-                      <span className="mini"> · {fmt(num(l.ventes))} de ventes · prélevé {f2(l.cout)},
-                        dû {f2(l.du)}</span></span>
-                    <span className="val" style={{ color: l.ecart > 0 ? "#9B1B22" : "#4F6B1F" }}>
-                      {l.ecart > 0 ? "+ " : "− "}{f2(Math.abs(l.ecart))}</span>
-                  </div>
-                ))}
+                <Tableau min={640}
+                  cols={[{ t: "CB du", g: true, w: "minmax(110px, 1fr)" }, { t: "Télécollecte", w: "1fr" },
+                         { t: "Ventes", w: "1fr" }, { t: "Prélevé", w: "1fr" }, { t: "Dû", w: "1fr" },
+                         { t: "Écart", w: "1fr" }]}
+                  rows={aReclamer.map((l) => ({ k: l.id, c: [dateFR(l.jour), l.tc, fmt(num(l.ventes)),
+                    f2(l.cout), f2(l.du),
+                    <span style={{ color: l.ecart > 0 ? "#9B1B22" : "#4F6B1F", fontWeight: 600 }}>
+                      {l.ecart > 0 ? "+ " : "− "}{f2(Math.abs(l.ecart))}</span>] }))} />
               </div>
             )}
           </div>
@@ -7989,15 +8013,16 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
             <span className="val">{fmt(T.verse)}</span>
           </div>
           <div className="eyebrow" style={{ margin: "18px 0 6px" }}>Jour par jour</div>
-          {duMois.map((t) => (
-            <div className="row" key={t.id}>
-              <span className="lbl">CB du {jjmm(t.jour)} · {fmt(num(t.ventes))}
-                <span className="mini"> · commission {fmt(t.cout)} ({pct(t.cout, num(t.ventes))})
-                  {" "}· {napsVerse(t) ? "versé " + fmt(num(t.verse)) + " le " + jjmm(t.dateVir)
-                                       : (t.statut || "pas encore versé")}</span></span>
-              <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
-            </div>
-          ))}
+          <Tableau min={680}
+            cols={[{ t: "CB du", g: true, w: "minmax(110px, 1fr)" }, { t: "Ventes", w: "1fr" },
+                   { t: "Commission", w: "1.1fr" }, { t: "Versé", w: "1.1fr" },
+                   { t: "Viré le", w: "minmax(110px, 1fr)" }, { t: "", w: "28px" }]}
+            rows={[...duMois].sort((a, b) => a.jour.localeCompare(b.jour)).map((t) => ({ k: t.id, c: [
+              dateFR(t.jour), fmt(num(t.ventes)),
+              <span className="neg">{fmt(t.cout)} <span className="mini">({pct(t.cout, num(t.ventes))})</span></span>,
+              napsVerse(t) ? <span style={{ color: "#4F6B1F" }}>{fmt(num(t.verse))}</span> : (t.statut || "—"),
+              napsVerse(t) ? dateFR(t.dateVir) : "—",
+              <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>] }))} />
         </div>
       )}
 
@@ -8005,12 +8030,12 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
         <div style={{ marginTop: 16 }}>
           <div className="row">
             <span className="lbl">CB saisi, pas encore chez Naps
-              <span className="mini"> · {pasVus.map(jjmm).join(", ")}</span></span>
+              <span className="mini"> · {pasVus.map(dateFR).join(", ")}</span></span>
             <span className="val" style={{ color: "#8A7440" }}>{fmt(totPasVus)}</span>
           </div>
           {pasVus.some((d) => d < jourDecale(auj, -15)) && (
             <div className="mini" style={{ color: "#9B1B22" }}>
-              Plus de 15 jours sans virement pour {pasVus.filter((d) => d < jourDecale(auj, -15)).map(jjmm).join(", ")} :
+              Plus de 15 jours sans virement pour {pasVus.filter((d) => d < jourDecale(auj, -15)).map(dateFR).join(", ")} :
               importe un export récent, ou vérifie le CB saisi ce jour-là.
             </div>
           )}
@@ -8022,7 +8047,7 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
           {orphelins.map((t) => (
             <div className="row" key={t.id}>
               <span className="lbl" style={{ color: "#9B1B22" }}>
-                Naps : {fmt(num(t.ventes))} versé le {jjmm(t.dateVir)} — aucun jour saisi ne correspond
+                Naps : {fmt(num(t.ventes))} versé le {dateFR(t.dateVir)} — aucun jour saisi ne correspond
                 <span className="mini"> · télécollecte {t.tc}. Vérifie le CB saisi les jours précédents.</span></span>
               <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
             </div>
