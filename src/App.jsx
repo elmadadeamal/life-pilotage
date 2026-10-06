@@ -6359,8 +6359,6 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         <CbParPoint config={config} entries={entries} ym={ym} onMaj={onMaj} />
         <CashCbCamembert config={config} entries={entries} ym={ym} />
         <NapsExport config={config} entries={entries} ym={ym} onImporter={onImporterNaps} onDel={onDel} />
-        <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
-                         onRegler={onRegler} flash={() => {}} />
       </>}
       <div className="card">
 
@@ -6549,6 +6547,9 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
           </div>
         );
       })()}
+      {/* La solidarité, une fois par mois : tout en bas de Le Mi-Chui. */}
+      {k === "contenu" && <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
+                                           onRegler={onRegler} flash={() => {}} />}
       </>
       )}
     </>
