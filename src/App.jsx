@@ -349,7 +349,9 @@ const DEFAULT_CONFIG = {
      taux selon l'origine de la carte. */
   /* Ta caisse ne distingue pas l'origine des cartes : on estime la part
      étrangère par activité, puis le relevé de fin de mois tranche. */
-  naps: { ma: 1.5, etr: 3, partEtr: 100 },
+  /* Le contrat Naps : 3 % HT de commission, TVA 10 % dessus (3,3 % TTC).
+     Sert à vérifier ce que Naps prélève vraiment, jamais à estimer. */
+  naps: { tauxHT: 3, tva: 10 },
   /* Les poches où l'argent dort vraiment. Jusqu'ici l'appli savait ce qui
      rentrait et ce qui sortait, mais pas d'OÙ : elle annonçait un solde
      unique qu'Amal ne pouvait comparer ni à son tiroir ni à son relevé.
@@ -863,7 +865,7 @@ const photoReglages = (c) => {
     }
   });
   p["Solidarité · montant"] = mt((c.solidarite || {}).montant);
-  p["Commission carte (Naps)"] = mt((c.naps || {}).taux) + " %";
+  p["Commission Naps (contrat, HT)"] = mt((c.naps || {}).tauxHT) + " %";
   return p;
 };
 
@@ -1132,10 +1134,8 @@ function reprendre(saved) {
   c.banqueCartes = saved.banqueCartes || DEFAULT_CONFIG.banqueCartes;
   c.pocheCartes = saved.pocheCartes || DEFAULT_CONFIG.pocheCartes;
   c.banqueAirbnb = saved.banqueAirbnb || DEFAULT_CONFIG.banqueAirbnb;
-  c.naps = { ma: num((saved.naps || {}).ma) || DEFAULT_CONFIG.naps.ma,
-             etr: num((saved.naps || {}).etr) || DEFAULT_CONFIG.naps.etr,
-             partEtr: (saved.naps && saved.naps.partEtr !== undefined)
-               ? num(saved.naps.partEtr) : DEFAULT_CONFIG.naps.partEtr };
+  c.naps = { tauxHT: num((saved.naps || {}).tauxHT) || DEFAULT_CONFIG.naps.tauxHT,
+             tva: num((saved.naps || {}).tva) || DEFAULT_CONFIG.naps.tva };
 
   /* Chaque activité relève d'une société ; le riad est chez Gourmet Souk */
   const socParDefaut = ((c.societes[0] || {}).id) || "michui";
@@ -6358,7 +6358,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
       {k === "contenu" && <>
         <CbParPoint config={config} entries={entries} ym={ym} onMaj={onMaj} />
         <CashCbCamembert config={config} entries={entries} ym={ym} />
-        <NapsExport entries={entries} ym={ym} onImporter={onImporterNaps} onDel={onDel} />
+        <NapsExport config={config} entries={entries} ym={ym} onImporter={onImporterNaps} onDel={onDel} />
         <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
                          onRegler={onRegler} flash={() => {}} />
       </>}
@@ -7857,7 +7857,7 @@ function CbParPoint({ config, entries, ym, onMaj }) {
   );
 }
 
-function NapsExport({ entries, ym, onImporter, onDel }) {
+function NapsExport({ config, entries, ym, onImporter, onDel }) {
   const [msg, setMsg] = useState("");
   const [erreur, setErreur] = useState("");
   const [enCours, setEnCours] = useState(false);
@@ -7916,6 +7916,63 @@ function NapsExport({ entries, ym, onImporter, onDel }) {
       </div>
       <Alerte>{erreur}</Alerte>
       {msg && <div className="mini" style={{ marginTop: 8, color: "#4F6B1F" }}>{msg}</div>}
+
+      {duMois.length > 0 && (() => {
+        /* Le contrôle du mois : ce que Naps a pris, face à ce que dit le
+           contrat (3 % HT + TVA). L'écart est ce qu'Amal leur réclame. */
+        const N = config.naps || { tauxHT: 3, tva: 10 };
+        const tauxTTC = num(N.tauxHT) * (1 + num(N.tva) / 100);
+        const lignes = duMois.map((t) => {
+          const du = Math.round(num(t.ventes) * tauxTTC) / 100;
+          return { ...t, du, ecart: Math.round((t.cout - du) * 100) / 100 };
+        }).sort((a, b) => a.jour.localeCompare(b.jour));
+        const pris = lignes.reduce((s, l) => s + l.cout, 0);
+        const du = lignes.reduce((s, l) => s + l.du, 0);
+        const trop = Math.round((pris - du) * 100) / 100;
+        const aReclamer = lignes.filter((l) => Math.abs(l.ecart) >= 0.5);
+        const f2 = (n) => (Math.round(n * 100) / 100).toLocaleString("fr-FR",
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " DH";
+        const tx = String(Math.round(tauxTTC * 100) / 100).replace(".", ",");
+        return (
+          <div style={{ marginTop: 20, border: "2px solid #9B1B22", borderRadius: 14,
+                        background: "#FBF1F2", padding: "18px 18px 14px" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: ".12em",
+                          textTransform: "uppercase", color: "#7A0E14" }}>
+              Contrôle Naps du mois</div>
+            <div className="mini" style={{ margin: "4px 0 12px" }}>
+              Contrat : {String(N.tauxHT).replace(".", ",")} % HT + TVA {N.tva} % = {tx} % TTC
+            </div>
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div>
+                <div className="eyebrow">{trop > 0.5 ? "Pris en trop" : "Écart"}</div>
+                <div style={{ fontSize: 34, fontWeight: 300, lineHeight: 1.1,
+                              color: trop > 0.5 ? "#9B1B22" : "#4F6B1F" }}>
+                  {Math.abs(trop) < 0.5 ? "0 DH" : f2(trop)}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div className="row"><span className="lbl">Prélevé par Naps</span>
+                  <span className="val">{f2(pris)}</span></div>
+                <div className="row"><span className="lbl">Dû selon le contrat</span>
+                  <span className="val">{f2(du)}</span></div>
+              </div>
+            </div>
+            {aReclamer.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>À leur signaler</div>
+                {aReclamer.map((l) => (
+                  <div className="row" key={l.id}>
+                    <span className="lbl">CB du {jjmm(l.jour)} · télécollecte {l.tc}
+                      <span className="mini"> · {fmt(num(l.ventes))} de ventes · prélevé {f2(l.cout)},
+                        dû {f2(l.du)}</span></span>
+                    <span className="val" style={{ color: l.ecart > 0 ? "#9B1B22" : "#4F6B1F" }}>
+                      {l.ecart > 0 ? "+ " : "− "}{f2(Math.abs(l.ecart))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {duMois.length > 0 && (
         <div style={{ marginTop: 20 }}>
@@ -9388,6 +9445,18 @@ function Reglages({ config, onSave, session, onLogout }) {
       </div>
 
 
+
+      <div className="card">
+        <h2 className="h2">Contrat Naps</h2>
+        <Ligne lbl="Commission HT" value={c.naps.tauxHT} suffix="%"
+               onChange={(v) => maj({ ...c, naps: { ...c.naps, tauxHT: num(v) } })} />
+        <Ligne lbl="TVA sur la commission" value={c.naps.tva} suffix="%"
+               onChange={(v) => maj({ ...c, naps: { ...c.naps, tva: num(v) } })} />
+        <div className="note">
+          Sert uniquement au contrôle Naps sur Le Mi-Chui : ce que Naps prélève vraiment
+          (d'après son export) face à ce que dit ton contrat.
+        </div>
+      </div>
 
       <div className="card">
         <h2 className="h2">Seuils de cohérence</h2>
