@@ -3747,6 +3747,27 @@ function Alarme({ entries, config, onPointer, onAller }) {
       </div>
     );
   }).filter(Boolean);
+  /* Le rappel du lundi : à partir de 9h, SAIB ramène l'export Naps de la
+     semaine. La bande reste jusqu'à ce que ce soit fait (même les jours
+     suivants), puis disparaît jusqu'au lundi d'après. */
+  const lundi = isoLocal(new Date(maintenant.getTime() - ((maintenant.getDay() + 6) % 7) * 864e5));
+  const lundiPasse = maintenant.getDay() !== 1 || maintenant.getHours() >= 9;
+  const napsFait = !!(((config.pointages || {})[lundi] || {}).napsExport)
+    || (entries || []).some((e) => e.type === "napsImport" && (e.importeLe || e.date || "") >= lundi);
+  if (lundi >= "2026-10-12" && lundiPasse && !napsFait) {
+    rendu.push(
+      <div key="naps" role="alert" style={{ background: "#9B1B22", color: "#fff",
+          padding: "14px 16px", borderRadius: 14, marginBottom: 10 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+          Export Naps de la semaine</div>
+        <div style={SOUS_TITRE_ALARME}>SAIB</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+          <span style={{ flex: 1, minWidth: 160 }}>Télécharge l'export Excel depuis l'espace Naps et ramène-le dans LIFE.</span>
+          <button className="pill" onClick={() => onPointer(lundi, { napsExport: true })}>C'EST FAIT</button>
+        </div>
+      </div>
+    );
+  }
   if (!rendu.length) return null;
   return <div style={{ position: "sticky", top: 0, zIndex: 50, marginBottom: 6 }}>{rendu}</div>;
 }
