@@ -5328,6 +5328,23 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
           : "Un achat réglé tout de suite, avec un ticket ou sans papier (pain, courses, petite réparation)."}
       </div>
 
+      {/* 07/10 : le numéro en premier — c'est ce qu'on lit en haut à droite
+          d'une facture ou d'un BL. */}
+      <div style={{ marginBottom: 14 }}>
+        <label className="f">{piece === "bl" ? "Numéro du bon de livraison (obligatoire)"
+          : piece === "facture" ? "Numéro de la facture (obligatoire)" : "Numéro du ticket (facultatif)"}</label>
+        <input className="f" placeholder={piece === "bl" ? "N° du BL — s'il n'y en a pas, numérote au stylo : 1, 2, 3…" : ""}
+               value={numero} onChange={(e) => { setNumero(e.target.value); setErreur(""); }} />
+      </div>
+      {dejaSaisi.length > 0 && !envoi && (
+        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
+                      padding: "10px 12px", marginBottom: 14, fontSize: 15.5 }}>
+          Ce numéro est déjà enregistré pour {nomTiers} : {dejaSaisi.map(rappel).join(" — ")}.
+          Cette pièce ne sera pas enregistrée une seconde fois.
+        </div>
+      )}
+
+
       <div className={fixe ? "" : "grid2"}>
         {!fixe && (
           <div><label className="f">Activité</label>
@@ -5377,22 +5394,6 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
             {marchandise ? "✓ " : ""}Marchandise (nourriture, boissons, ingrédients)
           </button>
           <span className="mini">Non cochée = charge (nettoyage, réparation, électricité…)</span>
-        </div>
-      )}
-
-      {piece !== "bon" && (
-        <div style={{ marginBottom: 14 }}>
-          <label className="f">{piece === "bl" ? "Numéro du bon de livraison" : "Numéro de la facture"} (obligatoire)</label>
-          <input className="f" placeholder={piece === "bl" ? "N° du BL — s'il n'y en a pas, numérote au stylo : 1, 2, 3…" : "N° de facture"}
-                 value={numero} onChange={(e) => { setNumero(e.target.value); setErreur(""); }} />
-        </div>
-      )}
-
-      {dejaSaisi.length > 0 && !envoi && (
-        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
-                      padding: "10px 12px", marginBottom: 14, fontSize: 15.5 }}>
-          Ce numéro est déjà enregistré pour {nomTiers} : {dejaSaisi.map(rappel).join(" — ")}.
-          Cette pièce ne sera pas enregistrée une seconde fois.
         </div>
       )}
 
