@@ -8457,6 +8457,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
   const [piece, setPiece] = useState(e.piece || "facture");
   const [aPayer, setAPayer] = useState(!!e.aPayer);
   const [affaire, setAffaire] = useState(e.affaire || "");
+  const [fourn, setFourn] = useState(e.fournisseur || "");
   const [espece, setEspece] = useState(String(e.espece ?? ""));
   const [carte, setCarte] = useState(String(e.carte ?? ""));
   const [fondSuppose, setFondSuppose] = useState(String(e.fondSuppose ?? ""));
@@ -8475,6 +8476,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
   const [aRecevoir, setARecevoir] = useState(!!e.aRecevoir);
   const [erreur, setErreur] = useState("");
 
+  const fourns = (config?.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
   const entrant = e.type === "vente" || e.type === "resa" || e.type === "repas"
                 || (e.type === "pret-perso" && e.sens === "emprunte");
   const fermer = () => { setOuvert(false); if (onFerme) onFerme(); };
@@ -8502,8 +8504,17 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
                 montant: statut === "offert" ? 0 : num(montant) };
     } else if (e.type === "depense") {
       if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
-      patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl,
-                numero: numero.trim(), piece, aPayer, affaire };
+      /* Le fournisseur se choisit aussi à la correction : une pièce saisie en
+         « Autre dépense » doit pouvoir retrouver son fournisseur (et son ardoise). */
+      const fo = fourns.find((f) => f.id === fourn);
+      let titre = lbl.trim() || e.lbl || "";
+      const ancien = (config?.fournisseurs || []).find((f) => f.id === e.fournisseur);
+      if (ancien && titre.startsWith(ancien.nom)) titre = titre.slice(ancien.nom.length).replace(/^\s*—\s*/, "");
+      if (fo) titre = titre ? fo.nom + " — " + titre : fo.nom;
+      patch = { ...patch, montant: num(montant), lbl: titre || e.lbl,
+                numero: numero.trim(), piece, aPayer, affaire,
+                fournisseur: fo ? fo.id : null,
+                ...(fo ? { categorie: "matiere" } : {}) };
     } else if (e.type === "invest") {
       if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl, affaire };
@@ -8669,6 +8680,15 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
 
       {e.type === "depense" && (
         <>
+          <label className="f">Fournisseur</label>
+          <div className="navSimple" style={{ marginBottom: 14 }}>
+            {fourns.map((f) => (
+              <button key={f.id} className={"pill" + (fourn === f.id ? " on" : "")}
+                      onClick={() => setFourn(f.id)}>{f.nom}</button>
+            ))}
+            <button className={"pill" + (!fourns.some((f) => f.id === fourn) ? " on" : "")}
+                    onClick={() => setFourn("")}>Autre dépense</button>
+          </div>
           <label className="f">Justificatif</label>
           <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
             <button className={"pill" + (piece === "bl" ? " on" : "")}
