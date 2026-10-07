@@ -3273,6 +3273,17 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
     x.pieces.push(e); x.total += e.montantAffiche; if (e.genre === "bl") x.nbBL += 1;
   });
   const ardoises = Object.values(parArdoise).sort((a, b) => b.total - a.total);
+  const parMois = {};
+  toutes.filter((e) => e.genre === "doc").forEach((e) => {
+    const m = (e.date || "").slice(0, 7) || "?";
+    (parMois[m] = parMois[m] || []).push(e);
+  });
+  const facturesParMois = Object.entries(parMois).sort(([x], [y]) => x.localeCompare(y));
+  const blParFourn = ardoises
+    .map((a) => ({ ...a, pieces: a.pieces.filter((e) => e.genre === "bl") }))
+    .filter((a) => a.pieces.length > 0)
+    .map((a) => ({ ...a, total: a.pieces.reduce((s, e) => s + e.montantAffiche, 0) }))
+    .sort((x, y) => y.total - x.total);
   const totalFourn = ardoises.reduce((s, a) => s + a.total, 0);
   const totalAvenir = avenir.reduce((s, e) => s + e.montant, 0);
 
@@ -3331,39 +3342,61 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
           </button>
         </div>
       )}
-      {ardoises.length > 0 && (
-        <div className="mini" style={{ margin: "12px 0 2px", display: "flex", justifyContent: "space-between" }}>
-          <span>Fournisseurs</span><span>{fmt(totalFourn)}</span>
-        </div>
+      {/* 07/10, demande d'Amal : seulement ce qui n'est pas payé, en deux listes.
+          1. Les factures non payées, rangées par mois (la plus ancienne d'abord),
+             chacune avec son bouton PAYÉ — pour retrouver à quoi correspond un virement.
+          2. Les BL qui attendent leur facture, par fournisseur (ils ne se paient pas). */}
+      {facturesParMois.length > 0 && (
+        <div className="eyebrow" style={{ margin: "18px 0 4px" }}>Factures à payer</div>
       )}
-      {ardoises.map((a) => (
+      {facturesParMois.map(([ymF, liste]) => (
+        <div key={ymF} style={{ marginBottom: 10 }}>
+          <div className="mini" style={{ margin: "10px 0 2px", display: "flex",
+                                         justifyContent: "space-between", fontWeight: 500 }}>
+            <span style={{ textTransform: "capitalize" }}>{monthLabel(ymF)}</span>
+            <span>{fmt(liste.reduce((s, e) => s + e.montantAffiche, 0))}</span>
+          </div>
+          {liste.map((e) => (
+            <div key={e.id} className="row" style={{ gap: 10 }}>
+              <span className="lbl">
+                <strong style={{ fontWeight: 500 }}>{nomF(e.fournisseur) || e.lbl || "Sans nom"}</strong>
+                <span className="mini" style={{ display: "block", fontSize: 14.5 }}>
+                  {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}/{(e.date || "").slice(0, 4)}
+                  {e.numero ? " · n° " + e.numero : ""}
+                  {e.piece === "bon" ? " · bon de dépense" : " · facture"}
+                  {config.affaires[e.affaire] ? " · " + config.affaires[e.affaire].nom : ""}
+                </span>
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span className="val">{fmt(e.montantAffiche)}</span>
+                <button className="pill" style={{ margin: 0 }} onClick={() => cocherFourn(e)}>PAYÉ</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {blParFourn.length > 0 && (
+        <div className="eyebrow" style={{ margin: "18px 0 4px" }}>BL en attente de facture</div>
+      )}
+      {blParFourn.map((a) => (
         <div key={a.cle}>
           <button className="row" onClick={() => setOuverte(ouverte === a.cle ? null : a.cle)}
                   style={{ width: "100%", background: "none", border: "none", cursor: "pointer",
-                           padding: undefined, textAlign: "left", font: "inherit", color: "inherit" }}>
+                           textAlign: "left", font: "inherit", color: "inherit" }}>
             <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 22, display: "inline-block", textAlign: "center", fontSize: 13,
                              color: "#8B9678" }}>{ouverte === a.cle ? "▾" : "▸"}</span>
               <span><strong style={{ fontWeight: 500 }}>{a.nom}</strong>
-                <span className="mini"> · {a.pieces.length} {a.nbBL === a.pieces.length
-                  ? (a.nbBL > 1 ? "BL" : "BL") : (a.pieces.length > 1 ? "pièces" : "pièce")}
-                  {a.nbBL > 0 && a.nbBL === a.pieces.length ? " · se règle à la facture" : ""}</span>
-              </span>
+                <span className="mini"> · {a.pieces.length} BL</span></span>
             </span>
             <span className="val">{fmt(a.total)}</span>
           </button>
           {ouverte === a.cle && a.pieces.map((e) => (
             <div key={e.id} className="row" style={{ paddingLeft: 32 }}>
-              <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {e.genre === "doc"
-                  ? <Coche paye={false} onClick={() => cocherFourn(e)} />
-                  : <span style={{ width: 22, display: "inline-block" }} />}
-                <span className="mini" style={{ fontSize: 15 }}>
-                  {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}
-                  {e.numero ? " · n° " + e.numero : ""}
-                  {e.genre === "bl" ? " · bon de livraison" : e.piece === "facture" ? " · facture" : ""}
-                  {e.bons && e.bons.length > 0 ? " · couvre " + e.bons.length + " BL" : ""}
-                </span>
+              <span className="mini" style={{ fontSize: 15 }}>
+                {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}/{(e.date || "").slice(0, 4)}
+                {e.numero ? " · n° " + e.numero : ""}
               </span>
               <span className="val" style={{ fontSize: 15 }}>{fmt(e.montantAffiche)}</span>
             </div>
