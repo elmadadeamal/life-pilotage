@@ -4840,10 +4840,10 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
       <div className="eyebrow" style={{ marginTop: 4, marginBottom: 10 }}>Ce qui a été compté</div>
       <div className="grid2">
         <div><label className="f">Cash compté</label>
-          <input className="f" inputMode="decimal" placeholder="4700" value={espece}
+          <input className="f" inputMode="decimal" value={espece}
                  onChange={(e) => setEspece(e.target.value)} /></div>
         <div><label className="f">CB compté</label>
-          <input className="f" inputMode="decimal" placeholder="2000" value={carte}
+          <input className="f" inputMode="decimal" value={carte}
                  onChange={(e) => setCarte(e.target.value)} /></div>
       </div>
 
@@ -4862,11 +4862,11 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10 }}>
         <div style={{ flex: 1 }}>
           <label className="f">Numéro STAN</label>
-          <input className="f" inputMode="numeric" placeholder="004521" value={stan}
+          <input className="f" inputMode="numeric" value={stan}
                  onChange={(e) => setStan(e.target.value)} /></div>
         <div style={{ width: 130 }}>
           <label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="450" value={mtStan}
+          <input className="f" inputMode="decimal" value={mtStan}
                  onChange={(e) => setMtStan(e.target.value)}
                  onKeyDown={(e) => { if (e.key === "Enter") ajouterTicket(); }} /></div>
         <button className="pill" style={{ marginBottom: 1 }} onClick={ajouterTicket}>Ajouter</button>
@@ -5000,12 +5000,12 @@ function FResa({ config, defDate, onAdd, flash, fixe, entries }) {
             <option value="direct">Réservation directe</option>
           </select></div>
         <div><label className="f">Nombre de nuits</label>
-          <input className="f" inputMode="decimal" placeholder="3" value={nuits}
+          <input className="f" inputMode="decimal" value={nuits}
                  onChange={(e) => setNuits(e.target.value)} /></div>
       </div>
       <div className="grid2">
         <div><label className="f">Prix du séjour</label>
-          <input className="f" inputMode="decimal" placeholder="6150" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => setMontant(e.target.value)} /></div>
         <div><label className="f">Référence de séjour</label>
           <input className="f" placeholder="Code Airbnb" value={reference}
@@ -5324,14 +5324,10 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
           <label className="f">Fournisseur</label>
           <div className="navSimple" style={{ marginBottom: 14 }}>
             {liste.map((f) => {
-              const total = deja(affaire, f.id);
               return (
                 <button key={f.id} className={"pill" + (choix === f.id ? " on" : "")}
                         onClick={() => setChoix(f.id)}>
                   {f.nom}
-                  <span style={{ opacity: .65, fontSize: 14, marginLeft: 8 }}>
-                    {total > 0 ? fmt(total) : RYTHMES[f.rythme]}
-                  </span>
                 </button>
               );
             })}
@@ -5348,7 +5344,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
                  placeholder={courant ? "Ce que tu as acheté" : "Facture d'électricité, gaz, réparation…"}
                  value={lbl} onChange={(e) => { setLbl(e.target.value); setErreur(""); }} /></div>
         <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="1200" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
       </div>
 
@@ -5560,7 +5556,7 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe, entries }) {
             </select></div>
         )}
         <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="800" value={montant} onChange={(e) => setMontant(e.target.value)} /></div>
+          <input className="f" inputMode="decimal" value={montant} onChange={(e) => setMontant(e.target.value)} /></div>
       </div>
       <div style={{ marginBottom: 12 }}>
         {nature === "salaire" ? (
@@ -5627,7 +5623,7 @@ function FExtra({ config, defDate, onAdd, flash }) {
             {affs.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
           </select></div>
         <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="800" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
       </div>
       <div style={{ marginBottom: 12 }}><label className="f">Pour quoi</label>
@@ -5677,7 +5673,7 @@ function FInvest({ config, defDate, onAdd, flash, fixe }) {
             {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
           </select></div>
         <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="60000" value={montant} onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
+          <input className="f" inputMode="decimal" value={montant} onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
       </div>
       <div style={{ marginBottom: 12 }}>
         <label className="f">Quoi</label>
@@ -6061,7 +6057,7 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
         </div>
         <div style={{ flex: 1 }}>
           <label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="2000" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => setMontant(e.target.value)}
                  onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
         </div>
@@ -6173,7 +6169,7 @@ function ReservesConsolide({ M, config, ym, onAdd }) {
               {keys.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
             </select></div>
           <div><label className="f">Montant</label>
-            <input className="f" inputMode="decimal" placeholder="15000" value={montant}
+            <input className="f" inputMode="decimal" value={montant}
                    onChange={(e) => setMontant(e.target.value)} /></div>
         </div>
         <div style={{ marginBottom: 12 }}>
@@ -6278,7 +6274,7 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
             <input className="f" placeholder="Prénom" value={qui}
                    onChange={(e) => setQui(e.target.value)} /></div>
           <div><label className="f">Montant</label>
-            <input className="f" inputMode="decimal" placeholder="5000" value={montant}
+            <input className="f" inputMode="decimal" value={montant}
                    onChange={(e) => setMontant(e.target.value)} /></div>
         </div>
         <div className="grid3">
@@ -7114,7 +7110,7 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
           </div>
           <div className="grid2">
             <div><label className="f">Montant reçu</label>
-              <input className="f" inputMode="decimal" placeholder="4 320" value={mtN}
+              <input className="f" inputMode="decimal" value={mtN}
                      onChange={(e) => setMtN(e.target.value)} /></div>
             <div><label className="f">Date du virement</label>
               <input className="f" type="date" value={dateN}
@@ -7147,7 +7143,7 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
               {M.poches.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
             </select></div>
           <div><label className="f">Montant</label>
-            <input className="f" inputMode="decimal" placeholder="5000" value={mt}
+            <input className="f" inputMode="decimal" value={mt}
                    onChange={(e) => setMt(e.target.value)} /></div>
           <div><label className="f">Date</label>
             <input className="f" type="date" value={dateT}
@@ -9189,7 +9185,7 @@ function NouvelleCharge({ affaires, onAdd }) {
           <input className="f" placeholder="Loyer coffee shop" value={lbl}
                  onChange={(e) => setLbl(e.target.value)} /></div>
         <div><label className="f">Montant mensuel</label>
-          <input className="f" inputMode="decimal" placeholder="4000" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => setMontant(e.target.value)} /></div>
       </div>
       <div className="grid2">
