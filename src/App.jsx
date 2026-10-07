@@ -384,7 +384,7 @@ const DEFAULT_CONFIG = {
   seuilFondCaisse: { orange: 50, rouge: 100 },
   /* Les chantiers d'investissement, dans l'ordre où ils se financent */
   chantiers: [
-    { id: "tmsk-coffee", nom: "Comptoir coffee shop TMSK", cible: 40000 },
+    { id: "tmsk-coffee", nom: "TMSK Cosmétiques", cible: 40000 },
     { id: "taam-ouvre",  nom: "Ouverture de Ta'âm",        cible: 100000 },
     { id: "appart",      nom: "Travaux de l'appartement",  cible: 300000 },
   ],
@@ -3040,8 +3040,10 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
     return { ...ch, mis, reste, cumulAvant: avant, cumulTotal: dejaEngage };
   });
 
+  /* 07/10 : Amal ne veut ni rythme ni échéance estimée — les chantiers sont
+     exceptionnels, on montre seulement ce qui est mis de côté. */
   const horizon = (cumul) => {
-    if (!rythme || rythme.moy <= 0) return null;
+    if (!rythme || rythme.moy <= 0 || true) return null;
     const m = cumul / rythme.moy;
     return { bas: Math.ceil(m * 0.8), haut: Math.ceil(m * 1.25) };
   };
@@ -3049,19 +3051,6 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
   return (
     <div className="card">
       <h2 className="h2">Chantiers</h2>
-
-      {rythme ? (
-        <div className="row">
-          <span className="lbl">Rythme observé sur {rythme.n} mois</span>
-          <span className={"val " + (rythme.moy >= 0 ? "pos" : "neg")}>
-            {fmt(rythme.moy)} par mois</span>
-        </div>
-      ) : (
-        <div className="mini" style={{ marginBottom: 14 }}>
-          Pas encore assez de mois saisis pour estimer un rythme. Les échéances apparaîtront
-          après deux ou trois mois complets.
-        </div>
-      )}
 
       {lignes.map((ch) => {
         const pct = Math.min(100, (ch.mis / num(ch.cible)) * 100);
