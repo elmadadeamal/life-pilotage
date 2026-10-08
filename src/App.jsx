@@ -759,6 +759,10 @@ const normaliseMontant = (v) => {
   return t;
 };
 const num = (v) => { const n = parseFloat(normaliseMontant(v)); return isNaN(n) ? 0 : n; };
+/* 08/10 : une facture peut être payée en plusieurs fois. Les versements
+   partiels vivent sur la facture (`acomptes: [{ montant, date }]`) tant
+   qu'elle n'est pas soldée. */
+const dejaVerse = (e) => (e && e.acomptes ? e.acomptes.reduce((s, a) => s + num(a.montant), 0) : 0);
 /* Vide est acceptable (le champ n'est pas encore rempli) ; « abc » ne l'est pas. */
 const montantLisible = (v) => String(v ?? "").trim() === ""
                            || !isNaN(parseFloat(normaliseMontant(v)));
@@ -2415,7 +2419,7 @@ function calcul(config, entries, ym) {
 
   /* Ce que tu dois encore à tes fournisseurs, tous mois confondus */
   const dettes = entries.filter((e) => e.type === "depense" && e.aPayer)
-                        .reduce((s, e) => s + num(e.montant), 0);
+                        .reduce((s, e) => s + num(e.montant) - dejaVerse(e), 0);
 
   /* Amal veut trois chiffres et rien d'autre : ce qu'elle a fait rentrer, ce
      qu'elle a RÉELLEMENT payé, ce qu'il lui reste à payer. Tous les trois du
@@ -2428,7 +2432,10 @@ function calcul(config, entries, ym) {
   /* Sorti pour de bon : les achats réglés, les échéances pointées, la
      solidarité versée, les prélèvements, les avances données, le matériel
      acheté et les prêts consentis. */
-  const dejaPaye = achatsAcquittes + dejaRegleCaisse + soliVerse + avPerso + avSalaire
+  const acomptesMois = entries.filter((e) => e.type === "depense" && e.aPayer && e.acomptes)
+    .reduce((s, e) => s + e.acomptes.filter((a) => (a.date || "").startsWith(ym))
+                                     .reduce((t, a) => t + num(a.montant), 0), 0);
+  const dejaPaye = achatsAcquittes + acomptesMois + dejaRegleCaisse + soliVerse + avPerso + avSalaire
                  + invests + pretsSortieMois;
   /* Ce qui doit encore quitter la caisse, tous mois confondus. */
   const resteAPayer = aCouvrir + dettes;
@@ -2677,6 +2684,8 @@ function calcul(config, entries, ym) {
       case "depense":
         if (!e.aPayer) bouge(e.poche || pocheSortieParDefaut(config, e),
                              -num(e.montant), e.regleLe || d, e.lbl || "Achat");
+        else (e.acomptes || []).forEach((a) => bouge(a.poche || pocheSortieParDefaut(config, e),
+                             -num(a.montant), a.date || d, (e.lbl || "Achat") + " — acompte"));
         break;
       case "invest":
         bouge(e.poche || pocheSortieParDefaut(config, e), -num(e.montant), d, e.lbl || "Investissement");
@@ -3252,7 +3261,8 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
   const fourn = dettes.filter((e) => !estBL(e)).map((e) => {
     const bons = e.piece === "facture" ? bonsDe(e) : [];
     bons.forEach((b) => cachés.add(b.id));
-    return { ...e, bons, montantAffiche: num(e.montant) + bons.reduce((s, b) => s + num(b.montant), 0) };
+    const brut = num(e.montant) + bons.reduce((s, b) => s + num(b.montant), 0);
+    return { ...e, bons, brut, verse: dejaVerse(e), montantAffiche: brut - dejaVerse(e) };
   });
   const aFacturer = dettes.filter((e) => estBL(e) && !cachés.has(e.id));
   const toutes = [...fourn.map((e) => ({ ...e, genre: "doc" })), ...aFacturer.map((e) => ({ ...e, genre: "bl", montantAffiche: num(e.montant) }))]
@@ -3300,6 +3310,18 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
     if (!onRegler) return;
     onRegler(e.ref, false);
     garde({ cle: "d" + e.ref, txt: e.lbl + " : marqué non payé", defaire: () => onRegler(e.ref, true) });
+  };
+  const [partiel, setPartiel] = useState(null);
+  const [partielMt, setPartielMt] = useState("");
+  const verserPartie = (e) => {
+    const v = num(partielMt);
+    if (!onMaj || v <= 0) return;
+    if (v >= e.montantAffiche - 0.5) { cocherFourn(e); setPartiel(null); setPartielMt(""); return; }
+    const avant = e.acomptes || [];
+    onMaj(e.id, { acomptes: [...avant, { montant: v, date: aujourdhui() }] });
+    garde({ cle: "a" + e.id, txt: (nomF(e.fournisseur) || e.lbl) + " : " + fmt(v) + " versés",
+            defaire: () => onMaj(e.id, { acomptes: avant }) });
+    setPartiel(null); setPartielMt("");
   };
   const cocherFourn = (e) => {
     if (!onMaj) return;
@@ -3357,7 +3379,8 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
             <span>{fmt(liste.reduce((s, e) => s + e.montantAffiche, 0))}</span>
           </div>
           {liste.map((e) => (
-            <div key={e.id} className="row" style={{ gap: 10 }}>
+            <React.Fragment key={e.id}>
+            <div className="row" style={{ gap: 10 }}>
               <span className="lbl">
                 <strong style={{ fontWeight: 500 }}>{nomF(e.fournisseur) || e.lbl || "Sans nom"}</strong>
                 <span className="mini" style={{ display: "block", fontSize: 14.5 }}>
@@ -3367,11 +3390,30 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
                   {config.affaires[e.affaire] ? " · " + config.affaires[e.affaire].nom : ""}
                 </span>
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span className="val">{fmt(e.montantAffiche)}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                             justifyContent: "flex-end" }}>
+                <span className="val" style={{ textAlign: "right" }}>
+                  {e.verse > 0 && <span className="mini" style={{ display: "block", fontSize: 13.5 }}>
+                    {fmt(e.brut)} · déjà {fmt(e.verse)}</span>}
+                  {e.verse > 0 ? "reste " : ""}{fmt(e.montantAffiche)}
+                </span>
                 <button className="pill" style={{ margin: 0 }} onClick={() => cocherFourn(e)}>PAYÉ</button>
+                <button className="pill" style={{ margin: 0 }}
+                        onClick={() => { setPartiel(partiel === e.id ? null : e.id); setPartielMt(""); }}>
+                  EN PARTIE</button>
               </span>
             </div>
+            {partiel === e.id && (
+              <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
+                            margin: "4px 0 12px" }}>
+                <span className="mini">Montant versé aujourd'hui</span>
+                <input className="f" inputMode="decimal" style={{ width: 150, margin: 0 }}
+                       value={partielMt} onChange={(x) => setPartielMt(x.target.value)} />
+                <button className="btn" style={{ margin: 0, padding: "10px 20px" }}
+                        onClick={() => verserPartie(e)}>ENREGISTRER</button>
+              </div>
+            )}
+            </React.Fragment>
           ))}
         </div>
       ))}
@@ -4413,7 +4455,7 @@ function AchatsParFournisseur({ entries, ym, config }) {
       : String(e.lbl || "Divers").split(/[—–-]/).pop().trim().slice(0, 28) || "Divers";
     const g = groupes[nom] || (groupes[nom] = { nom, total: 0, du: 0 });
     g.total += num(e.montant);
-    if (e.aPayer) g.du += num(e.montant);
+    if (e.aPayer) g.du += num(e.montant) - dejaVerse(e);
   });
   const liste = Object.values(groupes).sort((a, b) => b.total - a.total).slice(0, 8);
   if (!liste.length) return null;
