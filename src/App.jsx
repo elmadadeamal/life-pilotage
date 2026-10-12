@@ -252,6 +252,7 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
 .achCorps.dbl { background:#FDECEC; }
 .achCorps.dbl:hover { background:#FBE0E0; }
 .achMt { text-align:right; font-variant-numeric:tabular-nums; }
+.achPaye { padding:4px 12px; font-size:13px; letter-spacing:.06em; }
 .achEtat { font-size:14px; color:var(--u-doux); }
 .achEtat.du { color:#B07C1E; }
 
@@ -8312,9 +8313,27 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
                    : config.affaires[k] ? config.affaires[k].nom : k;
 
   const debut = moisDecale(ym, 2);
+  const [annul, setAnnul] = useState(null);
+  /* « NON PAYÉES » : toutes les pièces encore dues, quel que soit leur mois.
+     Un bon de livraison ne se règle pas : on règle la facture qui le couvre,
+     donc les BL n'apparaissent pas ici (ils restent dans « Ce que tu dois »). */
+  const dues = periode === "dues";
+  const bonsDe = (f) => entries.filter((b) => b.type === "depense" && b.piece === "bl" && b.aPayer
+    && b.facture && f.numero && String(b.facture) === String(f.numero)
+    && b.fournisseur === f.fournisseur && b.affaire === f.affaire);
+  const reste = (e) => num(e.montant) + bonsDe(e).reduce((s, b) => s + num(b.montant), 0) - dejaVerse(e);
+  const payer = (e) => {
+    const ids = [e.id, ...bonsDe(e).map((b) => b.id)];
+    onMaj(ids, { aPayer: false, regleLe: aujourdhui() });
+    const a = { cle: e.id, txt: (e.lbl || "Facture") + " : payée",
+                defaire: () => onMaj(ids, { aPayer: true, regleLe: null }) };
+    setAnnul(a);
+    setTimeout(() => setAnnul((x) => (x && x.cle === a.cle ? null : x)), 8000);
+  };
   const base = entries.filter((e) => {
     if (e.type !== "depense" && e.type !== "invest") return false;
     if (filtre && e.affaire !== filtre) return false;
+    if (dues) return e.type === "depense" && e.aPayer && e.piece !== "bl";
     const m = (e.date || "").slice(0, 7);
     if (periode === "mois") return m === ym;
     if (periode === "trois") return m >= debut && m <= ym;
@@ -8337,11 +8356,13 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
   });
 
   const marques = new Set(base.filter((e) => suspectAchat(e, base)).map((e) => e.id));
-  const total = base.reduce((s, e) => s + num(e.montant), 0);
+  const total = dues ? base.reduce((s, e) => s + reste(e), 0)
+                    : base.reduce((s, e) => s + num(e.montant), 0);
   const trier = (col) => setTri(tri.col === col ? { col, sens: -tri.sens } : { col, sens: 1 });
   const fleche = (col) => tri.col === col ? (tri.sens === 1 ? " ▲" : " ▼") : "";
 
-  const PERIODES = [["mois", "Ce mois"], ["trois", "3 derniers mois"], ["tout", "Tout"]];
+  const PERIODES = [["mois", "Ce mois"], ["trois", "3 derniers mois"], ["tout", "Tout"],
+                    ["dues", "NON PAYÉES"]];
   const COLS = [["date", "Date"], ["piece", "Pièce"], ["numero", "N°"],
                 ["lbl", "Fournisseur / intitulé"], ["montant", "Montant"], ["etat", "État"],
                 ["par", "Saisi par"]];
@@ -8358,12 +8379,12 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
       </div>
 
       {!base.length ? (
-        <div className="empty">Aucun achat sur cette période.</div>
+        <div className="empty">{dues ? "Aucune facture à payer." : "Aucun achat sur cette période."}</div>
       ) : (
         <>
           <div className="row rowTot" style={{ marginBottom: 6 }}>
             <span className="lbl">
-              {base.length} pièce{base.length > 1 ? "s" : ""}
+              {base.length} pièce{base.length > 1 ? "s" : ""}{dues && " à payer"}
               {marques.size > 0 && " · " + marques.size + " à vérifier"}
             </span>
             <span className="val neg">{fmt(total)}</span>
@@ -8392,10 +8413,16 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
                 <span className="achEtat">{e.type === "invest" ? "Invest." : (PIECES[e.piece] || "Facture")}</span>
                 <span className="achEtat">{e.numero || "—"}</span>
                 <span>{e.lbl || "Achat"}{!filtre && <span className="achEtat"> · {nom(e.affaire)}</span>}</span>
-                <span className="achMt">{fmt(num(e.montant))}</span>
+                <span className="achMt">{fmt(dues ? reste(e) : num(e.montant))}
+                  {dues && dejaVerse(e) > 0 && <span className="achEtat" style={{ display: "block", fontSize: 12 }}>
+                    déjà {fmt(dejaVerse(e))}</span>}</span>
+                {dues ? (
+                  <span><button className="pill on achPaye"
+                                onClick={(x) => { x.stopPropagation(); payer(e); }}>PAYÉ</button></span>
+                ) : (
                 <span className={"achEtat" + (e.aPayer ? " du" : "")}>
                   {e.type === "invest" ? "—" : e.aPayer ? "À régler" : "Payé"}
-                </span>
+                </span>)}
                 <span className="achEtat">{signature(e) || "—"}</span>
                 <button className="del" onClick={(x) => { x.stopPropagation(); onDel(e.id); }}
                         aria-label="Supprimer">×</button>
@@ -8405,7 +8432,17 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
         </>
       )}
 
+      {annul && (
+        <div className="row" style={{ marginTop: 10 }}>
+          <span className="lbl">{annul.txt}</span>
+          <button className="pill" onClick={() => { annul.defaire(); setAnnul(null); }}>ANNULER</button>
+        </div>
+      )}
+
       <div className="note">
+        {dues && <>NON PAYÉES : toutes les factures encore dues, tous mois confondus. Le
+        bouton PAYÉ solde la facture et ses bons de livraison. Les BL pas encore
+        facturés restent dans « Ce que tu dois ». </>}
         Clique sur une ligne pour corriger la pièce, la croix la supprime. Clique sur un
         titre de colonne pour trier : par fournisseur ou par montant, les doublons se
         retrouvent côte à côte. Les lignes en rouge sont à vérifier — même numéro de pièce
