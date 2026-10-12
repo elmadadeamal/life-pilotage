@@ -8321,7 +8321,11 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
   const bonsDe = (f) => entries.filter((b) => b.type === "depense" && b.piece === "bl" && b.aPayer
     && b.facture && f.numero && String(b.facture) === String(f.numero)
     && b.fournisseur === f.fournisseur && b.affaire === f.affaire);
-  const reste = (e) => num(e.montant) + bonsDe(e).reduce((s, b) => s + num(b.montant), 0) - dejaVerse(e);
+  /* Un BL n'est « couvert » que si sa facture existe vraiment dans LIFE.
+     Sinon (pas encore facturé, ou facture introuvable) il reste dû et s'affiche. */
+  const factureDe = (b) => b.facture && entries.find((f) => f.type === "depense" && f.piece === "facture"
+    && String(f.numero || "") === String(b.facture) && f.fournisseur === b.fournisseur && f.affaire === b.affaire);
+  const reste = (e) => e.piece === "bl" ? num(e.montant) : num(e.montant) + bonsDe(e).reduce((s, b) => s + num(b.montant), 0) - dejaVerse(e);
   const payer = (e) => {
     const ids = [e.id, ...bonsDe(e).map((b) => b.id)];
     onMaj(ids, { aPayer: false, regleLe: aujourdhui() });
@@ -8333,7 +8337,7 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
   const base = entries.filter((e) => {
     if (e.type !== "depense" && e.type !== "invest") return false;
     if (filtre && e.affaire !== filtre) return false;
-    if (dues) return e.type === "depense" && e.aPayer && e.piece !== "bl";
+    if (dues) return e.type === "depense" && e.aPayer && (e.piece !== "bl" || !factureDe(e));
     const m = (e.date || "").slice(0, 7);
     if (periode === "mois") return m === ym;
     if (periode === "trois") return m >= debut && m <= ym;
@@ -8416,7 +8420,9 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
                 <span className="achMt">{fmt(dues ? reste(e) : num(e.montant))}
                   {dues && dejaVerse(e) > 0 && <span className="achEtat" style={{ display: "block", fontSize: 12 }}>
                     déjà {fmt(dejaVerse(e))}</span>}</span>
-                {dues ? (
+                {dues && e.piece === "bl" ? (
+                  <span className="achEtat du">{e.facture ? "Facture introuvable" : "À facturer"}</span>
+                ) : dues ? (
                   <span><button className="pill on achPaye"
                                 onClick={(x) => { x.stopPropagation(); payer(e); }}>PAYÉ</button></span>
                 ) : (
@@ -8440,9 +8446,9 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
       )}
 
       <div className="note">
-        {dues && <>NON PAYÉES : toutes les factures encore dues, tous mois confondus. Le
-        bouton PAYÉ solde la facture et ses bons de livraison. Les BL pas encore
-        facturés restent dans « Ce que tu dois ». </>}
+        {dues && <>NON PAYÉES : tout ce que tu dois, tous mois confondus. Le bouton PAYÉ
+        solde une facture et ses bons de livraison. Un BL « À facturer » se paie avec
+        sa facture de fin de mois : saisis la facture, elle reprend ses BL. </>}
         Clique sur une ligne pour corriger la pièce, la croix la supprime. Clique sur un
         titre de colonne pour trier : par fournisseur ou par montant, les doublons se
         retrouvent côte à côte. Les lignes en rouge sont à vérifier — même numéro de pièce
