@@ -252,7 +252,6 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
 .achCorps.dbl { background:#FDECEC; }
 .achCorps.dbl:hover { background:#FBE0E0; }
 .achMt { text-align:right; font-variant-numeric:tabular-nums; }
-.achPaye { padding:4px 12px; font-size:13px; letter-spacing:.06em; }
 .achEtat { font-size:14px; color:var(--u-doux); }
 .achEtat.du { color:#B07C1E; }
 
@@ -3295,6 +3294,19 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
     .filter((a) => a.pieces.length > 0)
     .map((a) => ({ ...a, total: a.pieces.reduce((s, e) => s + e.montantAffiche, 0) }))
     .sort((x, y) => y.total - x.total);
+  const moisCourant = aujourdhui().slice(0, 7);
+  const fiches = ardoises.map((a) => {
+    const docs = a.pieces.filter((e) => e.genre === "doc")
+      .sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+    const pm = {};
+    a.pieces.filter((e) => e.genre === "bl").forEach((e) => {
+      const ym = (e.date || "").slice(0, 7);
+      const m = pm[ym] || (pm[ym] = { cle: a.cle + "|" + ym, ym, pieces: [], total: 0, reclamer: ym < moisCourant });
+      m.pieces.push(e); m.total += e.montantAffiche;
+    });
+    const blMois = Object.values(pm).sort((x, y) => x.ym.localeCompare(y.ym));
+    return { ...a, docs, blMois };
+  });
   const totalFourn = ardoises.reduce((s, a) => s + a.total, 0);
   const totalAvenir = avenir.reduce((s, e) => s + e.montant, 0);
 
@@ -3365,40 +3377,33 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
           </button>
         </div>
       )}
-      {/* 07/10, demande d'Amal : seulement ce qui n'est pas payé, en deux listes.
-          1. Les factures non payées, rangées par mois (la plus ancienne d'abord),
-             chacune avec son bouton PAYÉ — pour retrouver à quoi correspond un virement.
-          2. Les BL qui attendent leur facture, par fournisseur (ils ne se paient pas). */}
-      {facturesParMois.length > 0 && (
-        <div className="eyebrow" style={{ margin: "18px 0 4px" }}>Factures à payer</div>
-      )}
-      {facturesParMois.map(([ymF, liste]) => (
-        <div key={ymF} style={{ marginBottom: 10 }}>
-          <div className="mini" style={{ margin: "10px 0 2px", display: "flex",
-                                         justifyContent: "space-between", fontWeight: 500 }}>
-            <span style={{ textTransform: "capitalize" }}>{monthLabel(ymF)}</span>
-            <span>{fmt(liste.reduce((s, e) => s + e.montantAffiche, 0))}</span>
+      {/* 12/10, demande d'Amal : une fiche par fournisseur, qui suit la vraie façon
+          de faire. Une facture reçue = une ligne avec sa case. Les BL du mois en cours
+          s'additionnent « en cours » ; dès le mois fini, sans facture saisie, ils
+          réclament leur facture (en rouge). */}
+      {fiches.map((a) => (
+        <div key={a.cle} style={{ border: "1px solid #ECE6D8", borderRadius: 14,
+                                   padding: "12px 14px", margin: "12px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+            <strong style={{ fontWeight: 600, fontSize: 17, textTransform: "uppercase", letterSpacing: ".04em" }}>{a.nom}</strong>
+            <span className="val">tu dois {fmt(a.total)}</span>
           </div>
-          {liste.map((e) => (
+          {a.docs.map((e) => (
             <React.Fragment key={e.id}>
             <div className="row" style={{ gap: 10 }}>
-              <span className="lbl">
-                <strong style={{ fontWeight: 500 }}>{nomF(e.fournisseur) || e.lbl || "Sans nom"}</strong>
-                <span className="mini" style={{ display: "block", fontSize: 14.5 }}>
-                  {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}/{(e.date || "").slice(0, 4)}
-                  {e.numero ? " · n° " + e.numero : ""}
-                  {e.piece === "bon" ? " · bon de dépense" : " · facture"}
-                  {config.affaires[e.affaire] ? " · " + config.affaires[e.affaire].nom : ""}
+              <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Coche paye={false} onClick={() => cocherFourn(e)} />
+                <span>
+                  <span style={{ textTransform: "capitalize" }}>{monthLabel((e.date || "").slice(0, 7))}</span>
+                  {" · "}{e.piece === "bon" ? "bon de dépense" : "facture"}{e.numero ? " " + e.numero : ""}
+                  {e.bons.length > 0 && <span className="mini"> · {e.bons.length} BL</span>}
+                  {config.affaires[e.affaire] && <span className="mini"> · {config.affaires[e.affaire].nom}</span>}
+                  {e.verse > 0 && <span className="mini" style={{ display: "block", fontSize: 13.5 }}>
+                    {fmt(e.brut)} · déjà versé {fmt(e.verse)}</span>}
                 </span>
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-                             justifyContent: "flex-end" }}>
-                <span className="val" style={{ textAlign: "right" }}>
-                  {e.verse > 0 && <span className="mini" style={{ display: "block", fontSize: 13.5 }}>
-                    {fmt(e.brut)} · déjà {fmt(e.verse)}</span>}
-                  {e.verse > 0 ? "reste " : ""}{fmt(e.montantAffiche)}
-                </span>
-                <button className="pill" style={{ margin: 0 }} onClick={() => cocherFourn(e)}>PAYÉ</button>
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span className="val">{e.verse > 0 ? "reste " : ""}{fmt(e.montantAffiche)}</span>
                 <button className="pill" style={{ margin: 0 }}
                         onClick={() => { setPartiel(partiel === e.id ? null : e.id); setPartielMt(""); }}>
                   EN PARTIE</button>
@@ -3416,32 +3421,31 @@ function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
             )}
             </React.Fragment>
           ))}
-        </div>
-      ))}
-
-      {blParFourn.length > 0 && (
-        <div className="eyebrow" style={{ margin: "18px 0 4px" }}>BL en attente de facture</div>
-      )}
-      {blParFourn.map((a) => (
-        <div key={a.cle}>
-          <button className="row" onClick={() => setOuverte(ouverte === a.cle ? null : a.cle)}
-                  style={{ width: "100%", background: "none", border: "none", cursor: "pointer",
-                           textAlign: "left", font: "inherit", color: "inherit" }}>
-            <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 22, display: "inline-block", textAlign: "center", fontSize: 13,
-                             color: "#8B9678" }}>{ouverte === a.cle ? "▾" : "▸"}</span>
-              <span><strong style={{ fontWeight: 500 }}>{a.nom}</strong>
-                <span className="mini"> · {a.pieces.length} BL</span></span>
-            </span>
-            <span className="val">{fmt(a.total)}</span>
-          </button>
-          {ouverte === a.cle && a.pieces.map((e) => (
-            <div key={e.id} className="row" style={{ paddingLeft: 32 }}>
-              <span className="mini" style={{ fontSize: 15 }}>
-                {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}/{(e.date || "").slice(0, 4)}
-                {e.numero ? " · n° " + e.numero : ""}
-              </span>
-              <span className="val" style={{ fontSize: 15 }}>{fmt(e.montantAffiche)}</span>
+          {a.blMois.map((m) => (
+            <div key={m.cle}>
+              <button className="row" onClick={() => setOuverte(ouverte === m.cle ? null : m.cle)}
+                      style={{ width: "100%", background: "none", border: "none", cursor: "pointer",
+                               textAlign: "left", font: "inherit", color: "inherit" }}>
+                <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 24, display: "inline-block", textAlign: "center", fontSize: 13,
+                                 color: "#8B9678" }}>{ouverte === m.cle ? "▾" : "▸"}</span>
+                  <span><span style={{ textTransform: "capitalize" }}>{monthLabel(m.ym)}</span>
+                    {" · "}{m.pieces.length} BL{" · "}
+                    {m.reclamer
+                      ? <strong style={{ color: "#C9503A", fontWeight: 600 }}>FACTURE À RÉCLAMER</strong>
+                      : <span className="mini">en cours</span>}</span>
+                </span>
+                <span className="val" style={{ color: m.reclamer ? "#C9503A" : undefined }}>{fmt(m.total)}</span>
+              </button>
+              {ouverte === m.cle && m.pieces.map((e) => (
+                <div key={e.id} className="row" style={{ paddingLeft: 34 }}>
+                  <span className="mini" style={{ fontSize: 15 }}>
+                    {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}/{(e.date || "").slice(0, 4)}
+                    {e.numero ? " · n° " + e.numero : ""}
+                  </span>
+                  <span className="val" style={{ fontSize: 15 }}>{fmt(e.montantAffiche)}</span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -3796,6 +3800,26 @@ function manquesDuJour(entries, config, iso) {
    que saisit Amal — chacun voit d'un coup d'œil ce qui le regarde. */
 const SOUS_TITRE_ALARME = { fontSize: 13, fontWeight: 600, letterSpacing: ".12em",
                             textTransform: "uppercase", opacity: .85, margin: "8px 0 2px" };
+/* BL dont la facture n'est pas (ou plus) dans LIFE, d'un mois déjà terminé :
+   la facture de fin de mois doit être réclamée. Groupés par fournisseur et mois. */
+function facturesAReclamer(entries, config) {
+  const L = entries || [];
+  const moisCourant = aujourdhui().slice(0, 7);
+  const existe = (b) => b.facture && L.some((f) => f.type === "depense" && f.piece === "facture"
+    && String(f.numero || "") === String(b.facture) && f.fournisseur === b.fournisseur && f.affaire === b.affaire);
+  const nomF = (id) => ((config.fournisseurs || []).find((f) => f.id === id) || {}).nom;
+  const g = {};
+  L.filter((b) => b.type === "depense" && b.piece === "bl" && b.aPayer && !existe(b)
+                  && (b.date || "").slice(0, 7) < moisCourant)
+    .forEach((b) => {
+      const ym = (b.date || "").slice(0, 7);
+      const cle = (b.fournisseur || b.lbl || "?") + "|" + ym;
+      const x = g[cle] || (g[cle] = { cle, ym, nom: nomF(b.fournisseur) || b.lbl || "Sans nom", nb: 0, total: 0 });
+      x.nb += 1; x.total += num(b.montant);
+    });
+  return Object.values(g).sort((a, b) => a.ym.localeCompare(b.ym) || b.total - a.total);
+}
+
 function Alarme({ entries, config, onPointer, onAller }) {
   const [, tic] = useState(0);
   useEffect(() => { const t = setInterval(() => tic((n) => n + 1), 60000); return () => clearInterval(t); }, []);
@@ -3857,6 +3881,23 @@ function Alarme({ entries, config, onPointer, onAller }) {
           <span style={{ flex: 1, minWidth: 160 }}>Télécharge l'export Excel depuis l'espace Naps et ramène-le dans LIFE.</span>
           <button className="pill" onClick={() => onPointer(lundi, { napsExport: true })}>C'EST FAIT</button>
         </div>
+      </div>
+    );
+  }
+  const aReclamer = facturesAReclamer(entries, config);
+  if (aReclamer.length) {
+    rendu.push(
+      <div key="reclamer" role="alert" style={{ background: "#9B1B22", color: "#fff",
+          padding: "14px 16px", borderRadius: 14, marginBottom: 10 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+          Factures à réclamer</div>
+        {aReclamer.map((r) => (
+          <div key={r.cle} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+            <span style={{ flex: 1, minWidth: 160 }}><strong>{r.nom}</strong> · {monthLabel(r.ym)} · {r.nb} BL · {fmt(r.total)}</span>
+          </div>
+        ))}
+        <div style={{ fontSize: 14.5, opacity: .9, marginTop: 4 }}>
+          Dès que tu saisis la facture, elle reprend ses BL et l'alerte disparaît.</div>
       </div>
     );
   }
@@ -8313,31 +8354,9 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
                    : config.affaires[k] ? config.affaires[k].nom : k;
 
   const debut = moisDecale(ym, 2);
-  const [annul, setAnnul] = useState(null);
-  /* « NON PAYÉES » : toutes les pièces encore dues, quel que soit leur mois.
-     Un bon de livraison ne se règle pas : on règle la facture qui le couvre,
-     donc les BL n'apparaissent pas ici (ils restent dans « Ce que tu dois »). */
-  const dues = periode === "dues";
-  const bonsDe = (f) => entries.filter((b) => b.type === "depense" && b.piece === "bl" && b.aPayer
-    && b.facture && f.numero && String(b.facture) === String(f.numero)
-    && b.fournisseur === f.fournisseur && b.affaire === f.affaire);
-  /* Un BL n'est « couvert » que si sa facture existe vraiment dans LIFE.
-     Sinon (pas encore facturé, ou facture introuvable) il reste dû et s'affiche. */
-  const factureDe = (b) => b.facture && entries.find((f) => f.type === "depense" && f.piece === "facture"
-    && String(f.numero || "") === String(b.facture) && f.fournisseur === b.fournisseur && f.affaire === b.affaire);
-  const reste = (e) => e.piece === "bl" ? num(e.montant) : num(e.montant) + bonsDe(e).reduce((s, b) => s + num(b.montant), 0) - dejaVerse(e);
-  const payer = (e) => {
-    const ids = [e.id, ...bonsDe(e).map((b) => b.id)];
-    onMaj(ids, { aPayer: false, regleLe: aujourdhui() });
-    const a = { cle: e.id, txt: (e.lbl || "Facture") + " : payée",
-                defaire: () => onMaj(ids, { aPayer: true, regleLe: null }) };
-    setAnnul(a);
-    setTimeout(() => setAnnul((x) => (x && x.cle === a.cle ? null : x)), 8000);
-  };
   const base = entries.filter((e) => {
     if (e.type !== "depense" && e.type !== "invest") return false;
     if (filtre && e.affaire !== filtre) return false;
-    if (dues) return e.type === "depense" && e.aPayer && (e.piece !== "bl" || !factureDe(e));
     const m = (e.date || "").slice(0, 7);
     if (periode === "mois") return m === ym;
     if (periode === "trois") return m >= debut && m <= ym;
@@ -8360,13 +8379,11 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
   });
 
   const marques = new Set(base.filter((e) => suspectAchat(e, base)).map((e) => e.id));
-  const total = dues ? base.reduce((s, e) => s + reste(e), 0)
-                    : base.reduce((s, e) => s + num(e.montant), 0);
+  const total = base.reduce((s, e) => s + num(e.montant), 0);
   const trier = (col) => setTri(tri.col === col ? { col, sens: -tri.sens } : { col, sens: 1 });
   const fleche = (col) => tri.col === col ? (tri.sens === 1 ? " ▲" : " ▼") : "";
 
-  const PERIODES = [["mois", "Ce mois"], ["trois", "3 derniers mois"], ["tout", "Tout"],
-                    ["dues", "NON PAYÉES"]];
+  const PERIODES = [["mois", "Ce mois"], ["trois", "3 derniers mois"], ["tout", "Tout"]];
   const COLS = [["date", "Date"], ["piece", "Pièce"], ["numero", "N°"],
                 ["lbl", "Fournisseur / intitulé"], ["montant", "Montant"], ["etat", "État"],
                 ["par", "Saisi par"]];
@@ -8383,12 +8400,12 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
       </div>
 
       {!base.length ? (
-        <div className="empty">{dues ? "Aucune facture à payer." : "Aucun achat sur cette période."}</div>
+        <div className="empty">Aucun achat sur cette période.</div>
       ) : (
         <>
           <div className="row rowTot" style={{ marginBottom: 6 }}>
             <span className="lbl">
-              {base.length} pièce{base.length > 1 ? "s" : ""}{dues && " à payer"}
+              {base.length} pièce{base.length > 1 ? "s" : ""}
               {marques.size > 0 && " · " + marques.size + " à vérifier"}
             </span>
             <span className="val neg">{fmt(total)}</span>
@@ -8417,18 +8434,10 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
                 <span className="achEtat">{e.type === "invest" ? "Invest." : (PIECES[e.piece] || "Facture")}</span>
                 <span className="achEtat">{e.numero || "—"}</span>
                 <span>{e.lbl || "Achat"}{!filtre && <span className="achEtat"> · {nom(e.affaire)}</span>}</span>
-                <span className="achMt">{fmt(dues ? reste(e) : num(e.montant))}
-                  {dues && dejaVerse(e) > 0 && <span className="achEtat" style={{ display: "block", fontSize: 12 }}>
-                    déjà {fmt(dejaVerse(e))}</span>}</span>
-                {dues && e.piece === "bl" ? (
-                  <span className="achEtat du">{e.facture ? "Facture introuvable" : "À facturer"}</span>
-                ) : dues ? (
-                  <span><button className="pill on achPaye"
-                                onClick={(x) => { x.stopPropagation(); payer(e); }}>PAYÉ</button></span>
-                ) : (
+                <span className="achMt">{fmt(num(e.montant))}</span>
                 <span className={"achEtat" + (e.aPayer ? " du" : "")}>
                   {e.type === "invest" ? "—" : e.aPayer ? "À régler" : "Payé"}
-                </span>)}
+                </span>
                 <span className="achEtat">{signature(e) || "—"}</span>
                 <button className="del" onClick={(x) => { x.stopPropagation(); onDel(e.id); }}
                         aria-label="Supprimer">×</button>
@@ -8438,17 +8447,7 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
         </>
       )}
 
-      {annul && (
-        <div className="row" style={{ marginTop: 10 }}>
-          <span className="lbl">{annul.txt}</span>
-          <button className="pill" onClick={() => { annul.defaire(); setAnnul(null); }}>ANNULER</button>
-        </div>
-      )}
-
       <div className="note">
-        {dues && <>NON PAYÉES : tout ce que tu dois, tous mois confondus. Le bouton PAYÉ
-        solde une facture et ses bons de livraison. Un BL « À facturer » se paie avec
-        sa facture de fin de mois : saisis la facture, elle reprend ses BL. </>}
         Clique sur une ligne pour corriger la pièce, la croix la supprime. Clique sur un
         titre de colonne pour trier : par fournisseur ou par montant, les doublons se
         retrouvent côte à côte. Les lignes en rouge sont à vérifier — même numéro de pièce
