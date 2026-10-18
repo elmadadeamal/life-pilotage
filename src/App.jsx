@@ -1426,8 +1426,15 @@ export default function App({ session, onLogout }) {
       const champs = { tc: x.tc, nb: x.nb, ventes: x.ventes, commission: x.commission,
                        ajust: x.ajust, verse: x.verse, statut: x.statut, dateVir: x.dateVir,
                        date: x.dateVir, pdv: x.pdv };
+      if (x.source) { champs.source = x.source; champs.jourTx = x.jourTx; }
       const i = out.findIndex((e) => e.type === "napsTc" && String(e.tc) === x.tc);
-      if (i >= 0) out[i] = { ...out[i], ...champs, majPar: moi, majLe: aujourdhui() };
+      /* Une télécollecte déjà « Versé » par l'ancien export garde son statut
+         et son nom de point de vente : le relevé par ticket ne les donne pas. */
+      if (i >= 0) {
+        if (!champs.statut) champs.statut = out[i].statut || "";
+        if (out[i].pdv && x.source) champs.pdv = out[i].pdv;
+        out[i] = { ...out[i], ...champs, majPar: moi, majLe: aujourdhui() };
+      }
       else out.push({ ...champs, type: "napsTc", affaire: "contenu", id: uid(), par: moi,
                       saisiLe: aujourdhui(), importeLe: aujourdhui() });
     });
@@ -7762,7 +7769,12 @@ function Tableau({ cols, rows, pied, min = 560 }) {
   );
 }
 const carteDe = (v) => v.carte !== undefined ? num(v.carte) : num(v.napsMa) + num(v.napsEtr);
-const napsVerse = (t) => /vers/i.test(String(t.statut || ""));
+/* Ancien export : le statut « Versé » le dit. Relevé par ticket : Naps donne la
+   date de règlement ; le virement compte à partir de ce jour-là, pas avant. */
+const napsVerse = (t) => /vers/i.test(String(t.statut || ""))
+  || (t.source === "tickets" && !!t.dateVir && t.dateVir <= aujourdhui());
+const napsStatut = (t) => napsVerse(t) ? "Versé"
+  : t.source === "tickets" && t.dateVir ? "prévu le " + jjmm(t.dateVir) : (t.statut || "—");
 function rapprocherNaps(entries) {
   const jours = {};
   (entries || []).forEach((v) => {
@@ -7775,16 +7787,27 @@ function rapprocherNaps(entries) {
     .sort((a, b) => (a.dateVir || "").localeCompare(b.dateVir || "")
                     || String(a.tc).localeCompare(String(b.tc)));
   const parJour = {};
-  const res = tcs.map((t) => {
+  const res = new Map();
+  /* 1) Le relevé par ticket dit lui-même de quel jour sont les tickets : on
+        le croit, et si le CB saisi ce jour-là diffère, LIFE montre l'écart. */
+  tcs.filter((t) => t.jourTx).forEach((t) => {
+    const jour = jours[t.jourTx] && !parJour[t.jourTx] ? t.jourTx : null;
+    const r = { ...t, jour, cout: num(t.ventes) - num(t.verse),
+                ecartSaisie: jour ? Math.round((num(t.ventes) - jours[jour].total) * 100) / 100 : 0 };
+    if (jour) parJour[jour] = r;
+    res.set(t, r);
+  });
+  /* 2) Ancien export (sans jour) : le jour dont le CB colle au dirham près */
+  tcs.filter((t) => !t.jourTx).forEach((t) => {
     const min = jourDecale(t.dateVir, -15);
     const cands = Object.keys(jours).filter((d) => !parJour[d] && d < t.dateVir && d >= min
       && Math.abs(jours[d].total - num(t.ventes)) < 0.5).sort();
     const jour = cands.length ? cands[cands.length - 1] : null;
-    const r = { ...t, jour, cout: num(t.ventes) - num(t.verse) };
+    const r = { ...t, jour, cout: num(t.ventes) - num(t.verse), ecartSaisie: 0 };
     if (jour) parJour[jour] = r;
-    return r;
+    res.set(t, r);
   });
-  return { tcs: res, parJour, jours };
+  return { tcs: tcs.map((t) => res.get(t)), parJour, jours };
 }
 
 /* Lecture de l'Excel Naps, dans le navigateur. On repère les colonnes par
@@ -7823,6 +7846,48 @@ async function lireExportNaps(fichier) {
       dateVir: col((h) => h.includes("date") && h.includes("virement")),
       pdv: col((h) => h.includes("point de vente")),
     };
+    /* Le relevé « MON RELEVÉ NAPSPRO » (octobre 2026) : une ligne par TICKET
+       (Montant, Commission HT, TVA, Date de transaction, Date de règlement).
+       On regroupe les tickets par télécollecte. La commission se calcule comme
+       Naps la vire : HT de chaque ticket arrondi au centime, puis TVA dessus —
+       c'est ce qui retombe au centime près sur les virements déjà reçus. */
+    const T = {
+      tc: col((h) => h.includes("telecollecte") && !h.startsWith("date")),
+      montant: col((h) => h === "montant"),
+      ht: col((h) => h.startsWith("commission")),
+      tva: col((h) => h === "tva"),
+      reg: col((h) => h.includes("reglement")),
+      jour: col((h) => h.includes("date de transaction")),
+      pdv: col((h) => h === "pdv" || h.includes("point de vente")),
+    };
+    if (C.ventes < 0 && [T.tc, T.montant, T.ht, T.reg].every((i) => i >= 0)) {
+      const G = {};
+      rows.slice(iH + 1).forEach((r) => {
+        const tc = String(r[T.tc] ?? "").trim();
+        if (!tc || String(r[T.montant] ?? "").trim() === "") return;
+        const g = G[tc] || (G[tc] = { tc, nb: 0, ventes: 0, ht: 0, htBrut: 0, tva: 0,
+                                       dateVir: "", jours: {}, pdv: "" });
+        const m = num(r[T.montant]);
+        g.nb += 1; g.ventes += m;
+        g.ht += r2(r[T.ht]); g.htBrut += num(r[T.ht]);
+        g.tva += T.tva >= 0 ? num(r[T.tva]) : 0;
+        const dv = dateNaps(r[T.reg]); if (dv > g.dateVir) g.dateVir = dv;
+        const dj = T.jour >= 0 ? dateNaps(r[T.jour]) : "";
+        if (dj) g.jours[dj] = (g.jours[dj] || 0) + m;
+        if (T.pdv >= 0 && !g.pdv) g.pdv = String(r[T.pdv] ?? "").trim();
+      });
+      Object.values(G).forEach((g) => {
+        const tauxTva = g.htBrut > 0 ? g.tva / g.htBrut : 0;
+        const commission = Math.round(g.ht * (1 + tauxTva) * 100) / 100;
+        const ventes = r2(g.ventes);
+        /* Le jour des tickets, tel que Naps le donne (celui qui pèse le plus) */
+        const jourTx = Object.keys(g.jours).sort((a, b) => g.jours[b] - g.jours[a])[0] || "";
+        lignes.push({ tc: g.tc, nb: g.nb, ventes, commission, ajust: 0,
+                      verse: r2(ventes - commission), statut: "", dateVir: g.dateVir,
+                      pdv: g.pdv, jourTx, source: "tickets" });
+      });
+      return;
+    }
     if ([C.tc, C.ventes, C.verse, C.dateVir].some((i) => i < 0)) return;
     rows.slice(iH + 1).forEach((r) => {
       const tc = String(r[C.tc] ?? "").trim();
@@ -8045,7 +8110,7 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
                onChange={choisir} disabled={enCours} />
       </label>
       <div className="mini" style={{ marginTop: 8 }}>
-        L'Excel des virements, téléchargé depuis l'espace Naps. Le recharger ne crée jamais de doublon.
+        L'Excel téléchargé depuis l'espace Naps (relevé des virements ou relevé par ticket). Le recharger ne crée jamais de doublon.
         {dernierImport ? " Dernier import : " + dateFR(dernierImport) + "." : ""}
       </div>
       <Alerte>{erreur}</Alerte>
@@ -8129,7 +8194,7 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
             rows={[...duMois].sort((a, b) => a.jour.localeCompare(b.jour)).map((t) => ({ k: t.id, c: [
               dateFR(t.jour), fmt(num(t.ventes)),
               <span className="neg">{fmt(t.cout)} <span className="mini">({pct(t.cout, num(t.ventes))})</span></span>,
-              napsVerse(t) ? <span style={{ color: "#4F6B1F" }}>{fmt(num(t.verse))}</span> : (t.statut || "—"),
+              napsVerse(t) ? <span style={{ color: "#4F6B1F" }}>{fmt(num(t.verse))}</span> : napsStatut(t),
               napsVerse(t) ? dateFR(t.dateVir) : "—",
               <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>] }))} />
         </div>
@@ -8151,13 +8216,33 @@ function NapsExport({ config, entries, ym, onImporter, onDel }) {
         </div>
       )}
 
+      {duMois.some((t) => Math.abs(t.ecartSaisie || 0) >= 0.5) && (
+        <div style={{ marginTop: 16 }}>
+          <div className="eyebrow" style={{ marginBottom: 6, color: "#9B1B22" }}>
+            CB saisi ≠ CB vu par Naps</div>
+          {duMois.filter((t) => Math.abs(t.ecartSaisie || 0) >= 0.5)
+            .sort((a, b) => a.jour.localeCompare(b.jour)).map((t) => (
+            <div className="row" key={t.id}>
+              <span className="lbl" style={{ color: "#9B1B22" }}>
+                {dateFR(t.jour)} : saisi {fmt(num(t.ventes) - t.ecartSaisie)} · Naps {fmt(num(t.ventes))}
+                <span className="mini"> · corrige le CB de ce jour dans « CB par point de vente »</span></span>
+              <span className="val neg">{t.ecartSaisie > 0 ? "+ " : "− "}{fmt(Math.abs(t.ecartSaisie))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {orphelins.length > 0 && (
         <div style={{ marginTop: 16 }}>
           {orphelins.map((t) => (
             <div className="row" key={t.id}>
               <span className="lbl" style={{ color: "#9B1B22" }}>
-                Naps : {fmt(num(t.ventes))} versé le {dateFR(t.dateVir)} — aucun jour saisi ne correspond
-                <span className="mini"> · télécollecte {t.tc}. Vérifie le CB saisi les jours précédents.</span></span>
+                {t.jourTx
+                  ? <>Naps : {fmt(num(t.ventes))} de CB le {dateFR(t.jourTx)} — rien n'est saisi ce jour-là
+                      <span className="mini"> · télécollecte {t.tc}.</span></>
+                  : <>Naps : {fmt(num(t.ventes))} versé le {dateFR(t.dateVir)} — aucun jour saisi ne correspond
+                      <span className="mini"> · télécollecte {t.tc}. Vérifie le CB saisi les jours précédents.</span></>}
+                </span>
               <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
             </div>
           ))}
