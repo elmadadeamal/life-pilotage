@@ -2748,6 +2748,13 @@ function calcul(config, entries, ym) {
           bouge(banqueCartes(config), num(e.verse), d, "Virement Naps");
         }
         break;
+      case "reglementAnterieur":
+        /* Amal : « on a dû payer des ardoises de septembre avec l'argent
+           d'octobre ». L'argent sort bien ce jour-là, de cette caisse ; mais
+           le coût appartient au mois d'avant, il ne pèse pas sur ce résultat. */
+        bouge(e.poche || pocheSortieParDefaut(config, e), -num(e.montant), d,
+              "Paiement factures d'un mois précédent");
+        break;
       case "transfert":
         bouge(e.de, -num(e.montant), d, "Transfert");
         bouge(e.vers, num(e.montant), d, "Transfert");
@@ -2900,6 +2907,53 @@ function historique(config, entries, ym, filtre) {
 /*  TABLEAU DE BORD                                                    */
 /* ------------------------------------------------------------------ */
 
+/* Le dépôt d'espèces en banque. Amal : « un bouton et une case ». Une caisse,
+   un montant, une date : les espèces quittent le tiroir et arrivent sur le
+   compte. Ce n'est pas un transfert entre affaires, c'est le même argent qui
+   change de poche. */
+function DepotBanque({ config, onTransfert }) {
+  const caisses = lesPoches(config).filter((p) => p.type === "caisse");
+  const banque = pocheParId(config, banqueCartes(config));
+  const [de, setDe] = useState(caisseDe(config, "sabich") || (caisses[0] || {}).id || "");
+  const [mt, setMt] = useState("");
+  const [date, setDate] = useState(aujourdhui());
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  if (!banque || caisses.length === 0 || !onTransfert) return null;
+  const deposer = () => {
+    if (!de) { setErr("Choisis la caisse d'où sortent les espèces."); return; }
+    if (!montantLisible(mt) || num(mt) <= 0) { setErr("Écris le montant déposé en chiffres."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) { setErr("Indique la date du dépôt."); return; }
+    setErr("");
+    onTransfert(de, banque.id, mt, date, "Dépôt d'espèces en banque");
+    setOk("Dépôt de " + fmt(num(mt)) + " enregistré.");
+    setMt("");
+  };
+  return (
+    <div className="card">
+      <h2 className="h2">Dépôt en banque</h2>
+      <div className="note" style={{ marginBottom: 12 }}>
+        Les espèces que tu déposes sortent de la caisse et arrivent sur {banque.nom}.
+      </div>
+      <div className="grid3">
+        <div><label className="f">Espèces prises dans</label>
+          <select className="f" value={de} onChange={(e) => { setDe(e.target.value); setOk(""); }}>
+            {caisses.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          </select></div>
+        <div><label className="f">Montant déposé</label>
+          <input className="f" inputMode="decimal" value={mt}
+                 onChange={(e) => { setMt(e.target.value); setErr(""); setOk(""); }} /></div>
+        <div><label className="f">Date du dépôt</label>
+          <input className="f" type="date" value={date}
+                 onChange={(e) => { setDate(e.target.value); setErr(""); }} /></div>
+      </div>
+      <Alerte>{err}</Alerte>
+      {ok && <div className="mini" style={{ color: "#4F6B1F", marginTop: 8 }}>{ok}</div>}
+      <button className="pill" style={{ marginTop: 12 }} onClick={deposer}>DÉPÔT EN BANQUE</button>
+    </div>
+  );
+}
+
 function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDater, onPocher, onChiffrer,
                      onTransfert, onCompter, onAdd, onDel, onMaj,
                      onSaveConfig, taches, onAddTache, onMajTache, onDelTache }) {
@@ -2940,6 +2994,7 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
                                             onSaveConfig={onSaveConfig} onChiffrer={onChiffrer}
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
+      {sous === "resultat"   && <DepotBanque config={config} onTransfert={onTransfert} />}
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym}
                                         onRegler={onRegler} onReporter={onReporter} onDater={onDater} onPocher={onPocher}
                                         onChiffrer={onChiffrer} />}
@@ -8654,6 +8709,17 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
     if (e.type === "transfert" && e.naps) return "Virement Naps reçu — cartes du "
       + (e.du || "").slice(8, 10) + "/" + (e.du || "").slice(5, 7) + " au "
       + (e.au || "").slice(8, 10) + "/" + (e.au || "").slice(5, 7);
+    if (e.type === "reglementAnterieur") {
+      const fo = (config.fournisseurs || []).find((f) => f.id === e.fournisseur);
+      const m = (e.mois || "").slice(5, 7);
+      return "Paiement factures " + (m ? MOIS[parseInt(m, 10) - 1] : "d'un mois précédent")
+        + " — " + (fo ? fo.nom : (e.lbl || "fournisseur"))
+        + " · payé depuis " + ((pocheParId(config, e.poche) || {}).nom || "la caisse")
+        + " · hors résultat du mois";
+    }
+    if (e.type === "transfert") return (e.motif || "Dépôt / déplacement d'argent")
+      + " — " + ((pocheParId(config, e.de) || {}).nom || e.de)
+      + " → " + ((pocheParId(config, e.vers) || {}).nom || e.vers);
     if (e.type === "treso") return "Trésorerie comptée — LIFE disait " + fmt(num(e.theorique))
       + " · écart " + fmt(num(e.montant) - num(e.theorique));
     return e.type;
