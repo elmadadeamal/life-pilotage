@@ -2095,6 +2095,18 @@ function calcul(config, entries, ym) {
   const chantiersMois = inMonth.filter((e) => e.type === "chantier")
                                .reduce((s, e) => s + num(e.montant), 0);
 
+  /* Amal : « le bénéfice, on le prend et on le réinvestit — ça doit se voir ».
+     Un versement vers un chantier n'est pas une charge de l'affaire qui le
+     finance : son résultat ne bouge pas. Mais il est montré juste en dessous,
+     comme ce qu'elle a fait de ce bénéfice, avec ce qu'il en reste. */
+  keys.forEach((k) => { A[k].reinvestiMois = 0; A[k].reinvestiLignes = []; });
+  inMonth.filter((e) => e.type === "chantier" && e.origine && A[e.origine]).forEach((e) => {
+    const ch = (config.chantiers || []).find((c) => c.id === e.chantier) || {};
+    A[e.origine].reinvestiMois += num(e.montant);
+    A[e.origine].reinvestiLignes.push([(ch.nom || "Chantier") + (e.lbl ? " — " + e.lbl : ""),
+                                       num(e.montant)]);
+  });
+
   /* Les avances internes : quand la réserve d'une affaire ne suffit pas et
      qu'il faut vraiment puiser ailleurs (une autre affaire, ou l'enveloppe
      du mois suivant). Ça reste une dette tracée — qui doit quoi à qui,
@@ -3019,6 +3031,13 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
   const [montant, setMontant] = useState("");
   const [poche, setPoche] = useState(caisseDe(config, null) || "");
   const [erreur, setErreur] = useState("");
+  /* De quelle affaire vient l'argent : sans ça, le versement ne pouvait
+     apparaître sur la fiche d'aucune affaire. */
+  const affairesSource = Object.keys(config.affaires || {});
+  const [origine, setOrigine] = useState(affairesSource.includes("sabich") ? "sabich"
+                                                                           : (affairesSource[0] || ""));
+  /* La vraie date du versement — elle était forcée au 28 du mois. */
+  const [date, setDate] = useState(ym === thisMonth() ? today() : ym + "-01");
 
   /* Le rythme vient des trois derniers mois clos qui ont des saisies */
   const rythme = useMemo(() => {
@@ -3040,8 +3059,10 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
 
   const affecter = (id) => {
     if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    if (!origine) { setErreur("Indique de quelle affaire vient l'argent."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) { setErreur("Indique la date du versement."); return; }
     setErreur("");
-    onAdd({ type: "chantier", chantier: id, date: ym + "-28", montant: num(montant),
+    onAdd({ type: "chantier", chantier: id, date, montant: num(montant), origine,
             poche: poche || caisseDe(config, null) });
     setMontant(""); setOuvert("");
   };
@@ -3105,8 +3126,21 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
             {ouvert === ch.id && (
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end",
                             marginTop: 12, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 140 }}>
+                  <label className="f">Pris sur</label>
+                  <select className="f" value={origine} onChange={(e) => setOrigine(e.target.value)}>
+                    {affairesSource.map((k) => (
+                      <option key={k} value={k}>{config.affaires[k].nom}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ minWidth: 140 }}>
+                  <label className="f">Date</label>
+                  <input className="f" type="date" value={date}
+                         onChange={(e) => { setDate(e.target.value); setErreur(""); }} />
+                </div>
                 <div style={{ flex: 1, minWidth: 150 }}>
-                  <label className="f">Montant affecté ce mois-ci</label>
+                  <label className="f">Montant versé</label>
                   <input className="f" autoFocus inputMode="decimal" value={montant}
                          onChange={(e) => { setMontant(e.target.value); setErreur(""); }}
                          onKeyDown={(e) => { if (e.key === "Enter") affecter(ch.id); }} />
@@ -6572,6 +6606,25 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
           <span className={"val " + (a.resultat >= 0 ? "pos" : "neg")}>{fmt(a.resultat)}</span>
         </div>
 
+        {a.reinvestiMois > 0 && (() => {
+          const reste = a.resultat - a.reinvestiMois;
+          return (
+            <>
+              <Detail titre="Réinvesti dans les chantiers" montant={a.reinvestiMois}
+                      lignes={a.reinvestiLignes} />
+              <div className="row rowTot">
+                <span className="lbl">Reste après réinvestissement</span>
+                <span className={"val " + (reste >= 0 ? "pos" : "neg")}>{fmt(reste)}</span>
+              </div>
+              {reste < 0 && (
+                <div className="note" style={{ color: "#B3412E" }}>
+                  Tu as réinvesti {fmt(-reste)} de plus que le bénéfice du mois : cet argent
+                  vient de ce que {c.nom} avait gagné avant.
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {c.type === "hebergement" && M.heb[k] && M.heb[k].nuits > 0 && (
           <div style={{ marginTop: 20 }}>
@@ -8581,7 +8634,9 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
     if (e.type === "prime")   return e.lbl || "Prime";
     if (e.type === "solidarite") return "Solidarité";
     if (e.type === "chantier") return "Mis de côté — " + ((config.chantiers || [])
-      .find((c) => c.id === e.chantier) || {}).nom;
+      .find((c) => c.id === e.chantier) || {}).nom
+      + (e.origine ? " · pris sur " + nom(e.origine) : "")
+      + (e.lbl ? " · " + e.lbl : "");
     if (e.type === "depense") return e.lbl + " — " + (e.affaire === "structure" ? "structure" : nom(e.affaire));
     if (e.type === "avance")  return (e.nature === "salaire" ? "Avance salaire — " : "Prélèvement — ") + e.qui;
     if (e.type === "invest")  return e.lbl + " — " + nom(e.affaire);
