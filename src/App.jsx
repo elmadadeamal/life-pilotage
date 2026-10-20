@@ -3943,6 +3943,8 @@ function Alarme({ entries, config, onPointer, onAller }) {
           <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
             <span style={{ flex: 1, minWidth: 160 }}>Vente non saisie : <strong>{nomA(k)}</strong></span>
             <button className="pill" onClick={() => onAller(k)}>Saisir la vente</button>
+            <button className="pill" onClick={() => onPointer(b.iso, { ferme: { ...(((config.pointages || {})[b.iso] || {}).ferme || {}), [k]: true } })}>
+              FERMÉ CE JOUR-LÀ</button>
           </div>
         ))}
         {m.achats.length > 0 && <div style={{ ...SOUS_TITRE_ALARME,
@@ -4130,7 +4132,7 @@ function auditer(entries, config, ym) {
     }
     if (trous.length) q.push({ id: "trou-" + k, gravite: 2, famille: "Ventes",
       titre: "Ventes non saisies — " + nomA(k),
-      detail: "Jours : " + trous.join(", ") + " (" + trous.length + "). Saisis la vente, ou 0 si fermé.",
+      detail: "Jours : " + trous.join(", ") + " (" + trous.length + "). Saisis la vente, ou « FERMÉ CE JOUR-LÀ » dans le bandeau rouge.",
       ids: [], affaire: k });
   });
 
@@ -4553,9 +4555,9 @@ function CalendrierSaisies({ jours, nbJours, M, config, ym }) {
               {x && (
                 <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: "auto" }}>
                   {lignes.map((k) => (
-                    <span key={k} title={config.affaires[k].nom + (x.parK[k].saisi ? " — " + fmt(x.parK[k].vente) : " — rien saisi")}
+                    <span key={k} title={config.affaires[k].nom + (x.parK[k].ferme && !x.parK[k].vente ? " — fermé" : x.parK[k].saisi ? " — " + fmt(x.parK[k].vente) : " — rien saisi")}
                           style={{ width: 9, height: 9, borderRadius: 5, boxSizing: "border-box",
-                                   background: x.parK[k].saisi ? teinte(config.affaires[k]) : "transparent",
+                                   background: x.parK[k].ferme && !x.parK[k].vente ? "#C8CDBE" : x.parK[k].saisi ? teinte(config.affaires[k]) : "transparent",
                                    border: x.parK[k].saisi ? "none" : "1.5px solid #C9503A" }} />
                   ))}
                 </div>
@@ -4575,8 +4577,8 @@ function CalendrierSaisies({ jours, nbJours, M, config, ym }) {
       </div>
       <div className="note">
         Chaque case est un jour : en vert ce qui est rentré, en orange ce qui a été acheté. Les points
-        du bas disent, activité par activité, si la vente du jour a été saisie. Un point vide à bordure rouge
-        (et la case entourée de rouge) = rien saisi : oubli, ou jour de fermeture.
+        du bas disent, activité par activité, si la vente du jour a été saisie. Un point gris = fermé ce
+        jour-là (vente comptée à 0). Un point vide à bordure rouge (et la case entourée de rouge) = rien saisi.
       </div>
     </div>
   );
