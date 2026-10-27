@@ -2439,6 +2439,12 @@ function calcul(config, entries, ym) {
   /* Ce que tu dois encore à tes fournisseurs, tous mois confondus */
   const dettes = entries.filter((e) => e.type === "depense" && e.aPayer)
                         .reduce((s, e) => s + num(e.montant) - dejaVerse(e), 0);
+  /* Les mêmes dettes, rangées par affaire : la page TMSK ne doit montrer que celles de TMSK. */
+  const dettesPar = {};
+  entries.filter((e) => e.type === "depense" && e.aPayer).forEach((e) => {
+    const k = e.affaire || "";
+    dettesPar[k] = (dettesPar[k] || 0) + num(e.montant) - dejaVerse(e);
+  });
 
   /* Amal veut trois chiffres et rien d'autre : ce qu'elle a fait rentrer, ce
      qu'elle a RÉELLEMENT payé, ce qu'il lui reste à payer. Tous les trois du
@@ -2875,7 +2881,7 @@ function calcul(config, entries, ym) {
            credits, capitalCredits, empruntsOuverts, empruntsDus, prêtsARecevoir,
            duMaintenant, duPlusTard, duTotal,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
-           marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
+           marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes, dettesPar,
            echeances, resteAPayerMois, jourActuel, cnssSoc, facturesAttendues,
            remus, salaires, depensesPerso, doubleLog, primesTotal,
            heb: Object.fromEntries(Object.entries(hebStats).map(([k, s]) => {
@@ -6819,6 +6825,14 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
   const aVenir = ech.filter((e) => !e.paye && !e.enRetard);
   const retard = ech.filter((e) => !e.paye && e.enRetard);
 
+  /* Sur la page d'une affaire, les totaux ne parlent que de cette affaire. */
+  const reglees = M.lignesReglees.filter((l) => !filtre || l.groupe === filtre);
+  const sortiCaisse = filtre ? reglees.filter((l) => !l.horsMois).reduce((s, l) => s + l.montant, 0)
+                             : M.dejaRegleCaisse;
+  const payeAvant = filtre ? reglees.filter((l) => l.horsMois).reduce((s, l) => s + l.montant, 0)
+                           : M.regleAvant;
+  const dettesVues = filtre ? ((M.dettesPar || {})[filtre] || 0) : M.dettes;
+
   return (
     <>
       <div className="card">
@@ -6878,20 +6892,20 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
           {/* Les lignes pointées disparaissaient de l'écran : impossible de voir ce
               qu'on avait coché, de le décocher, ni de dire qu'une charge de ce
               mois a été payée le mois d'avant. Elles sont ici, avec leur date. */}
-          {M.lignesReglees.filter((l) => !filtre || l.groupe === filtre).length > 0 && (
+          {reglees.length > 0 && (
             <div className="card">
               <h2 className="h2">Déjà réglé</h2>
-              {M.lignesReglees.filter((l) => !filtre || l.groupe === filtre).map((l) => (
+              {reglees.map((l) => (
                 <LigneReglee key={l.id} l={l} nom={nomGroupe(l.groupe)}
                              couleur={couleurGroupe(l.groupe)}
                              onRegler={onRegler} onDater={onDater} onPocher={onPocher}
                              onChiffrer={onChiffrer} config={config} />
               ))}
               <div className="row rowTot"><span className="lbl">Sorti de la caisse ce mois-ci</span>
-                <span className="val pos">{fmt(M.dejaRegleCaisse)}</span></div>
-              {M.regleAvant > 0 && (
+                <span className="val pos">{fmt(sortiCaisse)}</span></div>
+              {payeAvant > 0 && (
                 <div className="note">
-                  {fmt(M.regleAvant)} de charges de {monthLabel(ym).toLowerCase()} ont été payées
+                  {fmt(payeAvant)} de charges de {monthLabel(ym).toLowerCase()} ont été payées
                   avant le 1er. Elles soldent bien le mois, mais l'argent est sorti avant :
                   elles ne comptent pas dans « ce que j'ai réellement payé » de ce mois-ci.
                 </div>
@@ -6901,11 +6915,11 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
         </>
       )}
 
-      {M.dettes > 0 && (
+      {dettesVues > 0 && (
         <div className="card">
           <h2 className="h2">Dettes fournisseurs</h2>
           <div className="row rowTot"><span className="lbl">Solde fournisseurs</span>
-            <span className="val">{fmt(M.dettes)}</span></div>
+            <span className="val">{fmt(dettesVues)}</span></div>
           <div className="note">
             Toutes les pièces non encore réglées, quel que soit le mois où tu les as saisies —
             une livraison de fin de mois reste due le mois suivant. Tu les soldes fournisseur
