@@ -7,7 +7,7 @@ import { supabase } from "./lib/supabaseClient";
 
 export const LOGOS = {
   sabich: "./assets/sabich.svg",
-  tmsk:   "./assets/tmsk.svg",
+  tmsk:   "./assets/tmk.svg",
   riad:   "./assets/riad.svg",
   foyer:  "./assets/foyer.png",
   life:   "./assets/life.webp",
@@ -15,7 +15,7 @@ export const LOGOS = {
   pictoDash:     "./assets/pictoDash.svg",
   pictoReglages: "./assets/pictoReglages.svg",
   fond:          "./assets/fond.jpg",
-  tmskBlanc:    "./assets/tmskBlanc.svg",
+  tmskBlanc:    "./assets/tmkIvoire.svg",
   riadBlanc:    "./assets/riadBlanc.svg",
   foyerBlanc:   "./assets/foyerBlanc.png",
   contenuBlanc: "./assets/contenuBlanc.png",
@@ -361,7 +361,7 @@ const DEFAULT_CONFIG = {
      chacune garde son tiroir et son fond de caisse. */
   poches: [
     { id: "cs", nom: "Caisse Sabich",     type: "caisse", affaires: ["sabich"], depart: 1500 },
-    { id: "ct", nom: "Caisse TMSK",       type: "caisse", affaires: ["tmsk"],   depart: 1000 },
+    { id: "ct", nom: "Caisse TMK",        type: "caisse", affaires: ["tmsk"],   depart: 1000 },
     { id: "cr", nom: "Caisse Riad",       type: "caisse", affaires: ["riad"],   depart: 0 },
     { id: "np", nom: "Naps en attente",    type: "transit", depart: 0 },
     { id: "bm", nom: "Banque Le Mi-Chui", type: "banque", depart: 0 },
@@ -384,7 +384,7 @@ const DEFAULT_CONFIG = {
   seuilFondCaisse: { orange: 50, rouge: 100 },
   /* Les chantiers d'investissement, dans l'ordre où ils se financent */
   chantiers: [
-    { id: "tmsk-coffee", nom: "TMSK Cosmétiques", cible: 40000 },
+    { id: "tmsk-coffee", nom: "TMK Cosmétiques", cible: 40000 },
     { id: "taam-ouvre",  nom: "Ouverture de Ta'âm",        cible: 100000 },
     { id: "appart",      nom: "Travaux de l'appartement",  cible: 300000 },
   ],
@@ -396,7 +396,7 @@ const DEFAULT_CONFIG = {
   ],
   affaires: {
     sabich:  { nom: "Sabich",   marque: "#005227", chip: "#1E7A45", tint: "#EAF3ED", matierePct: 30, type: "vente", societe: "michui", fonds: 1500 },
-    tmsk:    { nom: "TMSK",     marque: "#5E3B26", chip: "#8A5A3C", tint: "#F3E7DA", bouton: "#F2E7D6", matierePct: 22, type: "vente", societe: "michui", fonds: 1000 },
+    tmsk:    { nom: "TMK",      marque: "#A1232B", chip: "#A1232B", tint: "#F8F0E2", bouton: "#F8F0E2", matierePct: 22, type: "vente", societe: "michui", fonds: 1000 },
     riad:    { nom: "Riad Itto", marque: "#B49A6F", chip: "#B49A6F", tint: "#F8F3EA", matierePct: 0,
                type: "hebergement", societe: "gourmet",
                hebergement: {
@@ -427,7 +427,7 @@ const DEFAULT_CONFIG = {
     { id: "f8",  lbl: "Bahija — commis",             montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f9",  lbl: "Youssef — plongeur",          montant: 3000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f10", lbl: "Serveur",                     montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
-    { id: "f11", lbl: "Loyer boutique TMSK",         montant: 14000, affaire: "tmsk"    , jour: 5 },
+    { id: "f11", lbl: "Loyer boutique TMK",          montant: 14000, affaire: "tmsk"    , jour: 5 },
     { id: "f12", lbl: "Ibtissam — vendeuse",         montant: 4500,  affaire: "tmsk",    sal: true , jour: 30 },
     { id: "f13", lbl: "Traites riad (conso + immo)", montant: 10300, affaire: "riad"    , jour: 5 },
     { id: "f14", lbl: "House manager",               montant: 3000,  affaire: "riad",    sal: true , jour: 30 },
@@ -445,7 +445,7 @@ const DEFAULT_CONFIG = {
     { id: "p6",  nom: "Packaging",            affaires: ["sabich", "taam"], rythme: "besoin" },
     { id: "p7",  nom: "SANAD — épices",       affaires: ["tmsk"],           rythme: "besoin" },
     { id: "p8",  nom: "Imprimeur — étiquettes", affaires: ["tmsk"],         rythme: "besoin" },
-    { id: "p9",  nom: "Packaging TMSK",       affaires: ["tmsk"],           rythme: "besoin" },
+    { id: "p9",  nom: "Packaging TMK",        affaires: ["tmsk"],           rythme: "besoin" },
     { id: "p10", nom: "Blanchisserie",        affaires: ["riad"],           rythme: "mois" },
     { id: "p11", nom: "Courses house manager", affaires: ["riad"],          rythme: "besoin" },
     { id: "p12", nom: "Produits d'accueil",   affaires: ["riad"],           rythme: "besoin" },
@@ -530,10 +530,11 @@ const voile = (hex, a) => {
    un autre, et qu'on voit d'un coup d'œil sur quel commerce on saisit.
    Le vert n'appartient donc qu'à Sabich, et nulle part ailleurs. */
 const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478",
-                 /* TMSK vit en noir et ivoire : ses libellés aussi. */
-                 tmsk: "#1C1A17" };
-/* Boutons de saisie propres à une maison : TMSK noir, lettrage ivoire. */
-const BOUTON = { tmsk: { fond: "#1C1A17", texte: "#F2E9D8" } };
+                 /* TMK vit en rouge et ivoire (novembre 2026) : ses libellés aussi. */
+                 tmsk: "#A1232B" };
+/* Boutons de saisie propres à une maison : TMK ivoire, lettrage rouge —
+   ils se posent sur le rouge plein de sa feuille. */
+const BOUTON = { tmsk: { fond: "#F8F0E2", texte: "#A1232B" } };
 
 const baseUnivers = (vue, config) => SOUCHE[vue]
   || (config.affaires[vue] ? config.affaires[vue].marque : null);
@@ -545,8 +546,9 @@ const baseUnivers = (vue, config) => SOUCHE[vue]
    à partir des deux tiers. L'en-tête est transparent : le logo vert se pose
    sur l'ivoire de la feuille. Les cartes restent blanches dessus. */
 /* Ses fichiers « BACK » (dossier TREE) : un dégradé linéaire de la couleur
-   de la maison, en haut, jusqu'au blanc en bas. TMSK se lit à l'envers
-   (blanc en haut, grège en bas) — c'est son fichier. */
+   de la maison, en haut, jusqu'au blanc en bas. TMK (fichier « BACK TMK
+   LIFE », novembre 2026) : rouge plein jusqu'au tiers, bascule linéaire,
+   ivoire plein à partir des deux tiers. */
 const lineaire = (haut, bas) => "linear-gradient(180deg, " + haut + " 0%, " + bas + " 100%)";
 const FEUILLE = {
   taam:     { haut: "#F2E9D8",
@@ -554,7 +556,8 @@ const FEUILLE = {
   dash:     { haut: "#94D4DD", fond: lineaire("#94D4DD", "#FEFFFF") },
   sabich:   { haut: "#015227", fond: lineaire("#015227", "#FCFDFD") },
   riad:     { haut: "#B49A70", fond: lineaire("#B49A70", "#FEFEFD") },
-  tmsk:     { haut: "#FFFFFF", fond: lineaire("#FFFFFF", "#A69E89") },
+  tmsk:     { haut: "#A1232B",
+              fond: "linear-gradient(180deg, #A1232B 0%, #A1232B 33%, #F8F0E2 67%, #F8F0E2 100%)" },
   contenu:  { haut: "#A7748C", fond: lineaire("#A7748C", "#FEFDFE") },
   foyer:    { haut: "#F1B597", fond: lineaire("#F1B597", "#FEFBF9") },
   reglages: { haut: "#7B797A", fond: lineaire("#7B797A", "#FEFEFE") },
@@ -644,7 +647,8 @@ const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
    brightness(0) les repasse à l'encre sans rien redessiner. */
 const HABIT = {
   /* Chaque languette prend le haut exact de sa feuille (fichiers TREE). */
-  tmsk: { fond: "#FFFFFF", sombre: true, opa: 1, texte: "#2E2822", clair: true },
+  /* TMK : son rouge #A1232B, logo ivoire #F8F0E2 tel qu'elle l'a dessiné. */
+  tmsk: { fond: "#A1232B" },
   riad: { fond: "#B49A70" },
   contenu: { fond: "#A7748C" },
   /* Ta'am : son jaune exact, releve sur son logo officiel (#F1C40D sur le
@@ -675,7 +679,7 @@ const AQUARELLE_FONCE = AQUARELLE.replace(/#[0-9A-Fa-f]{6}/g, (c) => lisible(c, 
    aplats pleins (la maison). Les sept marques pèsent alors pareil. */
 const TAILLE_BLANC = {
   sabich:   { width: 76, height: 19 },
-  tmsk:     { width: 66, height: 27 },
+  tmsk:     { width: 64, height: 32 },
   riad:     { width: 64, height: 43 },
   contenu:  { width: 49, height: 40 },
   foyer:    { width: 38, height: 34 },
@@ -1090,11 +1094,13 @@ function reprendre(saved) {
   /* Le rouge quitte TMSK : il est réservé au coffee shop qui vient. Le taupe
      qui l'a remplacé se confondait avec l'ivoire du fond : la marque passe à
      une cannelle plus chaude, y compris dans une config déjà en place. */
-  if (c.affaires.tmsk && ["#950808", "#2B2723", "#5C5043"]
+  /* Novembre 2026 : TMK prend son rouge #A1232B et son ivoire #F8F0E2
+     (le coffee shop est abandonné), y compris dans une config déjà en place. */
+  if (c.affaires.tmsk && ["#950808", "#2B2723", "#5C5043", "#5E3B26"]
         .includes(String(c.affaires.tmsk.marque).toUpperCase())) {
     c.affaires.tmsk = { ...c.affaires.tmsk,
-                        marque: "#5E3B26", chip: "#8A5A3C", tint: "#F3E7DA",
-                        bouton: "#F2E7D6" };
+                        marque: "#A1232B", chip: "#A1232B", tint: "#F8F0E2",
+                        bouton: "#F8F0E2" };
   }
 
   /* TAAM quitte le jaune pour son vert, y compris dans une config déjà en place. */
@@ -1206,6 +1212,15 @@ function reprendre(saved) {
         .map((r) => num(r.jour) === 30 ? { ...r, jour: 1 } : r) };
   }
 
+  /* Novembre 2026 : la maison s'appelle TMK — son nom et les libellés qui le
+     portent (caisse, loyer, chantier, fournisseur), y compris dans une config
+     déjà en place. */
+  const tmk = (s) => typeof s === "string" ? s.replace(/\bTMSK\b/g, "TMK") : s;
+  if (c.affaires.tmsk) c.affaires.tmsk = { ...c.affaires.tmsk, nom: tmk(c.affaires.tmsk.nom) };
+  ["poches", "chantiers", "fixes", "fournisseurs"].forEach((cle) => {
+    if (Array.isArray(c[cle])) c[cle] = c[cle].map((x) => x && typeof x === "object"
+      ? { ...x, ...(x.nom ? { nom: tmk(x.nom) } : {}), ...(x.lbl ? { lbl: tmk(x.lbl) } : {}) } : x);
+  });
   return c;
 }
 
@@ -4886,7 +4901,7 @@ const TAILLE_CREST = {
   dash:     { width: 53, height: 53 },
   reglages: { width: 56, height: 62 },
   sabich:  { width: 107, height: 27 },
-  tmsk:    { width: 93, height: 39 },
+  tmsk:    { width: 96, height: 47 },
   riad:    { width: 90, height: 61 },
   contenu: { width: 69, height: 57 },
   foyer:   { width: 53, height: 48 },
