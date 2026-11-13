@@ -7,7 +7,7 @@ import { supabase } from "./lib/supabaseClient";
 
 export const LOGOS = {
   sabich: "./assets/sabich.svg",
-  tmsk:   "./assets/tmsk.svg",
+  tmsk:   "./assets/tmk.svg",
   riad:   "./assets/riad.svg",
   foyer:  "./assets/foyer.png",
   life:   "./assets/life.webp",
@@ -15,12 +15,13 @@ export const LOGOS = {
   pictoDash:     "./assets/pictoDash.svg",
   pictoReglages: "./assets/pictoReglages.svg",
   fond:          "./assets/fond.jpg",
-  tmskBlanc:    "./assets/tmskBlanc.svg",
+  tmskBlanc:    "./assets/tmkIvoire.svg",
   riadBlanc:    "./assets/riadBlanc.svg",
   foyerBlanc:   "./assets/foyerBlanc.png",
   contenuBlanc: "./assets/contenuBlanc.png",
   contenu: "./assets/contenu.png",
-  taamBlanc: "./assets/taamBlanc.png",
+  taamBlanc: "./assets/taamBlanc.svg",
+  taamVert:  "./assets/taamVert.svg",
 };
 
 export const MAISON = { nom: "La maison", marque: "#C97F72", tint: "#FDF3EC",
@@ -117,12 +118,18 @@ export const CSS = `
 /* L'ivoire de TMSK est sa marque, pas un accident — mais seul clair d'une
    rangee d'aplats, il se lisait comme un onglet vide. Un filet interieur lui
    rend le poids des autres, sans lui prendre sa couleur. */
-.tab.clair { box-shadow: inset 0 0 0 1.5px rgba(62,52,42,.22), 0 1px 2px rgba(40,30,20,.10); }
-.tab.on { filter:none; }
+/* Le liseré des languettes claires court sur le haut et les côtés seulement :
+   rien en bas, la languette se fond dans sa feuille. */
+.tab.clair { box-shadow: none; }
+.tab.on { filter:none; z-index:2; }
+/* TAAM garde son ivoire même au repos : éclairci, il virait au blanc. */
+.tab.garde, .tab.garde:hover { filter:none; }
 .tab .lib { color:#fff; font-size:13px; font-weight:500; letter-spacing:.13em;
   text-transform:uppercase; white-space:nowrap; text-align:center; line-height:1.35; }
 .tab img { max-height:46px; max-width:88px; width:auto; object-fit:contain; display:block; }
-.tab:focus-visible { outline:2px solid rgba(255,255,255,.92); outline-offset:-5px; }
+/* Pas de cadre blanc intérieur au clic : sur les languettes claires il
+   dessinait un double contour. */
+.tab:focus, .tab:focus-visible { outline:none; }
 
 .nav { display:flex; gap:5px; margin: 22px 0 0; padding: 0 2px;
   align-items:flex-end; overflow-x:auto; scrollbar-width:none; border-bottom:2px solid #E4E9D6; }
@@ -173,7 +180,16 @@ export const CSS = `
 .affNum { font-size:20.5px; font-weight:400; font-variant-numeric:tabular-nums; white-space:nowrap; }
 
 .crest { display:flex; align-items:center; padding:18px 30px; margin:-24px -26px 18px;
-  border-radius:0; min-height:76px; }
+  border-radius:0; height:98px; }
+/* Toutes les bandes d'en-tête au même gabarit : même hauteur de bande du logo
+   (celle du plus haut, le riad), et la carte d'en-tête à la hauteur de celles
+   qui portent des boutons — les sous-onglets se calent en bas. */
+.card:has(> .crest):has(> .sections) { display:flex; flex-direction:column; min-height:273px; }
+.card:has(> .crest) > .sections { margin-top:auto; }
+/* Paramètres : pas de sous-onglets, sa liste vit dans la carte d'en-tête.
+   La bande de la feuille descend quand même à la hauteur des autres
+   (273px), la carte blanche commence dessous. */
+.panneau[data-vue="reglages"] .crest { margin-bottom:199px; }
 .crest img { width:auto; object-fit:contain; display:block; }
 .crestName { font-size:24px; font-weight:300; color:#fff; letter-spacing:.14em;
   text-transform:uppercase; }
@@ -244,7 +260,11 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
   .heroNum { font-size:44px; }
   .h1 { font-size:25px; letter-spacing:.07em; }
   .card { padding:20px 18px; border-radius:16px; }
-  .crest { padding:14px 18px; margin:-20px -18px 14px; min-height:64px; }
+  .crest { padding:14px 18px; margin:-20px -18px 14px; height:76px; }
+  .card:has(> .crest):has(> .sections) { min-height:0; }
+  .panneau[data-vue="reglages"] .crest { margin-bottom:14px; }
+  .panneau[data-vue="reglages"] .card:has(> .crest) {
+    background: linear-gradient(180deg, rgba(255,255,255,0) 0, rgba(255,255,255,0) 76px, #FFFFFF 76px) !important; }
   .crest img { transform: scale(.78); transform-origin: left center; }
   /* Les onglets reprenaient telles quelles leurs dimensions d'ordinateur :
      sur un téléphone, ça ne laissait voir que 3-4 affaires à la fois et ça
@@ -278,7 +298,11 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
    haut en bas : c'est elle, et non un titre, qui dit sur quel commerce on est
    en train de saisir. Aucun filet ni blanc au raccord — la languette et sa
    page sont la même feuille. */
-.panneau { margin-top:-1px; background: var(--u-feuille); }
+/* La feuille passe DEVANT les languettes fermées (elles s'arrêtent net sur
+   son bord, rien ne déborde dessus) ; seule la languette ouverte passe devant
+   la feuille, pour s'y souder. */
+.panneau { margin-top:-1px; background: var(--u-feuille); padding: var(--u-feuillePad, 0);
+  border-radius: 0 0 18px 18px; position:relative; z-index:1; }
 .panneau > :first-child {
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   border-top:none !important; border-left:none !important; border-right:none !important;
@@ -302,8 +326,13 @@ input.f:focus, select.f:focus { outline:2px solid #5E8F1E; outline-offset:0; bor
 /* Un libelle pose sur la couleur pleine du bandeau : il prend l'encre qui
    porte sur la marque, pas le gris des textes courants. */
 .surMarque { color: var(--u-surMarque); }
+/* Sous-onglets posés sur l'en-tête : l'encre de l'univers, sauf quand
+   l'en-tête finit dans une couleur foncée (TAAM) — ils passent alors en clair. */
+.card:has(> .crest) .sections button { color: var(--u-entDoux, var(--u-doux)); }
+.card:has(> .crest) .sections button.on { color: var(--u-entOn, var(--u-encre));
+  border-bottom-color: var(--u-entOn, var(--u-encre)); }
 .card:has(> .crest) + .card {
-  background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF 70px);
+  background: linear-gradient(180deg, var(--u-clair) 0, #FFFFFF var(--u-fondu, 70px));
   margin-top:0 !important; border-top:none !important;
   border-top-left-radius:0 !important; border-top-right-radius:0 !important;
   box-shadow:none !important; }
@@ -320,7 +349,9 @@ const DEFAULT_CONFIG = {
      taux selon l'origine de la carte. */
   /* Ta caisse ne distingue pas l'origine des cartes : on estime la part
      étrangère par activité, puis le relevé de fin de mois tranche. */
-  naps: { ma: 1.5, etr: 3, partEtr: 100 },
+  /* Le contrat Naps : 3 % HT de commission, TVA 10 % dessus (3,3 % TTC).
+     Sert à vérifier ce que Naps prélève vraiment, jamais à estimer. */
+  naps: { tauxHT: 3, tva: 10 },
   /* Les poches où l'argent dort vraiment. Jusqu'ici l'appli savait ce qui
      rentrait et ce qui sortait, mais pas d'OÙ : elle annonçait un solde
      unique qu'Amal ne pouvait comparer ni à son tiroir ni à son relevé.
@@ -330,7 +361,7 @@ const DEFAULT_CONFIG = {
      chacune garde son tiroir et son fond de caisse. */
   poches: [
     { id: "cs", nom: "Caisse Sabich",     type: "caisse", affaires: ["sabich"], depart: 1500 },
-    { id: "ct", nom: "Caisse TMSK",       type: "caisse", affaires: ["tmsk"],   depart: 1000 },
+    { id: "ct", nom: "Caisse TMK",        type: "caisse", affaires: ["tmsk"],   depart: 1000 },
     { id: "cr", nom: "Caisse Riad",       type: "caisse", affaires: ["riad"],   depart: 0 },
     { id: "np", nom: "Naps en attente",    type: "transit", depart: 0 },
     { id: "bm", nom: "Banque Le Mi-Chui", type: "banque", depart: 0 },
@@ -353,7 +384,7 @@ const DEFAULT_CONFIG = {
   seuilFondCaisse: { orange: 50, rouge: 100 },
   /* Les chantiers d'investissement, dans l'ordre où ils se financent */
   chantiers: [
-    { id: "tmsk-coffee", nom: "Comptoir coffee shop TMSK", cible: 40000 },
+    { id: "tmsk-coffee", nom: "TMK Cosmétiques", cible: 40000 },
     { id: "taam-ouvre",  nom: "Ouverture de Ta'âm",        cible: 100000 },
     { id: "appart",      nom: "Travaux de l'appartement",  cible: 300000 },
   ],
@@ -365,7 +396,7 @@ const DEFAULT_CONFIG = {
   ],
   affaires: {
     sabich:  { nom: "Sabich",   marque: "#005227", chip: "#1E7A45", tint: "#EAF3ED", matierePct: 30, type: "vente", societe: "michui", fonds: 1500 },
-    tmsk:    { nom: "TMSK",     marque: "#5E3B26", chip: "#8A5A3C", tint: "#F3E7DA", bouton: "#F2E7D6", matierePct: 22, type: "vente", societe: "michui", fonds: 1000 },
+    tmsk:    { nom: "TMK",      marque: "#A1232B", chip: "#A1232B", tint: "#F8F0E2", bouton: "#F8F0E2", matierePct: 22, type: "vente", societe: "michui", fonds: 1000 },
     riad:    { nom: "Riad Itto", marque: "#B49A6F", chip: "#B49A6F", tint: "#F8F3EA", matierePct: 0,
                type: "hebergement", societe: "gourmet",
                hebergement: {
@@ -376,7 +407,7 @@ const DEFAULT_CONFIG = {
                    diner: { nom: "Dîner",          prix: 215, matiere: 50, com: 40 },
                  },
                } },
-    taam:    { nom: "Ta'âm",    marque: "#F1C40D", chip: "#F3CB2A", tint: "#FEFAE9", matierePct: 30, type: "vente", societe: "michui" },
+    taam:    { nom: "Ta'âm",    marque: "#315A46", chip: "#315A46", tint: "#F2E9D8", bouton: "#315A46", matierePct: 30, type: "vente", societe: "michui" },
     contenu: { nom: "Le Mi-Chui", marque: "#A7748C", chip: "#A7748C", tint: "#F7F0F8", matierePct: 0, type: "vente", societe: "michui" },
   },
   fixes: [
@@ -396,7 +427,7 @@ const DEFAULT_CONFIG = {
     { id: "f8",  lbl: "Bahija — commis",             montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f9",  lbl: "Youssef — plongeur",          montant: 3000,  affaire: "sabich",  sal: true , jour: 30 },
     { id: "f10", lbl: "Serveur",                     montant: 4000,  affaire: "sabich",  sal: true , jour: 30 },
-    { id: "f11", lbl: "Loyer boutique TMSK",         montant: 14000, affaire: "tmsk"    , jour: 5 },
+    { id: "f11", lbl: "Loyer boutique TMK",          montant: 14000, affaire: "tmsk"    , jour: 5 },
     { id: "f12", lbl: "Ibtissam — vendeuse",         montant: 4500,  affaire: "tmsk",    sal: true , jour: 30 },
     { id: "f13", lbl: "Traites riad (conso + immo)", montant: 10300, affaire: "riad"    , jour: 5 },
     { id: "f14", lbl: "House manager",               montant: 3000,  affaire: "riad",    sal: true , jour: 30 },
@@ -414,16 +445,15 @@ const DEFAULT_CONFIG = {
     { id: "p6",  nom: "Packaging",            affaires: ["sabich", "taam"], rythme: "besoin" },
     { id: "p7",  nom: "SANAD — épices",       affaires: ["tmsk"],           rythme: "besoin" },
     { id: "p8",  nom: "Imprimeur — étiquettes", affaires: ["tmsk"],         rythme: "besoin" },
-    { id: "p9",  nom: "Packaging TMSK",       affaires: ["tmsk"],           rythme: "besoin" },
+    { id: "p9",  nom: "Packaging TMK",        affaires: ["tmsk"],           rythme: "besoin" },
     { id: "p10", nom: "Blanchisserie",        affaires: ["riad"],           rythme: "mois" },
     { id: "p11", nom: "Courses house manager", affaires: ["riad"],          rythme: "besoin" },
     { id: "p12", nom: "Produits d'accueil",   affaires: ["riad"],           rythme: "besoin" },
   ],
   cle: { sabich: 50, tmsk: 10, taam: 40 },
-  structures: [
-    { id: "s1", lbl: "Le Mi-Chui — comptable",   montant: 1250, jour: 10, societe: "michui" },
-    { id: "s2", lbl: "Gourmet Souk — existence", montant: 1667, jour: 10, societe: "gourmet" },
-  ],
+  /* Les honoraires de comptable ne sont plus comptés : les factures n'arrivent
+     pas chaque mois et brouillaient le résultat. À rétablir sur demande. */
+  structures: [],
   cnss: {
     michui:  { actif: false, montant: 9930 },
     gourmet: { actif: false, montant: 0 },
@@ -499,10 +529,53 @@ const voile = (hex, a) => {
    à en déduire les six : c'est ce qui garantit qu'aucun univers ne bave sur
    un autre, et qu'on voit d'un coup d'œil sur quel commerce on saisit.
    Le vert n'appartient donc qu'à Sabich, et nulle part ailleurs. */
-const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478" };
+const SOUCHE = { dash: "#A0B6A9", foyer: "#E0A479", reglages: "#8F8478",
+                 /* TMK vit en rouge et ivoire (novembre 2026) : ses libellés aussi. */
+                 tmsk: "#A1232B" };
+/* Boutons de saisie propres à une maison : TMK ivoire, lettrage rouge —
+   ils se posent sur le rouge plein de sa feuille. */
+const BOUTON = { tmsk: { fond: "#F8F0E2", texte: "#A1232B" } };
 
 const baseUnivers = (vue, config) => SOUCHE[vue]
   || (config.affaires[vue] ? config.affaires[vue].marque : null);
+
+/* La feuille de chaque intercalaire (l'onglet ouvert et tout ce qui pend
+   dessous) porte le dégradé dessiné par Amal sur toute sa hauteur. Le fond
+   de l'application, lui, reste le même ivoire partout. TAAM (fichier « BACK
+   TAAM LIFE ») : ivoire plein jusqu'au tiers, bascule linéaire, vert plein
+   à partir des deux tiers. L'en-tête est transparent : le logo vert se pose
+   sur l'ivoire de la feuille. Les cartes restent blanches dessus. */
+/* Ses fichiers « BACK » (dossier TREE) : un dégradé linéaire de la couleur
+   de la maison, en haut, jusqu'au blanc en bas. TMK (fichier « BACK TMK
+   LIFE », novembre 2026) : rouge plein jusqu'au tiers, bascule linéaire,
+   ivoire plein à partir des deux tiers. */
+const lineaire = (haut, bas) => "linear-gradient(180deg, " + haut + " 0%, " + bas + " 100%)";
+const FEUILLE = {
+  taam:     { haut: "#F2E9D8",
+              fond: "linear-gradient(180deg, #F2E9D8 0%, #F2E9D8 33%, #315A46 67%, #315A46 100%)" },
+  dash:     { haut: "#94D4DD", fond: lineaire("#94D4DD", "#FEFFFF") },
+  sabich:   { haut: "#015227", fond: lineaire("#015227", "#FCFDFD") },
+  riad:     { haut: "#B49A70", fond: lineaire("#B49A70", "#FEFEFD") },
+  tmsk:     { haut: "#A1232B",
+              fond: "linear-gradient(180deg, #A1232B 0%, #A1232B 33%, #F8F0E2 67%, #F8F0E2 100%)" },
+  contenu:  { haut: "#A7748C", fond: lineaire("#A7748C", "#FEFDFE") },
+  foyer:    { haut: "#F1B597", fond: lineaire("#F1B597", "#FEFBF9") },
+  reglages: { haut: "#7B797A", fond: lineaire("#7B797A", "#FEFEFE") },
+};
+/* Sur une feuille, l'en-tête n'a plus de couleur à lui : il laisse voir la
+   feuille. Ce qui s'y écrit prend du blanc si le haut de la feuille est
+   foncé, l'encre de la maison sinon. La carte suivante part blanche. */
+const DEGRADE = Object.fromEntries(Object.entries(FEUILLE).map(([k, f]) => {
+  const fonce = contraste(f.haut, "#FFFFFF") >= 2.4;
+  return [k, { clair: "#FFFFFF", fondu: "0px", entete: "transparent",
+               surMarque: fonce ? "rgba(255,255,255,.92)" : null,
+               on: fonce ? "#FFFFFF" : null,
+               doux: fonce ? "rgba(255,255,255,.78)" : null }];
+}));
+/* Les Paramètres n'ont pas de sous-onglets : leur liste vit dans la carte
+   d'en-tête. Seule la bande du logo y laisse voir la feuille, le reste est
+   une carte blanche comme les autres. */
+DEGRADE.reglages.entete = "linear-gradient(180deg, rgba(255,255,255,0) 0, rgba(255,255,255,0) 273px, #FFFFFF 273px)";
 
 function univers(vue, config) {
   const base = baseUnivers(vue, config);
@@ -537,8 +610,8 @@ function univers(vue, config) {
        l'interieur d'un autre degrade : la carte d'en-tete se retrouvait sans
        fond. On compose donc le fond complet ici, et le voile blanc passe en
        couche par-dessus quand la marque est une aquarelle. */
-    "--u-clair":   melange(marqueHex || base, "#FFFFFF", .90),
-    "--u-entete":  marqueHex
+    "--u-clair":   DEGRADE[vue] ? DEGRADE[vue].clair : melange(marqueHex || base, "#FFFFFF", .90),
+    "--u-entete":  DEGRADE[vue] ? DEGRADE[vue].entete : marqueHex
       ? "linear-gradient(180deg, " + marqueHex + " 0%, " + marqueHex + " 42%, "
         + melange(marqueHex, "#FFFFFF", .90) + " 100%)"
       : "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 42%, "
@@ -546,13 +619,17 @@ function univers(vue, config) {
     /* Ce qui est ecrit sur la couleur pleine du bandeau ne peut pas prendre
        le gris des textes courants, calcule pour un fond clair : blanc sur
        une marque foncee, l'encre de l'univers sur une marque claire. */
-    "--u-surMarque": (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
+    "--u-fondu":   DEGRADE[vue] ? DEGRADE[vue].fondu : null,
+    "--u-entDoux": DEGRADE[vue] ? DEGRADE[vue].doux : null,
+    "--u-entOn":   DEGRADE[vue] ? DEGRADE[vue].on : null,
+    "--u-surMarque": (DEGRADE[vue] && DEGRADE[vue].surMarque) ? DEGRADE[vue].surMarque : (!marqueHex || contraste(marqueHex, "#FFFFFF") >= 3.2)
                        ? "rgba(255,255,255,.88)" : enc,
     /* La feuille garde la teinte de sa languette, mais la laisse traverser :
        le fond de l'application reste visible d'un bout à l'autre. */
     /* Entre les cartes, rien : le fond de l'application court d'un bord à
        l'autre sans qu'aucun panneau vienne le remplacer par un autre. */
-    "--u-feuille": "transparent",
+    "--u-feuille": FEUILLE[vue] ? FEUILLE[vue].fond : "transparent",
+    "--u-feuillePad": FEUILLE[vue] ? "0 14px 14px" : "0",
   };
 }
 
@@ -561,7 +638,7 @@ function univers(vue, config) {
 const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
                      riad: "riadBlanc", contenu: "contenuBlanc",
                      foyer: "foyerBlanc", dash: "pictoDash",
-                     reglages: "pictoReglages", taam: "taamBlanc" };
+                     reglages: "pictoReglages", taam: "taamVert" };
 
 /* L'habit d'un intercalaire : le fond de la languette et l'encre qui doit s'y
    lire. Toutes les maisons portent leur logo en blanc. Une seule exception,
@@ -569,12 +646,19 @@ const LOGO_BLANC = { sabich: "sabichBlanc", tmsk: "tmskBlanc",
    pas un accident de contraste. Les logos sont fournis en blanc :
    brightness(0) les repasse à l'encre sans rien redessiner. */
 const HABIT = {
-  tmsk: { fond: "#EDE3CC", sombre: true, opa: 1, texte: "#2E2822", clair: true },
+  /* Chaque languette prend le haut exact de sa feuille (fichiers TREE). */
+  /* TMK : son rouge #A1232B, logo ivoire #F8F0E2 tel qu'elle l'a dessiné. */
+  tmsk: { fond: "#A1232B" },
+  riad: { fond: "#B49A70" },
+  contenu: { fond: "#A7748C" },
   /* Ta'am : son jaune exact, releve sur son logo officiel (#F1C40D sur le
      nacre #FDFAF3). La regle generale l'assombrissait jusqu'a #9F8109 pour
      qu'un blanc tienne dessus — mais c'est precisement ce que fait sa marque,
      blanc sur jaune plein. On garde donc sa couleur telle qu'elle l'a dessinee. */
-  taam: { fond: "#F1C40D" },
+  /* Octobre 2026 : nouvelle identité. L'intercalaire se lit à l'envers, comme
+     TMSK : logo vert #315A46 sur ivoire #F2E9D8 — en aplat vert il se
+     confondait avec Sabich. Le vert vient ensuite, dans l'en-tête. */
+  taam: { fond: "#F2E9D8", clair: true, garde: true },
 };
 
 const habit = (k, c) => HABIT[k]
@@ -595,13 +679,13 @@ const AQUARELLE_FONCE = AQUARELLE.replace(/#[0-9A-Fa-f]{6}/g, (c) => lisible(c, 
    aplats pleins (la maison). Les sept marques pèsent alors pareil. */
 const TAILLE_BLANC = {
   sabich:   { width: 76, height: 19 },
-  tmsk:     { width: 66, height: 27 },
+  tmsk:     { width: 64, height: 32 },
   riad:     { width: 64, height: 43 },
   contenu:  { width: 49, height: 40 },
   foyer:    { width: 38, height: 34 },
   dash:     { width: 38, height: 38 },
   reglages: { width: 40, height: 44 },
-  taam:     { width: 78, height: 20 },
+  taam:     { width: 66, height: 24 },
 };
 
 /* Les trois intercalaires qui ne sont pas un commerce se reconnaissent à leur
@@ -614,13 +698,18 @@ const HABIT_FOYER    = { fond: "#F1B597" };
 /* Le gris etait trop sombre pour que le degrade s'eteigne : il tenait toute
    la hauteur du panneau et avalait le texte pose dessus. Un gris perle clair
    rend sa course au degrade — le picto passe a l'encre, comme TMSK. */
-const HABIT_REGLAGES = { fond: "#D9D6D1", sombre: true, opa: .62, clair: true };
+const HABIT_REGLAGES = { fond: "#7B797A" };
+
+/* L'ordre des intercalaires suit l'histoire d'Amal : ses affaires dans
+   l'ordre où elle les a créées, la maison après, les paramètres au bout. */
+const ORDRE_ONGLETS = ["sabich", "tmsk", "riad", "taam", "contenu"];
+const rangOnglet = (k) => { const i = ORDRE_ONGLETS.indexOf(k); return i < 0 ? 99 : i; };
 
 function onglets(config) {
   return [
     { id: "dash", nom: "Tableau de bord", ...HABIT_DASH,
       logo: LOGOS.pictoDash, taille: TAILLE_BLANC.dash },
-    ...vivantes(config).map(([k, c]) => {
+    ...vivantes(config).sort(([a], [b]) => rangOnglet(a) - rangOnglet(b)).map(([k, c]) => {
       const cle = LOGO_BLANC[k];
       /* Un aplat pour chacune, sans exception : le dégradé reste sur la fiche */
       return { id: k, nom: c.nom, ...habit(k, c),
@@ -674,6 +763,10 @@ const normaliseMontant = (v) => {
   return t;
 };
 const num = (v) => { const n = parseFloat(normaliseMontant(v)); return isNaN(n) ? 0 : n; };
+/* 08/10 : une facture peut être payée en plusieurs fois. Les versements
+   partiels vivent sur la facture (`acomptes: [{ montant, date }]`) tant
+   qu'elle n'est pas soldée. */
+const dejaVerse = (e) => (e && e.acomptes ? e.acomptes.reduce((s, a) => s + num(a.montant), 0) : 0);
 /* Vide est acceptable (le champ n'est pas encore rempli) ; « abc » ne l'est pas. */
 const montantLisible = (v) => String(v ?? "").trim() === ""
                            || !isNaN(parseFloat(normaliseMontant(v)));
@@ -780,7 +873,7 @@ const photoReglages = (c) => {
     }
   });
   p["Solidarité · montant"] = mt((c.solidarite || {}).montant);
-  p["Commission carte (Naps)"] = mt((c.naps || {}).taux) + " %";
+  p["Commission Naps (contrat, HT)"] = mt((c.naps || {}).tauxHT) + " %";
   return p;
 };
 
@@ -1001,11 +1094,20 @@ function reprendre(saved) {
   /* Le rouge quitte TMSK : il est réservé au coffee shop qui vient. Le taupe
      qui l'a remplacé se confondait avec l'ivoire du fond : la marque passe à
      une cannelle plus chaude, y compris dans une config déjà en place. */
-  if (c.affaires.tmsk && ["#950808", "#2B2723", "#5C5043"]
+  /* Novembre 2026 : TMK prend son rouge #A1232B et son ivoire #F8F0E2
+     (le coffee shop est abandonné), y compris dans une config déjà en place. */
+  if (c.affaires.tmsk && ["#950808", "#2B2723", "#5C5043", "#5E3B26"]
         .includes(String(c.affaires.tmsk.marque).toUpperCase())) {
     c.affaires.tmsk = { ...c.affaires.tmsk,
-                        marque: "#5E3B26", chip: "#8A5A3C", tint: "#F3E7DA",
-                        bouton: "#F2E7D6" };
+                        marque: "#A1232B", chip: "#A1232B", tint: "#F8F0E2",
+                        bouton: "#F8F0E2" };
+  }
+
+  /* TAAM quitte le jaune pour son vert, y compris dans une config déjà en place. */
+  if (c.affaires.taam && (["#F1C40D", "#F3CB2A"]
+        .includes(String(c.affaires.taam.marque).toUpperCase()) || c.affaires.taam.bouton !== "#315A46")) {
+    c.affaires.taam = { ...c.affaires.taam, marque: "#315A46", chip: "#315A46", tint: "#F2E9D8",
+                        bouton: "#315A46" };
   }
 
   /* Le Mi-Chui portait une aquarelle — un dégradé, là où toutes les autres
@@ -1024,6 +1126,7 @@ function reprendre(saved) {
   delete c.riad;
 
   c.fournisseurs = saved.fournisseurs || DEFAULT_CONFIG.fournisseurs;
+  c.structures = [];
   c.societes = (saved.societes && saved.societes.length) ? saved.societes : DEFAULT_CONFIG.societes;
   c.seuils = { ...(saved.seuils || DEFAULT_CONFIG.seuils) };
   c.chantiers = saved.chantiers || DEFAULT_CONFIG.chantiers;
@@ -1041,10 +1144,8 @@ function reprendre(saved) {
   c.banqueCartes = saved.banqueCartes || DEFAULT_CONFIG.banqueCartes;
   c.pocheCartes = saved.pocheCartes || DEFAULT_CONFIG.pocheCartes;
   c.banqueAirbnb = saved.banqueAirbnb || DEFAULT_CONFIG.banqueAirbnb;
-  c.naps = { ma: num((saved.naps || {}).ma) || DEFAULT_CONFIG.naps.ma,
-             etr: num((saved.naps || {}).etr) || DEFAULT_CONFIG.naps.etr,
-             partEtr: (saved.naps && saved.naps.partEtr !== undefined)
-               ? num(saved.naps.partEtr) : DEFAULT_CONFIG.naps.partEtr };
+  c.naps = { tauxHT: num((saved.naps || {}).tauxHT) || DEFAULT_CONFIG.naps.tauxHT,
+             tva: num((saved.naps || {}).tva) || DEFAULT_CONFIG.naps.tva };
 
   /* Chaque activité relève d'une société ; le riad est chez Gourmet Souk */
   const socParDefaut = ((c.societes[0] || {}).id) || "michui";
@@ -1083,6 +1184,12 @@ function reprendre(saved) {
   c.fixes = c.fixes.map((f) => f.id === "f6" && /médina/i.test(f.lbl || "")
     ? { ...f, lbl: "Loyer Guéliz — Ta'âm et labo" } : f);
 
+  /* TAAM, octobre 2026 (Amal) : plus de pourcentages. TAAM est un restaurant
+     qui va ouvrir ; il porte seul son loyer entier de 14 000 DH, dont la
+     première échéance est le 1er novembre 2026. Plus de labo partagé. */
+  c.fixes = c.fixes.map((f) => f.id === "f6" && !f.tamOk
+    ? { ...f, lbl: "Loyer Guéliz — TAAM", partagePct: 0, jour: 1, depuis: "2026-11", tamOk: true } : f);
+
   /* Le coursier est payé à la tâche, pas au mois : il passe en fournisseur */
   if (c.fixes.some((f) => f.id === "f3" && /coursier/i.test(f.lbl || ""))) {
     c.fixes = c.fixes.filter((f) => f.id !== "f3");
@@ -1094,6 +1201,26 @@ function reprendre(saved) {
   c.cle          = saved.cle || DEFAULT_CONFIG.cle;
   c.foyer = { ...DEFAULT_CONFIG.foyer, ...(saved.foyer || {}) };
   if (saved.foyer && saved.foyer.remunerations) c.foyer.remunerations = saved.foyer.remunerations;
+  /* La maison, octobre 2026 (Amal) : la traite passe le 6, vos deux salaires
+     se versent le 1er, et le carburant n'est plus suivi — il est dans l'argent
+     de poche de chacun. */
+  if (c.foyer) {
+    c.foyer = { ...c.foyer,
+      fixes: (c.foyer.fixes || []).filter((f) => !(f.id === "h6" && /carburant/i.test(f.lbl || "")))
+        .map((f) => (f.id === "h1" && num(f.jour) === 5) ? { ...f, jour: 6 } : f),
+      remunerations: (c.foyer.remunerations || [])
+        .map((r) => num(r.jour) === 30 ? { ...r, jour: 1 } : r) };
+  }
+
+  /* Novembre 2026 : la maison s'appelle TMK — son nom et les libellés qui le
+     portent (caisse, loyer, chantier, fournisseur), y compris dans une config
+     déjà en place. */
+  const tmk = (s) => typeof s === "string" ? s.replace(/\bTMSK\b/g, "TMK") : s;
+  if (c.affaires.tmsk) c.affaires.tmsk = { ...c.affaires.tmsk, nom: tmk(c.affaires.tmsk.nom) };
+  ["poches", "chantiers", "fixes", "fournisseurs"].forEach((cle) => {
+    if (Array.isArray(c[cle])) c[cle] = c[cle].map((x) => x && typeof x === "object"
+      ? { ...x, ...(x.nom ? { nom: tmk(x.nom) } : {}), ...(x.lbl ? { lbl: tmk(x.lbl) } : {}) } : x);
+  });
   return c;
 }
 
@@ -1294,9 +1421,40 @@ export default function App({ session, onLogout }) {
   const delTache = (id) => gesteTaches((l) => l.filter((t) => t.id !== id));
 
   /* Chaque écriture garde le nom de qui l'a créée et de qui l'a corrigée. */
-  const addEntry = (e) => gesteEntries((l) =>
-    [...l, { ...e, id: uid(), par: moi, saisiLe: aujourdhui() }]);
+  const addEntry = (e) => gesteEntries((l) => {
+    /* Une facture qui solde des bons de livraison les met à jour dans le même
+       geste que son enregistrement : une seule écriture, jamais à moitié faite. */
+    const { solde, ...entree } = e;
+    const base = (solde && solde.ids)
+      ? l.map((x) => solde.ids.includes(x.id)
+          ? { ...x, ...solde.champs, majPar: moi, majLe: aujourdhui() } : x)
+      : l;
+    return [...base, { ...entree, id: uid(), par: moi, saisiLe: aujourdhui() }];
+  });
   const delEntry = (id) => gesteEntries((l) => l.filter((e) => e.id !== id));
+  /* L'export Naps : une écriture par télécollecte, jamais deux fois la même.
+     Une télécollecte déjà connue est mise à jour (son statut peut passer à
+     « Versé » d'un export à l'autre). Tout l'import tient en un seul geste. */
+  const importerNaps = (lignes) => gesteEntries((l) => {
+    const out = [...l];
+    lignes.forEach((x) => {
+      const champs = { tc: x.tc, nb: x.nb, ventes: x.ventes, commission: x.commission,
+                       ajust: x.ajust, verse: x.verse, statut: x.statut, dateVir: x.dateVir,
+                       date: x.dateVir, pdv: x.pdv };
+      if (x.source) { champs.source = x.source; champs.jourTx = x.jourTx; }
+      const i = out.findIndex((e) => e.type === "napsTc" && String(e.tc) === x.tc);
+      /* Une télécollecte déjà « Versé » par l'ancien export garde son statut
+         et son nom de point de vente : le relevé par ticket ne les donne pas. */
+      if (i >= 0) {
+        if (!champs.statut) champs.statut = out[i].statut || "";
+        if (out[i].pdv && x.source) champs.pdv = out[i].pdv;
+        out[i] = { ...out[i], ...champs, majPar: moi, majLe: aujourdhui() };
+      }
+      else out.push({ ...champs, type: "napsTc", affaire: "contenu", id: uid(), par: moi,
+                      saisiLe: aujourdhui(), importeLe: aujourdhui() });
+    });
+    return out;
+  });
   /* Une charge de septembre peut très bien avoir été payée fin août. Tant que le
      pointage ne portait qu'un mois, « ce que j'ai réellement payé » comptait en
      septembre de l'argent sorti en août. Le pointage garde donc deux dates :
@@ -1343,10 +1501,17 @@ export default function App({ session, onLogout }) {
        avance comprises, plusieurs mois de retard compris, solidarité déjà
        versée déduite. Recalculé plus tard, ce montant aurait changé. */
     const ligne = (M.lignesAPayer || []).find((x) => x.id === ref);
-    return oui ? [...l, { id: uid(), type: "paye", ref, date: ym + "-01",
+    const cleI = (e) => e.type === "impaye" && e.ref === ref && (e.date || "").startsWith(ym);
+    if (oui) {
+      return [...l.filter((e) => !cleI(e)), { id: uid(), type: "paye", ref, date: ym + "-01",
                           ...(ligne ? { montant: ligne.montant } : {}),
-                          regleLe: dateReglementParDefaut(ref), par: moi }]
-               : l.filter((e) => !cle(e));
+                          regleLe: dateReglementParDefaut(ref), par: moi }];
+    }
+    /* Décocher une charge, c'est dire « celle-là n'a pas été payée » : sans cette
+       trace, elle redeviendrait payée toute seule à son échéance. */
+    const sans = l.filter((e) => !cle(e));
+    return (String(ref).startsWith("retard:") || sans.some(cleI)) ? sans
+      : [...sans, { id: uid(), type: "impaye", ref, date: ym + "-01", par: moi }];
   });
   /* Corriger après coup la date de sortie d'argent d'une charge déjà pointée. */
   const daterReglement = (ref, quand) => gesteEntries((l) => l.map((e) =>
@@ -1390,8 +1555,10 @@ export default function App({ session, onLogout }) {
     ids.includes(e.id)
       ? { ...e, aPayer: false, regleLe: aujourdhui(), majPar: moi, majLe: aujourdhui() }
       : e));
+  /* id peut être une liste : payer une facture solde du même coup tous ses bons de livraison. */
   const majEntry = (id, champs) => gesteEntries((l) => l.map((e) =>
-    e.id === id ? { ...e, ...champs, majPar: moi, majLe: aujourdhui() } : e));
+    (Array.isArray(id) ? id.includes(e.id) : e.id === id)
+      ? { ...e, ...champs, majPar: moi, majLe: aujourdhui() } : e));
 
   /* Si l'activité ouverte vient d'être archivée ou supprimée, on revient au tableau de bord */
   useEffect(() => {
@@ -1441,9 +1608,11 @@ export default function App({ session, onLogout }) {
 
         <div className="scene">
 
+        <Alarme entries={entries} config={config} onAller={setVue}
+                onPointer={(iso, patch) => saveConfig({ ...config, pointages: { ...(config.pointages || {}), [iso]: { ...((config.pointages || {})[iso] || {}), ...patch } } })} />
         <div className="tabs">
           {onglets(config).map((o) => (
-            <button key={o.id} className={"tab" + (vue === o.id ? " on" : "") + (o.clair ? " clair" : "")}
+            <button key={o.id} className={"tab" + (vue === o.id ? " on" : "") + (o.clair ? " clair" : "") + (o.garde ? " garde" : "")}
                     onClick={() => setVue(o.id)} aria-label={o.nom} title={o.nom}
                     aria-current={vue === o.id ? "page" : undefined}
                     style={{ background: o.fond }}>
@@ -1454,7 +1623,7 @@ export default function App({ session, onLogout }) {
           ))}
         </div>
 
-        <div className="panneau" style={univers(vue, config)}>
+        <div className="panneau" data-vue={vue} style={univers(vue, config)}>
         {vue === "dash"     && <Consolide M={M} config={config} ym={ym} onAller={setVue}
                                           entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                     onPocher={pocherReglement} onChiffrer={chiffrer}
@@ -1468,12 +1637,13 @@ export default function App({ session, onLogout }) {
                                      ym={ym} onSolder={solder} onAdd={addEntry} deja={deja}
                                      onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                      onPocher={pocherReglement} onChiffrer={chiffrer}
-                                     onDel={delEntry} onMaj={majEntry}
+                                     onDel={delEntry} onMaj={majEntry} onImporterNaps={importerNaps}
                                      taches={taches} onAddTache={addTache}
                                      onMajTache={majTache} onDelTache={delTache} />}
         {vue === "foyer"    && <FoyerComplet M={M} config={config} onAdd={addEntry} ym={ym}
                                     entries={entries} onRegler={regler} onReporter={reporter} onDater={daterReglement}
                                     onDel={delEntry} onMaj={majEntry} deja={deja}
+                                    onPocher={pocherReglement} onChiffrer={chiffrer}
                                     taches={taches} onAddTache={addTache}
                                     onMajTache={majTache} onDelTache={delTache} />}
         {vue === "reglages" && <Reglages config={config} onSave={saveConfig}
@@ -1502,17 +1672,7 @@ function calcul(config, entries, ym) {
              fixes: 0, partage: 0, cnss: 0, salaires: 0, estimee: false, resultat: 0, charges: 0 };
   });
 
-  /* Une recette se décompose : espèces en caisse, cartes marocaines,
-     cartes étrangères. Naps retient sa commission avant de virer. */
-  const N = config.naps || { ma: 1.5, etr: 3, partEtr: 20 };
-
-  /* Taux moyen d'une activité, selon la part de cartes étrangères qu'elle voit passer */
-  const tauxNaps = (k) => {
-    const a = config.affaires[k] || {};
-    const p = a.partEtr !== undefined ? num(a.partEtr) : num(N.partEtr);
-    return num(N.ma) + (num(N.etr) - num(N.ma)) * p / 100;
-  };
-
+  /* Une recette se décompose : espèces en caisse et cartes (via Naps). */
   let napsBrut = 0, especeTotal = 0, ecartFondsTotal = 0;
   const carteParAffaire = {}, especeParAffaire = {};
   inMonth.filter((e) => e.type === "vente").forEach((v) => {
@@ -1535,15 +1695,27 @@ function calcul(config, entries, ym) {
     }
   });
 
-  /* Naps vire tous les deux ou trois jours, jamais rond : pointer chaque
-     virement serait un travail sans retour. La commission se calcule donc
-     sur le CB compté, au taux de l'activité. */
+  /* La commission Naps n'est plus estimée : c'est celle de l'export Naps,
+     rattachée à son jour de CB, partagée entre Sabich et TMSK au prorata de
+     leurs tickets CB. Tant qu'un jour n'est pas dans un export, sa commission
+     n'est pas connue et ne compte pas. */
   let napsCom = 0;
-  Object.entries(carteParAffaire).forEach(([k, m]) => {
-    const c = m * tauxNaps(k) / 100;
-    napsCom += c;
-    if (A[k]) A[k].com += c;
-  });
+  const comParAffaire = {}, carteVue = {};
+  {
+    const R = rapprocherNaps(entries);
+    R.tcs.forEach((t) => {
+      if (!t.jour || !t.jour.startsWith(ym)) return;
+      const j = R.jours[t.jour];
+      POINTS_NAPS.forEach((k) => {
+        const cb = j.par[k] || 0;
+        const c = j.total > 0 ? t.cout * cb / j.total : 0;
+        comParAffaire[k] = (comParAffaire[k] || 0) + c;
+        carteVue[k] = (carteVue[k] || 0) + cb;
+        napsCom += c;
+        if (A[k]) A[k].com += c;
+      });
+    });
+  }
 
   /* Argent qui dort dans les tiroirs : ni charge ni recette, mais indisponible */
   const fondsCaisse = keys.reduce((s, k) => s + (config.affaires[k].archive ? 0
@@ -1579,7 +1751,13 @@ function calcul(config, entries, ym) {
     const prel = duJour.filter((e) => (e.type === "avance" && e.nature !== "salaire")
                                       || e.type === "perso")
       .reduce((s, e) => s + num(e.montant), 0);
-    jours7.push({ date: iso, rec, dep, inv, prel,
+    /* Les charges fixes comptent le jour où l'argent est vraiment sorti — celui
+       qu'on a coché payé (`regleLe`), pas une part étalée sur le mois. Un jour
+       sans charge réglée n'en porte aucune. */
+    const fixe = entries.filter((e) => e.type === "paye" && (e.regleLe || e.date) === iso)
+      .reduce((s, e) => s + num(e.montant), 0)
+      + duJour.filter((e) => e.type === "solidarite").reduce((s, e) => s + num(e.montant), 0);
+    jours7.push({ date: iso, rec, dep, inv, prel, fixe,
                   par: Object.fromEntries(keys.map((k) => [k,
                     duJour.filter((e) => e.affaire === k && e.type === "depense")
                           .reduce((s, e) => s + num(e.montant), 0)])) });
@@ -1590,7 +1768,8 @@ function calcul(config, entries, ym) {
   const encaissements = {};
   keys.forEach((k) => {
     const carte = carteParAffaire[k] || 0;
-    encaissements[k] = { carte, com: carte * tauxNaps(k) / 100, taux: tauxNaps(k),
+    encaissements[k] = { carte, com: comParAffaire[k] || 0, carteVue: carteVue[k] || 0,
+                         taux: carteVue[k] > 0 ? (comParAffaire[k] || 0) / carteVue[k] * 100 : null,
                          espece: especeParAffaire[k] || 0,
                          fonds: num(config.affaires[k].fonds),
                          ecartFonds: A[k].ecartFonds || 0 };
@@ -1772,8 +1951,11 @@ function calcul(config, entries, ym) {
   keys.forEach((k) => {
     const pct = config.affaires[k].matierePct || 0;
     A[k].matiereTheo = (A[k].ca * pct) / 100 + A[k].matiereExtras;
-    if (A[k].matiereReelle > 0) A[k].matiere = A[k].matiereReelle;
-    else if (A[k].matiereTheo > 0) { A[k].matiere = A[k].matiereTheo; A[k].estimee = true; }
+    /* Octobre 2026, règle d'Amal : l'app ne suppose rien, elle relaie la vérité.
+       Le coût matière est ce qui a été réellement acheté et saisi — jamais une
+       provision sur le chiffre d'affaires. Ce qui manque se voit dans la
+       complétude des saisies, pas dans un chiffre inventé. */
+    A[k].matiere = A[k].matiereReelle;
     /* Les frais variables suivent la même règle : le réel quand il existe,
        l'estimation par couvert sinon. Additionner les deux faisait sortir de
        la caisse un argent qui n'en était jamais sorti. */
@@ -1800,7 +1982,14 @@ function calcul(config, entries, ym) {
   const reelDuMois = reelParMois[ym] || {};
   const duLigneAu = (f, mois) => {
     const r = reelParMois[mois] || {};
-    return (f.variable && r[f.id] !== undefined) ? r[f.id] : num(f.montant);
+    /* Une charge variable (eau, électricité, téléphone…) ne compte plus pour
+       une estimation : Amal ne veut que des chiffres réels. Tant que sa
+       facture n'est pas saisie, elle vaut 0 et n'apparaît nulle part — un
+       rappel « Factures attendues » la garde en vue. */
+    /* Une charge qui ne commence qu'à une date future (« depuis ») ne pèse
+       sur aucun mois avant elle. */
+    if (f.depuis && mois < f.depuis) return 0;
+    return f.variable ? (r[f.id] !== undefined ? r[f.id] : 0) : num(f.montant);
   };
   const duLigne = (f) => duLigneAu(f, ym);
   const estEstime = (f) => !!f.variable && reelDuMois[f.id] === undefined;
@@ -1921,6 +2110,18 @@ function calcul(config, entries, ym) {
   const chantiersMois = inMonth.filter((e) => e.type === "chantier")
                                .reduce((s, e) => s + num(e.montant), 0);
 
+  /* Amal : « le bénéfice, on le prend et on le réinvestit — ça doit se voir ».
+     Un versement vers un chantier n'est pas une charge de l'affaire qui le
+     finance : son résultat ne bouge pas. Mais il est montré juste en dessous,
+     comme ce qu'elle a fait de ce bénéfice, avec ce qu'il en reste. */
+  keys.forEach((k) => { A[k].reinvestiMois = 0; A[k].reinvestiLignes = []; });
+  inMonth.filter((e) => e.type === "chantier" && e.origine && A[e.origine]).forEach((e) => {
+    const ch = (config.chantiers || []).find((c) => c.id === e.chantier) || {};
+    A[e.origine].reinvestiMois += num(e.montant);
+    A[e.origine].reinvestiLignes.push([(ch.nom || "Chantier") + (e.lbl ? " — " + e.lbl : ""),
+                                       num(e.montant)]);
+  });
+
   /* Les avances internes : quand la réserve d'une affaire ne suffit pas et
      qu'il faut vraiment puiser ailleurs (une autre affaire, ou l'enveloppe
      du mois suivant). Ça reste une dette tracée — qui doit quoi à qui,
@@ -2018,8 +2219,40 @@ function calcul(config, entries, ym) {
     .reduce((s, e) => s + num(e.montant), 0);
 
   /* Ce qu'il reste à couvrir : on retire tout ce qui est déjà réglé ce mois-ci. */
-  const regle    = new Set(inMonth.filter((e) => e.type === "paye").map((e) => e.ref));
+  /* Une charge fixe (loyer, salaire, traite, facture récurrente) est considérée
+     PAYÉE à son échéance : on ne signale que l'exception. Avant, tout restait
+     « à payer » tant qu'on ne l'avait pas coché — un total gonflé de ce qui
+     était déjà réglé, qui repartait de zéro chaque mois. Une case décochée
+     (entrée « impaye ») ou un report remet la charge à payer. */
+  const regleExplicite = new Set(inMonth.filter((e) => e.type === "paye").map((e) => e.ref));
+  const impayes = new Set(inMonth.filter((e) => e.type === "impaye").map((e) => e.ref));
+  const [anR, moR] = ym.split("-").map(Number);
+  const aujR = new Date();
+  const rangR = anR * 12 + moR, rangAujR = aujR.getFullYear() * 12 + aujR.getMonth() + 1;
+  /* Une charge du mois en cours n'est payée que si quelqu'un l'a cochée : la
+     date ne fait que la passer « en retard ». Les mois passés, clos, restent
+     considérés réglés (ils n'avaient pas toujours de pointage). */
+  const coupureR = rangR < rangAujR ? 99 : 0;
+  const joursMoisR = new Date(anR, moR, 0).getDate();
+  const jourDeR = {};
+  [...config.fixes, ...config.structures, ...config.foyer.fixes].forEach((x) => {
+    jourDeR[x.id] = Math.min(num(x.jour) || 5, joursMoisR); });
+  (config.foyer.remunerations || []).forEach((r) => {
+    jourDeR[r.id] = Math.min(num(r.jour) || 30, joursMoisR); });
+  (config.societes || []).forEach((so) => { jourDeR["cnss:" + so.id] = Math.min(25, joursMoisR); });
+  const regle = new Set(regleExplicite);
+  Object.keys(jourDeR).forEach((id) => {
+    if (!impayes.has(id) && jourDeR[id] <= coupureR) regle.add(id);
+  });
   const reportes = reportesRef;
+
+  /* Les factures variables pas encore arrivées ce mois-ci */
+  const facturesAttendues = [
+    ...config.fixes.filter(estEstime).map((f) => ({ id: f.id, lbl: f.lbl, jour: f.jour,
+                                  groupe: f.affaire === "partage" ? "labo" : f.affaire })),
+    ...config.structures.filter(estEstime).map((x) => ({ id: x.id, lbl: x.lbl, jour: x.jour, groupe: "societe" })),
+    ...config.foyer.fixes.filter(estEstime).map((x) => ({ id: x.id, lbl: x.lbl, jour: x.jour, groupe: "foyer" })),
+  ];
 
   /* Le catalogue de tout ce qui peut être dû, rangé par propriétaire */
   const base = [
@@ -2046,8 +2279,8 @@ function calcul(config, entries, ym) {
     /* La solidarité manquait ici : le tableau de bord et l'échéancier affichaient
        deux « reste à décaisser » différents, à l'écart de son montant. */
     ...(soliReste > 0 ? [{ id: "solidarite", lbl: "Solidarité",
-                           montant: soliReste, groupe: "solidarite" }] : []),
-  ];
+                           montant: soliReste, groupe: "contenu" }] : []),
+  ].filter((l) => !l.estime);
 
   /* Un report n'est pas une chaîne d'un mois au suivant : c'est une DETTE qui
      court jusqu'à ce qu'elle soit payée. L'ancienne version ne regardait que
@@ -2136,7 +2369,7 @@ function calcul(config, entries, ym) {
     ["Commissions et charges variables", keys.reduce((s, k) => s + A[k].variableReelle, 0)],
     ["Charges fixes des activités",      keys.reduce((s, k) => s + A[k].fixes + A[k].partage, 0)],
     ["CNSS",                             keys.reduce((s, k) => s + A[k].cnss, 0)],
-    ["Structure (société, comptable)",   structure],
+    ["Structure (société)",   structure],
     ["La maison et vos rémunérations",   enveloppe],
     ["Solidarité",                       solidarite],
     ["Investissements",                  invests],
@@ -2149,6 +2382,17 @@ function calcul(config, entries, ym) {
     ["Mis de côté pour un chantier",     chantiersMois],
     ["Retards des mois passés",          enRetard],
     ["Reporté sur le mois suivant",     -reporteMontant],
+  ].filter(([, v]) => Math.abs(v) >= 1);
+
+  /* Le chiffre simple du mois : ce qui est rentré moins TOUTES les charges du
+     mois, payées ou non. Il ne dépend donc d'aucune case cochée, et il ne mêle
+     ni réserve, ni chantier, ni prêt — ce n'est ni du gain ni de la perte. */
+  const reserveNetMois = reserveDepotsMoisTotal - reserveRetraitsMoisTotal;
+  const sortiesPures = sorties - reserveNetMois + reserveRetraitsMoisTotal - chantiersMois - pretsSortieMois + pretsEntreeMois;
+  const resteMois = encaisse - sortiesPures;
+  const detailSimple = [
+    ...detailSorties.filter(([lbl]) => !/réserve|chantier/i.test(lbl)),
+    ["Dépensé en piochant dans la réserve", reserveRetraitsMoisTotal],
   ].filter(([, v]) => Math.abs(v) >= 1);
 
   /* Un emprunt reçu n'est pas un coût en moins : c'est de l'argent qui entre.
@@ -2209,7 +2453,13 @@ function calcul(config, entries, ym) {
 
   /* Ce que tu dois encore à tes fournisseurs, tous mois confondus */
   const dettes = entries.filter((e) => e.type === "depense" && e.aPayer)
-                        .reduce((s, e) => s + num(e.montant), 0);
+                        .reduce((s, e) => s + num(e.montant) - dejaVerse(e), 0);
+  /* Les mêmes dettes, rangées par affaire : la page TMSK ne doit montrer que celles de TMSK. */
+  const dettesPar = {};
+  entries.filter((e) => e.type === "depense" && e.aPayer).forEach((e) => {
+    const k = e.affaire || "";
+    dettesPar[k] = (dettesPar[k] || 0) + num(e.montant) - dejaVerse(e);
+  });
 
   /* Amal veut trois chiffres et rien d'autre : ce qu'elle a fait rentrer, ce
      qu'elle a RÉELLEMENT payé, ce qu'il lui reste à payer. Tous les trois du
@@ -2222,7 +2472,10 @@ function calcul(config, entries, ym) {
   /* Sorti pour de bon : les achats réglés, les échéances pointées, la
      solidarité versée, les prélèvements, les avances données, le matériel
      acheté et les prêts consentis. */
-  const dejaPaye = achatsAcquittes + dejaRegleCaisse + soliVerse + avPerso + avSalaire
+  const acomptesMois = entries.filter((e) => e.type === "depense" && e.aPayer && e.acomptes)
+    .reduce((s, e) => s + e.acomptes.filter((a) => (a.date || "").startsWith(ym))
+                                     .reduce((t, a) => t + num(a.montant), 0), 0);
+  const dejaPaye = achatsAcquittes + acomptesMois + dejaRegleCaisse + soliVerse + avPerso + avSalaire
                  + invests + pretsSortieMois;
   /* Ce qui doit encore quitter la caisse, tous mois confondus. */
   const resteAPayer = aCouvrir + dettes;
@@ -2375,7 +2628,7 @@ function calcul(config, entries, ym) {
   /* Ce qui reste à donner, pas la totalité prévue : sinon l'échéancier réclame
      encore 10 000 DH le lendemain du jour où elle en a versé 1 000. */
   if (soliReste > 0) ajoute("solidarite", "Solidarité", soliReste,
-                            num((config.solidarite || {}).jour) || 1, "solidarite");
+                            num((config.solidarite || {}).jour) || 1, "contenu");
   remus.forEach((r) => ajoute(r.id, "Rémunération — " + r.nom, num(r.montant), r.jour, "foyer"));
   (config.societes || []).filter((s) => cnssSoc[s.id] > 0)
     .forEach((s) => ajoute("cnss:" + s.id, "CNSS — " + s.nom, cnssSoc[s.id], 25, "societe"));
@@ -2471,6 +2724,8 @@ function calcul(config, entries, ym) {
       case "depense":
         if (!e.aPayer) bouge(e.poche || pocheSortieParDefaut(config, e),
                              -num(e.montant), e.regleLe || d, e.lbl || "Achat");
+        else (e.acomptes || []).forEach((a) => bouge(a.poche || pocheSortieParDefaut(config, e),
+                             -num(a.montant), a.date || d, (e.lbl || "Achat") + " — acompte"));
         break;
       case "invest":
         bouge(e.poche || pocheSortieParDefaut(config, e), -num(e.montant), d, e.lbl || "Investissement");
@@ -2505,6 +2760,21 @@ function calcul(config, entries, ym) {
            tiroir se vide pour de bon. */
         bouge(e.poche || caisseDe(config, null), -num(e.montant), d,
               "Mis de côté pour un chantier");
+        break;
+      case "napsTc":
+        /* Un virement Naps arrivé : le CB du jour quitte « Naps en attente »,
+           le net arrive sur Le Mi-Chui ; la différence est la commission. */
+        if (napsVerse(e)) {
+          bouge(pocheCartes(config), -num(e.ventes), d, "Virement Naps");
+          bouge(banqueCartes(config), num(e.verse), d, "Virement Naps");
+        }
+        break;
+      case "reglementAnterieur":
+        /* Amal : « on a dû payer des ardoises de septembre avec l'argent
+           d'octobre ». L'argent sort bien ce jour-là, de cette caisse ; mais
+           le coût appartient au mois d'avant, il ne pèse pas sur ce résultat. */
+        bouge(e.poche || pocheSortieParDefaut(config, e), -num(e.montant), d,
+              "Paiement factures d'un mois précédent");
         break;
       case "transfert":
         bouge(e.de, -num(e.montant), d, "Transfert");
@@ -2612,7 +2882,7 @@ function calcul(config, entries, ym) {
   const posTotal = keys.reduce((s, k) => s + Math.max(0, A[k].resultat), 0);
 
   return { A, keys, orphelines, caTotal, resAffaires, structure, structFixe, structExtra,
-           enveloppe, solidarite, soliVerse, soliReste, soliPointe, soliCumul, detailSorties,
+           enveloppe, solidarite, soliVerse, soliReste, soliPointe, soliCumul, detailSorties, resteMois, sortiesPures, detailSimple,
            coutDuMois, empruntNet, dejaPaye, resteAPayer, achatsAcquittes,
            pretsEntreeMois, pretsSortieMois, resultatNet, encaisse, sorties, tresorerie,
            avances, avSalaire, avPerso, invests, foyerFixes, foyerDepenseMois, poche, cnssTotal,
@@ -2626,8 +2896,8 @@ function calcul(config, entries, ym) {
            credits, capitalCredits, empruntsOuverts, empruntsDus, prêtsARecevoir,
            duMaintenant, duPlusTard, duTotal,
            enRetard, reporteVers, groupes, moisSuivant: shiftMonth(ym, 1),
-           marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes,
-           echeances, resteAPayerMois, jourActuel, cnssSoc,
+           marges, margeMoy, paie, paieTotal, paieAvances, paieReste, dettes, dettesPar,
+           echeances, resteAPayerMois, jourActuel, cnssSoc, facturesAttendues,
            remus, salaires, depensesPerso, doubleLog, primesTotal,
            heb: Object.fromEntries(Object.entries(hebStats).map(([k, s]) => {
                  const lots = Math.max(1, num((config.affaires[k] || {}).logements || 1));
@@ -2658,6 +2928,53 @@ function historique(config, entries, ym, filtre) {
 /*  TABLEAU DE BORD                                                    */
 /* ------------------------------------------------------------------ */
 
+/* Le dépôt d'espèces en banque. Amal : « un bouton et une case ». Une caisse,
+   un montant, une date : les espèces quittent le tiroir et arrivent sur le
+   compte. Ce n'est pas un transfert entre affaires, c'est le même argent qui
+   change de poche. */
+function DepotBanque({ config, onTransfert }) {
+  const caisses = lesPoches(config).filter((p) => p.type === "caisse");
+  const banque = pocheParId(config, banqueCartes(config));
+  const [de, setDe] = useState(caisseDe(config, "sabich") || (caisses[0] || {}).id || "");
+  const [mt, setMt] = useState("");
+  const [date, setDate] = useState(aujourdhui());
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  if (!banque || caisses.length === 0 || !onTransfert) return null;
+  const deposer = () => {
+    if (!de) { setErr("Choisis la caisse d'où sortent les espèces."); return; }
+    if (!montantLisible(mt) || num(mt) <= 0) { setErr("Écris le montant déposé en chiffres."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) { setErr("Indique la date du dépôt."); return; }
+    setErr("");
+    onTransfert(de, banque.id, mt, date, "Dépôt d'espèces en banque");
+    setOk("Dépôt de " + fmt(num(mt)) + " enregistré.");
+    setMt("");
+  };
+  return (
+    <div className="card">
+      <h2 className="h2">Dépôt en banque</h2>
+      <div className="note" style={{ marginBottom: 12 }}>
+        Les espèces que tu déposes sortent de la caisse et arrivent sur {banque.nom}.
+      </div>
+      <div className="grid3">
+        <div><label className="f">Espèces prises dans</label>
+          <select className="f" value={de} onChange={(e) => { setDe(e.target.value); setOk(""); }}>
+            {caisses.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          </select></div>
+        <div><label className="f">Montant déposé</label>
+          <input className="f" inputMode="decimal" value={mt}
+                 onChange={(e) => { setMt(e.target.value); setErr(""); setOk(""); }} /></div>
+        <div><label className="f">Date du dépôt</label>
+          <input className="f" type="date" value={date}
+                 onChange={(e) => { setDate(e.target.value); setErr(""); }} /></div>
+      </div>
+      <Alerte>{err}</Alerte>
+      {ok && <div className="mini" style={{ color: "#4F6B1F", marginTop: 8 }}>{ok}</div>}
+      <button className="pill" style={{ marginTop: 12 }} onClick={deposer}>DÉPÔT EN BANQUE</button>
+    </div>
+  );
+}
+
 function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDater, onPocher, onChiffrer,
                      onTransfert, onCompter, onAdd, onDel, onMaj,
                      onSaveConfig, taches, onAddTache, onMajTache, onDelTache }) {
@@ -2665,10 +2982,6 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
 
   const sections = [
     ["resultat",   "Vue d'ensemble"],
-    ["treso",      "Trésorerie"],
-    ["caisse",     "Caisse"],
-    ["reserves",   "Réserves"],
-    ["prets",      "Prêts perso"],
     ["chantiers",  "Chantiers"],
     ["echeancier", "Échéancier"],
     ["paie",       "Paie"],
@@ -2698,15 +3011,16 @@ function Consolide({ M, config, ym, onAller, entries, onRegler, onReporter, onDa
       {sous === "chantiers"  && <Chantiers config={config} entries={entries} ym={ym}
                                            onAdd={onAdd} onDel={onDel} />}
       {sous === "resultat"   && <Dashboard M={M} config={config} ym={ym} onAller={onAller}
-                                            onRegler={onRegler} onAdd={onAdd} onDel={onDel} onMaj={onMaj}
-                                            onSaveConfig={onSaveConfig}
+                                            onRegler={onRegler} entries={entries} onAdd={onAdd} onDel={onDel} onMaj={onMaj}
+                                            onSaveConfig={onSaveConfig} onChiffrer={onChiffrer}
                                             taches={taches} onAddTache={onAddTache}
                                             onMajTache={onMajTache} onDelTache={onDelTache} />}
+      {sous === "resultat"   && <DepotBanque config={config} onTransfert={onTransfert} />}
       {sous === "echeancier" && <Avenir M={M} config={config} ym={ym}
                                         onRegler={onRegler} onReporter={onReporter} onDater={onDater} onPocher={onPocher}
                                         onChiffrer={onChiffrer} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
-                                      onAdd={onAdd} ym={ym} />}
+                                      onAdd={onAdd} ym={ym} entries={entries} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
                                         onDel={onDel} onMaj={onMaj} />}
       {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
@@ -2793,6 +3107,13 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
   const [montant, setMontant] = useState("");
   const [poche, setPoche] = useState(caisseDe(config, null) || "");
   const [erreur, setErreur] = useState("");
+  /* De quelle affaire vient l'argent : sans ça, le versement ne pouvait
+     apparaître sur la fiche d'aucune affaire. */
+  const affairesSource = Object.keys(config.affaires || {});
+  const [origine, setOrigine] = useState(affairesSource.includes("sabich") ? "sabich"
+                                                                           : (affairesSource[0] || ""));
+  /* La vraie date du versement — elle était forcée au 28 du mois. */
+  const [date, setDate] = useState(ym === thisMonth() ? today() : ym + "-01");
 
   /* Le rythme vient des trois derniers mois clos qui ont des saisies */
   const rythme = useMemo(() => {
@@ -2814,8 +3135,10 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
 
   const affecter = (id) => {
     if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    if (!origine) { setErreur("Indique de quelle affaire vient l'argent."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) { setErreur("Indique la date du versement."); return; }
     setErreur("");
-    onAdd({ type: "chantier", chantier: id, date: ym + "-28", montant: num(montant),
+    onAdd({ type: "chantier", chantier: id, date, montant: num(montant), origine,
             poche: poche || caisseDe(config, null) });
     setMontant(""); setOuvert("");
   };
@@ -2830,8 +3153,10 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
     return { ...ch, mis, reste, cumulAvant: avant, cumulTotal: dejaEngage };
   });
 
+  /* 07/10 : Amal ne veut ni rythme ni échéance estimée — les chantiers sont
+     exceptionnels, on montre seulement ce qui est mis de côté. */
   const horizon = (cumul) => {
-    if (!rythme || rythme.moy <= 0) return null;
+    if (!rythme || rythme.moy <= 0 || true) return null;
     const m = cumul / rythme.moy;
     return { bas: Math.ceil(m * 0.8), haut: Math.ceil(m * 1.25) };
   };
@@ -2839,19 +3164,6 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
   return (
     <div className="card">
       <h2 className="h2">Chantiers</h2>
-
-      {rythme ? (
-        <div className="row">
-          <span className="lbl">Rythme observé sur {rythme.n} mois</span>
-          <span className={"val " + (rythme.moy >= 0 ? "pos" : "neg")}>
-            {fmt(rythme.moy)} par mois</span>
-        </div>
-      ) : (
-        <div className="mini" style={{ marginBottom: 14 }}>
-          Pas encore assez de mois saisis pour estimer un rythme. Les échéances apparaîtront
-          après deux ou trois mois complets.
-        </div>
-      )}
 
       {lignes.map((ch) => {
         const pct = Math.min(100, (ch.mis / num(ch.cible)) * 100);
@@ -2890,8 +3202,21 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
             {ouvert === ch.id && (
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end",
                             marginTop: 12, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 140 }}>
+                  <label className="f">Pris sur</label>
+                  <select className="f" value={origine} onChange={(e) => setOrigine(e.target.value)}>
+                    {affairesSource.map((k) => (
+                      <option key={k} value={k}>{config.affaires[k].nom}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ minWidth: 140 }}>
+                  <label className="f">Date</label>
+                  <input className="f" type="date" value={date}
+                         onChange={(e) => { setDate(e.target.value); setErreur(""); }} />
+                </div>
                 <div style={{ flex: 1, minWidth: 150 }}>
-                  <label className="f">Montant affecté ce mois-ci</label>
+                  <label className="f">Montant versé</label>
                   <input className="f" autoFocus inputMode="decimal" value={montant}
                          onChange={(e) => { setMontant(e.target.value); setErreur(""); }}
                          onKeyDown={(e) => { if (e.key === "Enter") affecter(ch.id); }} />
@@ -2927,16 +3252,14 @@ function Chantiers({ config, entries, ym, onAdd, onDel }) {
 
 const JOURS_COURTS = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
 
-/* Sept jours en vis-à-vis : ce qui rentre vers le haut, TOUT ce qui sort vers
-   le bas. La barre du bas est empilée, parce qu'une journée ne coûte pas que
-   ses achats : elle porte aussi sa part de loyer, de salaires et de CNSS —
-   des charges mensuelles qui ne s'écrivent nulle part dans la journée mais qui
-   courent quand même. Sans elles, le dessin fait croire qu'une journée à
-   10 DH de pain n'a rien coûté. */
+/* Sept jours en vis-à-vis : ce qui rentre vers le haut, ce qui est vraiment
+   sorti vers le bas, empilé par nature. Les charges fixes y figurent le jour où
+   elles ont été réglées, jamais étalées : le dessin relaie la caisse, il ne
+   suppose rien. */
 
 const SORTIES = [
   { id: "dep",   lbl: "Achats",           couleur: "#C98A1E" },
-  { id: "fixe",  lbl: "Part des charges fixes", couleur: "#E3BE7A" },
+  { id: "fixe",  lbl: "Charges payées",   couleur: "#E3BE7A" },
   { id: "inv",   lbl: "Investissements",  couleur: "#9C6B12" },
   { id: "prel",  lbl: "Prélèvements",     couleur: "#7A4F0C" },
 ];
@@ -2945,14 +3268,9 @@ function Rythme({ M, config }) {
   const j = M.jours7 || [];
   if (!j.length) return null;
 
-  /* La part journalière des charges mensuelles : le loyer ne se paie pas en
-     une fois dans la tête de celui qui regarde sa semaine, il court tous les
-     jours. On l'étale, on ne le plante pas sur son jour d'échéance — sinon
-     une seule journée écrase les six autres et la semaine devient illisible. */
-  const quotaFixe = M.joursMois > 0 ? (M.chargesDuMois || 0) / M.joursMois : 0;
 
   const jours = j.map((x) => {
-    const parts = { dep: x.dep || 0, fixe: quotaFixe, inv: x.inv || 0, prel: x.prel || 0 };
+    const parts = { dep: x.dep || 0, fixe: x.fixe || 0, inv: x.inv || 0, prel: x.prel || 0 };
     return { ...x, parts, sortie: SORTIES.reduce((s, p) => s + parts[p.id], 0) };
   });
 
@@ -3025,82 +3343,261 @@ function Rythme({ M, config }) {
         </>
       )}
       <div className="note">
-        En vert ce qui rentre, en orange tout ce qui sort — achats et factures, la part
-        journalière des charges fixes ({fmt(quotaFixe)} par jour : loyer, salaires, CNSS,
-        abonnements), les investissements et les prélèvements. Quand l'orange dépasse le vert,
-        la journée n'a pas payé ce qu'elle a coûté. Ne sont pas comptés : ce que tu mets en
-        réserve ou de côté pour un chantier — cet argent n'a rien coûté à la journée, même
-        s'il sort bien de « Ce qu'il reste » — ni les avances sur salaire, déjà portées par
-        les charges fixes.
+        En vert ce qui rentre, en orange ce qui est vraiment sorti ce jour-là : les achats,
+        les charges fixes le jour où tu les as cochées payées (loyer, salaires, CNSS, traites,
+        solidarité…), les investissements et les prélèvements. Rien n'est étalé ni estimé :
+        une journée sans charge réglée n'en porte aucune. Ne sont pas comptés : ce que tu mets
+        en réserve ou de côté pour un chantier, ni les avances sur salaire, déjà comprises
+        dans le salaire coché.
       </div>
     </div>
   );
 }
 
-/* Ce qui tombe dans les dix jours : la seule question qui se pose le matin.
-   Chaque ligne se coche ici même (loyers en retard compris) ; une erreur de
-   clic s'annule d'un geste. */
-function Bientot({ M, config, onAller, onRegler }) {
+/* Ce que tu dois VRAIMENT : tes fournisseurs, plus ce que tu as signalé comme
+   non payé. Les loyers, salaires et traites sont considérés payés à leur date ;
+   ce qui n'est pas encore échu se lit à part, sans entrer dans le total. */
+function Bientot({ M, config, onAller, onRegler, entries, onMaj, onChiffrer }) {
   const [annul, setAnnul] = useState(null);
-  const tous = (M.echeances || []).filter((e) => !e.paye);
-  const retards = tous.filter((e) => e.enRetard).sort((a, b) => a.jour - b.jour);
-  const aVenir = tous.filter((e) => !e.enRetard && e.jour >= M.jourActuel && e.jour <= M.jourActuel + 10)
-                     .sort((a, b) => a.jour - b.jour).slice(0, 7);
-  const dix = [...retards, ...aVenir];
-  if (!dix.length && !annul) return null;
-  const total = dix.reduce((s, e) => s + e.montant, 0);
-  const retard = retards.length;
+  const [voirPayes, setVoirPayes] = useState(false);
+  const [ouverte, setOuverte] = useState(null);
+  const echs = M.echeances || [];
+  const dues = echs.filter((e) => !e.paye && e.enRetard).sort((a, b) => a.jour - b.jour);
+  const avenir = echs.filter((e) => !e.paye && !e.enRetard).sort((a, b) => a.jour - b.jour);
+  const comptesPayes = echs.filter((e) => e.paye).sort((a, b) => a.jour - b.jour);
+  const dettes = (entries || []).filter((e) => e.type === "depense" && e.aPayer)
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  /* Un bon de livraison ne se règle pas : on règle la facture qui le couvre.
+     Les bons déjà facturés se regroupent donc sous leur facture, et seule la
+     facture (ou un bon de dépense) a une case. Un bon pas encore facturé reste
+     visible, sans case, « à facturer ». */
+  const estBL = (e) => e.piece === "bl";
+  const bonsDe = (f) => dettes.filter((b) => estBL(b) && b.facture && f.numero
+    && String(b.facture) === String(f.numero) && b.fournisseur === f.fournisseur && b.affaire === f.affaire);
+  const cachés = new Set();
+  const fourn = dettes.filter((e) => !estBL(e)).map((e) => {
+    const bons = e.piece === "facture" ? bonsDe(e) : [];
+    bons.forEach((b) => cachés.add(b.id));
+    const brut = num(e.montant) + bons.reduce((s, b) => s + num(b.montant), 0);
+    return { ...e, bons, brut, verse: dejaVerse(e), montantAffiche: brut - dejaVerse(e) };
+  });
+  const aFacturer = dettes.filter((e) => estBL(e) && !cachés.has(e.id));
+  const toutes = [...fourn.map((e) => ({ ...e, genre: "doc" })), ...aFacturer.map((e) => ({ ...e, genre: "bl", montantAffiche: num(e.montant) }))]
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  if (!dues.length && !avenir.length && !toutes.length && !annul && !comptesPayes.length
+      && !(M.facturesAttendues || []).length) return null;
+  const total = dues.reduce((s, e) => s + e.montant, 0)
+              + toutes.reduce((s, e) => s + e.montantAffiche, 0);
+  /* Les ardoises : ce qu'on doit, regroupé par fournisseur, le plus gros
+     d'abord. Un « à sortir » sans nom ne veut rien dire ; une ardoise chez
+     le boucher, si. Un clic ouvre le détail des pièces. */
+  const nomF = (id) => ((config.fournisseurs || []).find((f) => f.id === id) || {}).nom;
+  const parArdoise = {};
+  toutes.forEach((e) => {
+    const cle = e.fournisseur ? "f:" + e.fournisseur : "l:" + String(e.lbl || "?").trim().toLowerCase();
+    const x = parArdoise[cle] || (parArdoise[cle] = { cle, nom: nomF(e.fournisseur) || e.lbl || "Sans nom",
+                                                    pieces: [], total: 0, nbBL: 0 });
+    x.pieces.push(e); x.total += e.montantAffiche; if (e.genre === "bl") x.nbBL += 1;
+  });
+  const ardoises = Object.values(parArdoise).sort((a, b) => b.total - a.total);
+  const parMois = {};
+  toutes.filter((e) => e.genre === "doc").forEach((e) => {
+    const m = (e.date || "").slice(0, 7) || "?";
+    (parMois[m] = parMois[m] || []).push(e);
+  });
+  const facturesParMois = Object.entries(parMois).sort(([x], [y]) => x.localeCompare(y));
+  const blParFourn = ardoises
+    .map((a) => ({ ...a, pieces: a.pieces.filter((e) => e.genre === "bl") }))
+    .filter((a) => a.pieces.length > 0)
+    .map((a) => ({ ...a, total: a.pieces.reduce((s, e) => s + e.montantAffiche, 0) }))
+    .sort((x, y) => y.total - x.total);
+  const moisCourant = aujourdhui().slice(0, 7);
+  const fiches = ardoises.map((a) => {
+    const docs = a.pieces.filter((e) => e.genre === "doc")
+      .sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+    const pm = {};
+    a.pieces.filter((e) => e.genre === "bl").forEach((e) => {
+      const ym = (e.date || "").slice(0, 7);
+      const m = pm[ym] || (pm[ym] = { cle: a.cle + "|" + ym, ym, pieces: [], total: 0, reclamer: ym < moisCourant });
+      m.pieces.push(e); m.total += e.montantAffiche;
+    });
+    const blMois = Object.values(pm).sort((x, y) => x.ym.localeCompare(y.ym));
+    return { ...a, docs, blMois };
+  });
+  const totalFourn = ardoises.reduce((s, a) => s + a.total, 0);
+  const totalAvenir = avenir.reduce((s, e) => s + e.montant, 0);
 
-  const cocher = (e) => {
+  const garde = (a) => {
+    setAnnul(a);
+    setTimeout(() => setAnnul((x) => (x && x.cle === a.cle ? null : x)), 8000);
+  };
+  const cocherCharge = (e) => {
     if (!onRegler) return;
     onRegler(e.ref, true);
-    setAnnul({ ref: e.ref, lbl: e.lbl });
-    setTimeout(() => setAnnul((a) => (a && a.ref === e.ref ? null : a)), 8000);
+    garde({ cle: "c" + e.ref, txt: e.lbl + " : payé", defaire: () => onRegler(e.ref, false) });
   };
+  const decocherCharge = (e) => {
+    if (!onRegler) return;
+    onRegler(e.ref, false);
+    garde({ cle: "d" + e.ref, txt: e.lbl + " : marqué non payé", defaire: () => onRegler(e.ref, true) });
+  };
+  const [partiel, setPartiel] = useState(null);
+  const [partielMt, setPartielMt] = useState("");
+  const verserPartie = (e) => {
+    const v = num(partielMt);
+    if (!onMaj || v <= 0) return;
+    if (v >= e.montantAffiche - 0.5) { cocherFourn(e); setPartiel(null); setPartielMt(""); return; }
+    const avant = e.acomptes || [];
+    onMaj(e.id, { acomptes: [...avant, { montant: v, date: aujourdhui() }] });
+    garde({ cle: "a" + e.id, txt: (nomF(e.fournisseur) || e.lbl) + " : " + fmt(v) + " versés",
+            defaire: () => onMaj(e.id, { acomptes: avant }) });
+    setPartiel(null); setPartielMt("");
+  };
+  const cocherFourn = (e) => {
+    if (!onMaj) return;
+    const ids = [e.id, ...(e.bons || []).map((b) => b.id)];
+    onMaj(ids, { aPayer: false, regleLe: aujourdhui() });
+    garde({ cle: "f" + e.id, txt: e.lbl + " : payé",
+            defaire: () => onMaj(ids, { aPayer: true, regleLe: null }) });
+  };
+
+  const ligne = (e, action, paye) => (
+    <div key={e.ref} className="row">
+      <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Coche paye={paye} retard={e.enRetard} onClick={() => action(e)} />
+        <span style={{ color: paye ? "#9AA487" : undefined }}>{e.lbl}
+          {e.estime && <span className="mini"> · estimation</span>}</span>
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 14.5, color: e.enRetard ? "#C9503A" : "#8B9678" }}>
+          {e.enRetard ? "non payé" : "le " + e.jour}
+        </span>
+        <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>{fmt(e.montant)}</span>
+      </span>
+    </div>
+  );
 
   return (
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between",
                     alignItems: "baseline", gap: 12, marginBottom: 4 }}>
-        <div className="eyebrow">Ce qui tombe bientôt</div>
-        <span className="mini">{fmt(total)}</span>
+        <div className="eyebrow">Ce que tu dois</div>
+        <span className="val" style={{ fontSize: 22 }}>{fmt(total)}</span>
       </div>
       {annul && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
                       gap: 10, background: "#EEF4E0", borderRadius: 10, padding: "8px 12px",
                       margin: "6px 0", fontSize: 14.5, color: "#4F6B1F" }}>
-          <span>✓ {annul.lbl} : payé</span>
-          <button className="pill" onClick={() => { onRegler(annul.ref, false); setAnnul(null); }}>
+          <span>✓ {annul.txt}</span>
+          <button className="pill" onClick={() => { annul.defaire(); setAnnul(null); }}>
             Annuler
           </button>
         </div>
       )}
-      {dix.map((e) => (
-        <div key={e.ref} className="row">
-          <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Coche paye={false} retard={e.enRetard} onClick={() => cocher(e)} />
-            <span className="dot" style={{ margin: 0, background: config.affaires[e.groupe]
-              ? lisible(config.affaires[e.groupe].marque) : "#B3C09A" }} />
-            {e.lbl}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 14.5, color: e.enRetard ? "#C9503A" : "#8B9678" }}>
-              {e.enRetard ? "en retard" : "le " + e.jour}
-            </span>
-            <span className="val">{fmt(e.montant)}</span>
-          </span>
+      {/* 12/10, demande d'Amal : une fiche par fournisseur, qui suit la vraie façon
+          de faire. Une facture reçue = une ligne avec sa case. Les BL du mois en cours
+          s'additionnent « en cours » ; dès le mois fini, sans facture saisie, ils
+          réclament leur facture (en rouge). */}
+      {fiches.map((a) => (
+        <div key={a.cle} style={{ border: "1px solid #ECE6D8", borderRadius: 14,
+                                   padding: "12px 14px", margin: "12px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+            <strong style={{ fontWeight: 600, fontSize: 17, textTransform: "uppercase", letterSpacing: ".04em" }}>{a.nom}</strong>
+            <span className="val">tu dois {fmt(a.total)}</span>
+          </div>
+          {a.docs.map((e) => (
+            <React.Fragment key={e.id}>
+            <div className="row" style={{ gap: 10 }}>
+              <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Coche paye={false} onClick={() => cocherFourn(e)} />
+                <span>
+                  <span style={{ textTransform: "capitalize" }}>{monthLabel((e.date || "").slice(0, 7))}</span>
+                  {" · "}{e.piece === "bon" ? "bon de dépense" : "facture"}{e.numero ? " " + e.numero : ""}
+                  {e.bons.length > 0 && <span className="mini"> · {e.bons.length} BL</span>}
+                  {config.affaires[e.affaire] && <span className="mini"> · {config.affaires[e.affaire].nom}</span>}
+                  {e.verse > 0 && <span className="mini" style={{ display: "block", fontSize: 13.5 }}>
+                    {fmt(e.brut)} · déjà versé {fmt(e.verse)}</span>}
+                </span>
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span className="val">{e.verse > 0 ? "reste " : ""}{fmt(e.montantAffiche)}</span>
+                <button className="pill" style={{ margin: 0 }}
+                        onClick={() => { setPartiel(partiel === e.id ? null : e.id); setPartielMt(""); }}>
+                  EN PARTIE</button>
+              </span>
+            </div>
+            {partiel === e.id && (
+              <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
+                            margin: "4px 0 12px" }}>
+                <span className="mini">Montant versé aujourd'hui</span>
+                <input className="f" inputMode="decimal" style={{ width: 150, margin: 0 }}
+                       value={partielMt} onChange={(x) => setPartielMt(x.target.value)} />
+                <button className="btn" style={{ margin: 0, padding: "10px 20px" }}
+                        onClick={() => verserPartie(e)}>ENREGISTRER</button>
+              </div>
+            )}
+            </React.Fragment>
+          ))}
+          {a.blMois.map((m) => (
+            <div key={m.cle}>
+              <button className="row" onClick={() => setOuverte(ouverte === m.cle ? null : m.cle)}
+                      style={{ width: "100%", background: "none", border: "none", cursor: "pointer",
+                               textAlign: "left", font: "inherit", color: "inherit" }}>
+                <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 24, display: "inline-block", textAlign: "center", fontSize: 13,
+                                 color: "#8B9678" }}>{ouverte === m.cle ? "▾" : "▸"}</span>
+                  <span><span style={{ textTransform: "capitalize" }}>{monthLabel(m.ym)}</span>
+                    {" · "}{m.pieces.length} BL{" · "}
+                    {m.reclamer
+                      ? <strong style={{ color: "#C9503A", fontWeight: 600 }}>FACTURE À RÉCLAMER</strong>
+                      : <span className="mini">en cours</span>}</span>
+                </span>
+                <span className="val" style={{ color: m.reclamer ? "#C9503A" : undefined }}>{fmt(m.total)}</span>
+              </button>
+              {ouverte === m.cle && m.pieces.map((e) => (
+                <div key={e.id} className="row" style={{ paddingLeft: 34 }}>
+                  <span className="mini" style={{ fontSize: 15 }}>
+                    {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}/{(e.date || "").slice(0, 4)}
+                    {e.numero ? " · n° " + e.numero : ""}
+                  </span>
+                  <span className="val" style={{ fontSize: 15 }}>{fmt(e.montantAffiche)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       ))}
-      <div className="row rowTot">
-        <span className="lbl">Reste à décaisser ce mois-ci</span>
-        <span className="val">{fmt(M.aCouvrir)}</span>
-      </div>
-      <div className="note">
-        {retard > 0
-          ? retard + (retard > 1 ? " échéances sont passées" : " échéance est passée")
-            + " sans être pointée. Coche la case dès que c'est payé."
-          : "Les prochaines échéances, dans l'ordre. Coche la case dès que c'est payé."}
-      </div>
+      {dues.length > 0 && <div className="mini" style={{ margin: "14px 0 2px" }}>Signalé non payé</div>}
+      {dues.map((e) => ligne(e, cocherCharge, false))}
+      {total === 0 && <div className="note">Rien à payer pour le moment.</div>}
+      <FacturesAttendues liste={M.facturesAttendues} onChiffrer={onChiffrer} />
+
+      {avenir.length > 0 && (
+        <>
+          <div className="mini" style={{ margin: "16px 0 2px", display: "flex", justifyContent: "space-between" }}>
+            <span>À venir ce mois-ci (pas encore dû)</span><span>{fmt(totalAvenir)}</span>
+          </div>
+          {avenir.map((e) => ligne(e, cocherCharge, false))}
+        </>
+      )}
+
+      {comptesPayes.length > 0 && (
+        <>
+          <button className="pill" onClick={() => setVoirPayes(!voirPayes)}
+                  style={{ width: "100%", margin: "14px 0 4px" }}>
+            {voirPayes ? "Masquer" : "Voir"} ce qui est compté comme payé ({comptesPayes.length})
+          </button>
+          {voirPayes && (
+            <>
+              {comptesPayes.map((e) => ligne(e, decocherCharge, true))}
+              <div className="note">
+                Loyers, salaires et traites sont comptés payés à leur date. Décoche seulement
+                ce qui n'a pas été payé : il passera dans « Ce que tu dois ».
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -3388,6 +3885,393 @@ function Jauge({ lbl, ratio, seuil, etat }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  L'ALARME DU SOIR                                                   */
+/* ------------------------------------------------------------------ */
+/* À partir de 20h, tant que la vente du jour de chaque activité et les achats
+   du jour ne sont pas saisis, un bandeau rouge reste en haut de TOUTES les
+   pages. Il n'a pas de bouton « plus tard ». Pour sortir : saisir, ou dire
+   explicitement « fermé » / « aucun achat » (ce choix est enregistré, donc on
+   distingue un jour sans achat d'un oubli). Le lendemain, « Hier non saisi »
+   reste affiché jusqu'à régularisation. */
+const isoLocal = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+                        + "-" + String(d.getDate()).padStart(2, "0");
+function manquesDuJour(entries, config, iso) {
+  const L = entries || [];
+  const pt = ((config.pointages || {})[iso]) || {};
+  const d0 = new Date(iso + "T12:00:00");
+  const depuis = isoLocal(new Date(d0.getTime() - 14 * 864e5));
+  const actives = Object.keys(config.affaires).filter((k) => !config.affaires[k].archive
+    && L.some((e) => e.type === "vente" && e.affaire === k && e.date >= depuis && e.date < iso));
+  const ventes = actives.filter((k) => !(pt.ferme || {})[k]
+    && !L.some((e) => e.type === "vente" && e.affaire === k && e.date === iso));
+  /* Comme les ventes : un achat attendu par activité. « Aucun achat » se dit
+     activité par activité ; l'ancien pointage global (aucunAchat: true)
+     reste respecté. Une activité fermée ce jour-là n'attend pas d'achat. */
+  const achats = pt.aucunAchat === true ? [] : actives.filter((k) => !(pt.ferme || {})[k]
+    && !((pt.aucunAchat || {})[k])
+    && !L.some((e) => e.type === "depense" && e.affaire === k && e.date === iso));
+  return { ventes, achats, actives };
+}
+/* Deux sections dans l'alarme : les ventes, que saisit SAIB, puis les achats,
+   que saisit Amal — chacun voit d'un coup d'œil ce qui le regarde. */
+const SOUS_TITRE_ALARME = { fontSize: 13, fontWeight: 600, letterSpacing: ".12em",
+                            textTransform: "uppercase", opacity: .85, margin: "8px 0 2px" };
+/* BL dont la facture n'est pas (ou plus) dans LIFE, d'un mois déjà terminé :
+   la facture de fin de mois doit être réclamée. Groupés par fournisseur et mois. */
+function facturesAReclamer(entries, config) {
+  const L = entries || [];
+  const moisCourant = aujourdhui().slice(0, 7);
+  const existe = (b) => b.facture && L.some((f) => f.type === "depense" && f.piece === "facture"
+    && String(f.numero || "") === String(b.facture) && f.fournisseur === b.fournisseur && f.affaire === b.affaire);
+  const nomF = (id) => ((config.fournisseurs || []).find((f) => f.id === id) || {}).nom;
+  const g = {};
+  L.filter((b) => b.type === "depense" && b.piece === "bl" && b.aPayer && !existe(b)
+                  && (b.date || "").slice(0, 7) < moisCourant)
+    .forEach((b) => {
+      const ym = (b.date || "").slice(0, 7);
+      const cle = (b.fournisseur || b.lbl || "?") + "|" + ym;
+      const x = g[cle] || (g[cle] = { cle, ym, nom: nomF(b.fournisseur) || b.lbl || "Sans nom", nb: 0, total: 0 });
+      x.nb += 1; x.total += num(b.montant);
+    });
+  return Object.values(g).sort((a, b) => a.ym.localeCompare(b.ym) || b.total - a.total);
+}
+
+function Alarme({ entries, config, onPointer, onAller }) {
+  const [, tic] = useState(0);
+  useEffect(() => { const t = setInterval(() => tic((n) => n + 1), 60000); return () => clearInterval(t); }, []);
+  const maintenant = new Date();
+  const auj = isoLocal(maintenant);
+  const hier = isoLocal(new Date(maintenant.getTime() - 864e5));
+  const soir = maintenant.getHours() >= 20;
+  const nomA = (k) => (config.affaires[k] && config.affaires[k].nom) || k;
+  const blocs = [];
+  if (soir) blocs.push({ iso: auj, titre: "Il est tard et la journée n'est pas saisie", fort: true });
+  blocs.push({ iso: hier, titre: "Hier n'est pas saisi", fort: false });
+  const rendu = blocs.map((b) => {
+    const m = manquesDuJour(entries, config, b.iso);
+    if (!m.ventes.length && !m.achats.length) return null;
+    const jour = b.iso.slice(8, 10) + "/" + b.iso.slice(5, 7);
+    return (
+      <div key={b.iso} role="alert" style={{ background: b.fort ? "#7A0E14" : "#9B1B22", color: "#fff",
+          padding: "14px 16px", borderRadius: 14, marginBottom: 10,
+          boxShadow: b.fort ? "0 0 0 3px #E8B4B8" : "none" }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+          {b.titre} ({jour})
+        </div>
+        {m.ventes.length > 0 && <div style={SOUS_TITRE_ALARME}>Ventes — SAIB</div>}
+        {m.ventes.map((k) => (
+          <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+            <span style={{ flex: 1, minWidth: 160 }}>Vente non saisie : <strong>{nomA(k)}</strong></span>
+            <button className="pill" onClick={() => onAller(k)}>Saisir la vente</button>
+            <button className="pill" onClick={() => onPointer(b.iso, { ferme: { ...(((config.pointages || {})[b.iso] || {}).ferme || {}), [k]: true } })}>
+              FERMÉ CE JOUR-LÀ</button>
+          </div>
+        ))}
+        {m.achats.length > 0 && <div style={{ ...SOUS_TITRE_ALARME,
+            ...(m.ventes.length > 0 ? { borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 10, marginTop: 10 } : {}) }}>
+          Achats — Amal</div>}
+        {m.achats.map((k) => (
+          <div key={"a" + k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+            <span style={{ flex: 1, minWidth: 160 }}>Achat non saisi : <strong>{nomA(k)}</strong></span>
+            <button className="pill" onClick={() => onAller(k)}>Saisir un achat</button>
+            <button className="pill" onClick={() => onPointer(b.iso, { aucunAchat: { ...(typeof ((config.pointages || {})[b.iso] || {}).aucunAchat === "object" ? ((config.pointages || {})[b.iso] || {}).aucunAchat : {}), [k]: true } })}>
+              Aucun achat ce jour-là</button>
+          </div>
+        ))}
+      </div>
+    );
+  }).filter(Boolean);
+  /* Le rappel du lundi : à partir de 9h, SAIB ramène l'export Naps de la
+     semaine. La bande reste jusqu'à ce que ce soit fait (même les jours
+     suivants), puis disparaît jusqu'au lundi d'après. */
+  const lundi = isoLocal(new Date(maintenant.getTime() - ((maintenant.getDay() + 6) % 7) * 864e5));
+  const lundiPasse = maintenant.getDay() !== 1 || maintenant.getHours() >= 9;
+  const napsFait = !!(((config.pointages || {})[lundi] || {}).napsExport)
+    || (entries || []).some((e) => e.type === "napsTc" && (e.importeLe || e.majLe || "") >= lundi);
+  if (lundi >= "2026-10-12" && lundiPasse && !napsFait) {
+    rendu.push(
+      <div key="naps" role="alert" style={{ background: "#9B1B22", color: "#fff",
+          padding: "14px 16px", borderRadius: 14, marginBottom: 10 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+          Export Naps de la semaine</div>
+        <div style={SOUS_TITRE_ALARME}>SAIB</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+          <span style={{ flex: 1, minWidth: 160 }}>Télécharge l'export Excel depuis l'espace Naps et ramène-le dans LIFE.</span>
+          <button className="pill" onClick={() => onPointer(lundi, { napsExport: true })}>C'EST FAIT</button>
+        </div>
+      </div>
+    );
+  }
+  const aReclamer = facturesAReclamer(entries, config);
+  if (aReclamer.length) {
+    rendu.push(
+      <div key="reclamer" role="alert" style={{ background: "#9B1B22", color: "#fff",
+          padding: "14px 16px", borderRadius: 14, marginBottom: 10 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+          Factures à réclamer</div>
+        {aReclamer.map((r) => (
+          <div key={r.cle} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+            <span style={{ flex: 1, minWidth: 160 }}><strong>{r.nom}</strong> · {monthLabel(r.ym)} · {r.nb} BL · {fmt(r.total)}</span>
+          </div>
+        ))}
+        <div style={{ fontSize: 14.5, opacity: .9, marginTop: 4 }}>
+          Dès que tu saisis la facture, elle reprend ses BL et l'alerte disparaît.</div>
+      </div>
+    );
+  }
+  if (!rendu.length) return null;
+  return <div style={{ position: "sticky", top: 0, zIndex: 50, marginBottom: 6 }}>{rendu}</div>;
+}
+
+/* ------------------------------------------------------------------ */
+/*  CONTRÔLE — l'audit de cohérence                                    */
+/* ------------------------------------------------------------------ */
+/* Pas de nouveau calcul : seulement des vérifications de LIENS entre les
+   écritures (une facture et ses bons, un numéro et son fournisseur, un jour
+   et sa vente). Chaque anomalie dit quoi, où, et propose son remède. */
+const cleNum = (v) => String(v || "").replace(/\s/g, "").toLowerCase().replace(/^0+(?=.)/, "");
+function auditer(entries, config, ym) {
+  const L = entries || [];
+  const auj = new Date().toISOString().slice(0, 10);
+  const pm = shiftMonth(ym, -1);
+  const recents = L.filter((e) => ["depense", "invest"].includes(e.type)
+                                  && [ym, pm].includes((e.date || "").slice(0, 7)));
+  const nomF = (id) => ((config.fournisseurs || []).find((f) => f.id === id) || {}).nom || "";
+  const nomA = (k) => (config.affaires[k] && config.affaires[k].nom) || k;
+  const jj = (d) => (d || "").slice(8, 10) + "/" + (d || "").slice(5, 7);
+  const q = [];
+
+  /* 1 — Une dépense qui ne dit pas ce qu'elle est */
+  recents.filter((e) => e.type === "depense").forEach((e) => {
+    const libre = String(e.lbl || "").trim().toLowerCase();
+    if (!e.fournisseur && (libre === "" || libre === "dépense" || libre === "depense")) {
+      q.push({ id: "anon-" + e.id, gravite: 2, famille: "Identité",
+        titre: "Dépense sans nom", detail: jj(e.date) + " · " + nomA(e.affaire) + " · " + fmt(num(e.montant))
+          + " — on ne sait pas ce qui a été acheté.", ids: [e.id], affaire: e.affaire, fix: "lbl" });
+    }
+  });
+
+  /* 2 — Une pièce sans numéro */
+  recents.filter((e) => e.type === "depense" && (e.piece === "bl" || (e.piece === "facture" && e.aPayer))
+                         && e.fournisseur && !String(e.numero || "").trim()
+                         && num(e.montant) > 0).forEach((e) => {
+    q.push({ id: "sansnum-" + e.id, gravite: 2, famille: "Numéro",
+      titre: "Pièce sans numéro", detail: nomF(e.fournisseur) + " · " + jj(e.date) + " · " + fmt(num(e.montant))
+        + " — impossible de la rapprocher de sa facture ou de repérer un doublon.",
+      ids: [e.id], affaire: e.affaire, fix: "numero" });
+  });
+
+  /* 3 — Marchandise sans fournisseur */
+  recents.filter((e) => e.type === "depense" && e.categorie === "matiere" && !e.fournisseur && e.piece !== "bon"
+                         && !/solde \d+ BL/.test(e.lbl || "")).forEach((e) => {
+    q.push({ id: "mat-" + e.id, gravite: 1, famille: "Identité",
+      titre: "Marchandise sans fournisseur", detail: jj(e.date) + " · " + (e.lbl || "?") + " · " + fmt(num(e.montant)),
+      ids: [e.id], affaire: e.affaire, fix: "fournisseur" });
+  });
+
+  /* 4 — Doublons probables (tous mois) */
+  const vus = {};
+  L.filter((e) => e.type === "depense" && cleNum(e.numero) && e.fournisseur).forEach((e) => {
+    const c = e.affaire + "|" + e.fournisseur + "|" + cleNum(e.numero);
+    (vus[c] = vus[c] || []).push(e);
+  });
+  Object.values(vus).filter((g) => g.length > 1).forEach((g) => {
+    q.push({ id: "dbl-" + g[0].id, gravite: 3, famille: "Doublon",
+      titre: "Même numéro saisi " + g.length + " fois",
+      detail: nomF(g[0].fournisseur) + " · n° " + g[0].numero + " · "
+        + g.map((x) => jj(x.date) + " " + fmt(num(x.montant))).join(" / "),
+      ids: g.map((x) => x.id), affaire: g[0].affaire });
+  });
+  const vus2 = {};
+  L.filter((e) => ["depense", "avance", "vente"].includes(e.type)).forEach((e) => {
+    const c = [e.type, e.affaire || "", e.date, num(e.montant).toFixed(2), String(e.lbl || e.personne || e.nom || "").trim().toLowerCase(),
+               e.precision || "", e.numero || ""].join("|");
+    (vus2[c] = vus2[c] || []).push(e);
+  });
+  Object.values(vus2).filter((g) => g.length > 1 && num(g[0].montant) > 0
+      && !(g[0].fournisseur && cleNum(g[0].numero))).forEach((g) => {
+    q.push({ id: "dbl2-" + g[0].id, gravite: 3, famille: "Doublon",
+      titre: "Même écriture saisie " + g.length + " fois",
+      detail: jj(g[0].date) + " · " + (g[0].lbl || g[0].personne || g[0].nom || g[0].type) + " · " + fmt(num(g[0].montant))
+        + " — doublon, ou deux vraies opérations identiques ?",
+      ids: g.map((x) => x.id), affaire: g[0].affaire });
+  });
+
+  /* 5 — Facture qui ne tombe pas juste sur ses bons de livraison */
+  L.filter((e) => e.type === "depense" && e.totalFacture && e.fournisseur).forEach((f) => {
+    const bons = L.filter((b) => b.piece === "bl" && b.fournisseur === f.fournisseur && b.affaire === f.affaire
+                                 && b.facture && String(b.facture) === String(f.numero));
+    const somme = bons.reduce((s, b) => s + num(b.montant), 0) + num(f.montant);
+    if (Math.abs(somme - num(f.totalFacture)) > 0.5) {
+      q.push({ id: "fac-" + f.id, gravite: 3, famille: "Rapprochement",
+        titre: "La facture " + f.numero + " ne tombe pas juste",
+        detail: nomF(f.fournisseur) + " : facture " + fmt(num(f.totalFacture)) + ", bons + écart "
+          + fmt(somme) + " (différence " + fmt(Math.abs(somme - num(f.totalFacture))) + ").",
+        ids: [f.id], affaire: f.affaire });
+    }
+  });
+
+  /* 6 — Bons de livraison qui attendent leur facture depuis trop longtemps */
+  const vieux = L.filter((e) => e.type === "depense" && e.piece === "bl" && e.aPayer && !e.facture
+                                && e.date && (new Date(auj) - new Date(e.date)) / 864e5 > 35);
+  const parF = {};
+  vieux.forEach((e) => { (parF[e.fournisseur || "?"] = parF[e.fournisseur || "?"] || []).push(e); });
+  Object.entries(parF).forEach(([f, g]) => {
+    q.push({ id: "vbl-" + f, gravite: 2, famille: "Rapprochement",
+      titre: "Bons de livraison sans facture depuis plus de 35 jours",
+      detail: (nomF(f) || "Fournisseur") + " : " + g.length + " bon" + (g.length > 1 ? "s" : "") + ", "
+        + fmt(g.reduce((s, e) => s + num(e.montant), 0)) + " — la facture du mois est-elle arrivée ?",
+      ids: g.map((e) => e.id), affaire: g[0].affaire });
+  });
+
+  /* 7 — Un mois entier à zéro sur une pièce qui n'est pas un lien */
+  L.filter((e) => e.type === "depense" && num(e.montant) === 0 && !e.totalFacture).forEach((e) => {
+    q.push({ id: "zero-" + e.id, gravite: 1, famille: "Identité",
+      titre: "Dépense à 0 DH", detail: jj(e.date) + " · " + (e.lbl || nomF(e.fournisseur) || "?"),
+      ids: [e.id], affaire: e.affaire });
+  });
+
+  /* 8 — Écritures datées dans le futur */
+  L.filter((e) => e.date && e.date > auj && e.type !== "resa").forEach((e) => {
+    q.push({ id: "fut-" + e.id, gravite: 2, famille: "Date",
+      titre: "Écriture datée dans le futur", detail: jj(e.date) + " · " + (e.lbl || e.type) + " · " + fmt(num(e.montant)),
+      ids: [e.id], affaire: e.affaire });
+  });
+
+  /* 9 — Jours sans vente (ce mois-ci seulement, hors aujourd'hui) */
+  const venteK = {};
+  L.filter((e) => e.type === "vente" && (e.date || "").slice(0, 7) === ym).forEach((e) => { venteK[e.affaire] = true; });
+  Object.keys(venteK).forEach((k) => {
+    const [an, mo] = ym.split("-").map(Number);
+    const fin = ym === auj.slice(0, 7) ? Number(auj.slice(8, 10)) - 1 : new Date(an, mo, 0).getDate();
+    const trous = [];
+    for (let j = 1; j <= fin; j++) {
+      const iso = ym + "-" + String(j).padStart(2, "0");
+      if (!L.some((e) => e.type === "vente" && e.affaire === k && e.date === iso)
+          && !((((config.pointages || {})[iso]) || {}).ferme || {})[k]) trous.push(j);
+    }
+    if (trous.length) q.push({ id: "trou-" + k, gravite: 2, famille: "Ventes",
+      titre: "Ventes non saisies — " + nomA(k),
+      detail: "Jours : " + trous.join(", ") + " (" + trous.length + "). Saisis la vente, ou « FERMÉ CE JOUR-LÀ » dans le bandeau rouge.",
+      ids: [], affaire: k });
+  });
+
+  return q.sort((a, b) => b.gravite - a.gravite);
+}
+
+function Controle({ entries, config, ym, onMaj, onAller }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [val, setVal] = useState({});
+  const [msg, setMsg] = useState("");
+  const liste = auditer(entries, config, ym);
+  const ignorees = (() => { try { return JSON.parse(localStorage.getItem("life:ignorees") || "[]"); } catch (e) { return []; } })();
+  const [ign, setIgn] = useState(ignorees);
+  const visibles = liste.filter((x) => !ign.includes(x.id));
+  const ignorer = (id) => { const n = [...ign, id]; setIgn(n); try { localStorage.setItem("life:ignorees", JSON.stringify(n)); } catch (e) {} };
+
+  /* Clôture : trois questions, trois réponses */
+  const L = entries || [];
+  const ventesOk = !liste.some((x) => x.famille === "Ventes");
+  const blsOuverts = L.filter((e) => e.type === "depense" && e.piece === "bl" && e.aPayer && !e.facture);
+  const facturesDues = L.filter((e) => e.type === "depense" && e.aPayer && e.piece === "facture" && num(e.montant) > 0);
+  const graves = visibles.filter((x) => x.gravite >= 2).length;
+  const pret = ventesOk && graves === 0;
+
+  const enregistrer = (x) => {
+    const v = (val[x.id] || "").trim();
+    if (!v) { setMsg("Écris quelque chose avant d'enregistrer."); return; }
+    const id = x.ids[0];
+    const e = L.find((y) => y.id === id);
+    if (x.fix === "numero") {
+      const dup = L.find((y) => y.id !== id && y.type === "depense" && y.affaire === e.affaire
+        && y.fournisseur === e.fournisseur && cleNum(y.numero) === cleNum(v));
+      if (dup) { setMsg("Ce numéro existe déjà chez ce fournisseur (" + jj2(dup.date) + ", " + fmt(num(dup.montant)) + ")."); return; }
+      onMaj(id, { numero: v });
+    } else if (x.fix === "lbl") onMaj(id, { lbl: v });
+    else if (x.fix === "fournisseur") onMaj(id, { fournisseur: v });
+    setMsg("");
+  };
+  const jj2 = (d) => (d || "").slice(8, 10) + "/" + (d || "").slice(5, 7);
+  const couleur = (g) => g >= 3 ? "#C9503A" : g === 2 ? "#B07C1E" : "#8B9678";
+
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+        <div className="eyebrow">Contrôle</div>
+        <span className="tag" style={{ color: visibles.length ? "#C9503A" : "#5E8F1E",
+                                       borderColor: visibles.length ? "#EFC7BE" : "#CFE2B5" }}>
+          {visibles.length ? visibles.length + " à vérifier" : "rien à signaler"}
+        </span>
+      </div>
+
+      {visibles.length > 0 && (
+        <button className="pill" onClick={() => setOuvert(!ouvert)} style={{ marginBottom: 8 }}>
+          {ouvert ? "Masquer la liste" : "Voir la liste"}
+        </button>
+      )}
+      {msg && <div className="mini" style={{ color: "#C9503A", marginBottom: 8 }}>{msg}</div>}
+
+      {ouvert && visibles.map((x) => (
+        <div key={x.id} style={{ borderTop: "1px solid #EEE9DA", padding: "12px 0" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+            <span style={{ width: 9, height: 9, borderRadius: 9, background: couleur(x.gravite), display: "inline-block" }} />
+            <strong style={{ fontSize: 16.5, flex: 1 }}>{x.titre}</strong>
+            <span className="mini">{x.famille}</span>
+          </div>
+          <div className="mini" style={{ margin: "5px 0 8px" }}>{x.detail}</div>
+          {x.fix && x.ids.length === 1 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {x.fix === "fournisseur" ? (
+                <select className="f" style={{ flex: 1, minWidth: 160 }} value={val[x.id] || ""}
+                        onChange={(e) => setVal({ ...val, [x.id]: e.target.value })}>
+                  <option value="">Choisir le fournisseur…</option>
+                  {(config.fournisseurs || []).filter((f) => (f.affaires || []).includes(x.affaire))
+                    .map((f) => <option key={f.id} value={f.id}>{f.nom}</option>)}
+                </select>
+              ) : (
+                <input className="f" style={{ flex: 1, minWidth: 160 }}
+                       placeholder={x.fix === "numero" ? "Numéro de la pièce" : "Ce qui a été acheté"}
+                       value={val[x.id] || ""} onChange={(e) => setVal({ ...val, [x.id]: e.target.value })} />
+              )}
+              <button className="pill on" onClick={() => enregistrer(x)}>Enregistrer</button>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            {x.affaire && config.affaires[x.affaire] && (
+              <button className="pill" onClick={() => onAller(x.affaire)}>Ouvrir {config.affaires[x.affaire].nom}</button>
+            )}
+            <button className="pill" onClick={() => ignorer(x.id)}>C'est normal</button>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ borderTop: "1px solid #EEE9DA", marginTop: 10, paddingTop: 12 }}>
+        <div className="eyebrow" style={{ marginBottom: 6 }}>Clôture de {monthLabel(ym)}</div>
+        {[
+          [ventesOk, ventesOk ? "Toutes les ventes sont saisies" : "Des jours sans vente sont à saisir"],
+          [blsOuverts.length === 0, blsOuverts.length === 0 ? "Tous les bons de livraison sont facturés"
+            : blsOuverts.length + " bon" + (blsOuverts.length > 1 ? "s" : "") + " de livraison " + (blsOuverts.length > 1 ? "attendent" : "attend") + " leur facture ("
+              + fmt(blsOuverts.reduce((s, e) => s + num(e.montant), 0)) + ")"],
+          [facturesDues.length === 0, facturesDues.length === 0 ? "Aucune facture à régler"
+            : facturesDues.length + " facture" + (facturesDues.length > 1 ? "s" : "") + " à régler ("
+              + fmt(facturesDues.reduce((s, e) => s + num(e.montant), 0)) + ")"],
+          [graves === 0, graves === 0 ? "Aucune anomalie importante" : graves + " anomalie" + (graves > 1 ? "s" : "") + " à traiter"],
+        ].map(([ok, t], i) => (
+          <div key={i} style={{ display: "flex", gap: 10, padding: "4px 0", fontSize: 16 }}>
+            <span style={{ color: ok ? "#5E8F1E" : "#B07C1E", width: 18 }}>{ok ? "✓" : "•"}</span>
+            <span>{t}</span>
+          </div>
+        ))}
+        <div className="mini" style={{ marginTop: 6, color: pret ? "#5E8F1E" : "#7A5B22" }}>
+          {pret ? "Le mois peut être clôturé : ventes complètes et aucune anomalie."
+                : "Le mois n'est pas prêt à être clôturé."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Coherence({ M, config, onAller }) {
   const v = (M.voyants || []).filter(Boolean);
   if (!v.length) return null;
@@ -3509,34 +4393,279 @@ function NoteDuMois({ config, ym, onSave }) {
   );
 }
 
-function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSaveConfig,
+
+/* ------------------------------------------------------------------ */
+/*  LES SIGNAUX : quatre dessins pour repérer un problème sans chercher */
+/* ------------------------------------------------------------------ */
+
+/* Ce que chaque jour du mois a rapporté et coûté, jusqu'à aujourd'hui. */
+function parJourDuMois(entries, ym, M, keys, pointages) {
+  const [an, mo] = ym.split("-").map(Number);
+  const nbJours = new Date(an, mo, 0).getDate();
+  const auj = new Date().toISOString().slice(0, 10);
+  const dernier = ym === auj.slice(0, 7) ? Number(auj.slice(8, 10)) : (ym < auj.slice(0, 7) ? nbJours : 0);
+  const quota = nbJours > 0 ? (M.chargesDuMois || 0) / nbJours : 0;
+  const duMois = (entries || []).filter((e) => (e.date || "").slice(0, 7) === ym);
+  const jours = [];
+  for (let j = 1; j <= dernier; j++) {
+    const iso = ym + "-" + String(j).padStart(2, "0");
+    const d = duMois.filter((e) => e.date === iso);
+    const venteDe = (e) => { const t = num(e.espece) + num(e.carte); return t > 0 ? t : num(e.montant); };
+    const rec = d.filter((e) => e.type === "vente").reduce((s, e) => s + venteDe(e), 0)
+      + d.filter((e) => e.type === "resa" && !e.aRecevoir).reduce((s, e) => s + num(e.montant), 0);
+    const achats = d.filter((e) => ["depense", "invest"].includes(e.type)).reduce((s, e) => s + num(e.montant), 0);
+    const sortie = achats
+      + d.filter((e) => (e.type === "avance" && e.nature !== "salaire") || e.type === "perso")
+          .reduce((s, e) => s + num(e.montant), 0)
+      + quota;
+    const parK = {};
+    (keys || []).forEach((k) => {
+      const v = d.filter((e) => e.type === "vente" && e.affaire === k);
+      parK[k] = { vente: v.reduce((s, e) => s + venteDe(e), 0), saisi: v.length > 0 || !!((((pointages || {})[iso]) || {}).ferme || {})[k], ferme: !!((((pointages || {})[iso]) || {}).ferme || {})[k],
+                  matiere: d.filter((e) => e.type === "depense" && e.affaire === k && e.categorie === "matiere")
+                            .reduce((s, e) => s + num(e.montant), 0) };
+    });
+    jours.push({ j, iso, rec, sortie, achats, parK });
+  }
+  return { jours, nbJours, dernier };
+}
+
+function CourbeMois({ jours, nbJours, M }) {
+  if (!jours.length) return null;
+  const W = 600, H = 190, g = 34, b = 22;
+  let cr = 0, cs = 0;
+  const pts = jours.map((x) => { cr += x.rec; cs += x.sortie; return { j: x.j, cr, cs }; });
+  const haut = Math.max(1, ...pts.map((p) => Math.max(p.cr, p.cs)));
+  const X = (j) => g + ((j - 1) / Math.max(1, nbJours - 1)) * (W - g - 8);
+  const Y = (v) => H - b - (v / haut) * (H - b - 10);
+  const ligne = (cle) => pts.map((p) => X(p.j).toFixed(1) + "," + Y(p[cle]).toFixed(1)).join(" ");
+  const fin = pts[pts.length - 1];
+  const ecart = fin.cr - fin.cs;
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 10 }}>
+        <div className="eyebrow">Ventes contre dépenses, jour après jour</div>
+        <span className="mini" style={{ color: ecart >= 0 ? "#5E8F1E" : "#C9503A" }}>
+          {ecart >= 0 ? "devant de " + fmt(ecart) : "en dessous de " + fmt(-ecart)}
+        </span>
+      </div>
+      <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: "auto", display: "block" }}
+           role="img" aria-label="Ventes et dépenses cumulées depuis le 1er du mois">
+        {[0, .5, 1].map((t) => (
+          <g key={t}>
+            <line x1={g} x2={W - 8} y1={Y(haut * t)} y2={Y(haut * t)} stroke="#E4E9D6" strokeWidth="1" />
+            <text x={g - 5} y={Y(haut * t) + 4} fontSize="11" textAnchor="end" fill="#8A9680">
+              {Math.round(haut * t / 1000)}k
+            </text>
+          </g>
+        ))}
+        {[1, 10, 20, nbJours].map((j) => (
+          <text key={j} x={X(j)} y={H - 6} fontSize="11" textAnchor="middle" fill="#8A9680">{j}</text>
+        ))}
+        <polyline points={ligne("cs")} fill="none" stroke="#C98A1E" strokeWidth="2.5" strokeLinejoin="round" />
+        <polyline points={ligne("cr")} fill="none" stroke="#5E8F1E" strokeWidth="2.5" strokeLinejoin="round" />
+        <circle cx={X(fin.j)} cy={Y(fin.cr)} r="4" fill="#5E8F1E" />
+        <circle cx={X(fin.j)} cy={Y(fin.cs)} r="4" fill="#C98A1E" />
+      </svg>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
+        <span className="mini" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span className="dot" style={{ background: "#5E8F1E", margin: 0 }} />Encaissé : {fmt(fin.cr)}
+        </span>
+        <span className="mini" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span className="dot" style={{ background: "#C98A1E", margin: 0 }} />Sorti : {fmt(fin.cs)}
+        </span>
+      </div>
+      <div className="note">
+        Le vert est tout ce qui est rentré depuis le 1er, l'orange tout ce qui est sorti (achats, charges
+        fixes étalées jour par jour, investissements, prélèvements). Tant que le vert est au-dessus,
+        le mois se paie tout seul. Quand l'orange passe devant, le mois est en train de glisser.
+      </div>
+    </div>
+  );
+}
+
+function MatiereDuJour({ jours, M, config }) {
+  const lignes = (M.keys || []).filter((k) => (config.seuils || {})[k] && M.A[k].ca > 0
+    && jours.some((x) => x.parK[k] && x.parK[k].vente > 0));
+  if (!lignes.length) return null;
+  return (
+    <div className="card">
+      <div className="eyebrow" style={{ marginBottom: 12 }}>Le coût matière, au fil du mois</div>
+      {lignes.map((k) => {
+        const cible = config.seuils[k].matiere;
+        let v = 0, m = 0;
+        const serie = jours.map((x) => { v += x.parK[k].vente; m += x.parK[k].matiere;
+                                         return v > 0 ? (m / v) * 100 : null; });
+        const reel = M.A[k].ca > 0 ? (M.A[k].matiereReelle / M.A[k].ca) * 100 : 0;
+        const etat = reel <= cible ? "#5E8F1E" : reel <= cible * 1.15 ? "#C98A1E" : "#C9503A";
+        const vals = serie.filter((x) => x !== null);
+        const max = Math.max(cible * 1.6, ...vals, 1);
+        const W = 260, H = 46;
+        const X = (i) => (i / Math.max(1, serie.length - 1)) * (W - 4) + 2;
+        const Y = (p) => H - 4 - (Math.min(p, max) / max) * (H - 8);
+        const pts = serie.map((p, i) => p === null ? null : X(i).toFixed(1) + "," + Y(p).toFixed(1)).filter(Boolean).join(" ");
+        return (
+          <div key={k} style={{ display: "flex", alignItems: "center", gap: 14, padding: "8px 0",
+                                borderBottom: "1px solid #EEF1E4", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 130px", minWidth: 120 }}>
+              <div style={{ fontSize: 16.5 }}>{config.affaires[k].nom}</div>
+              <div className="mini">cible {cible} %</div>
+            </div>
+            <svg viewBox={"0 0 " + W + " " + H} style={{ flex: "2 1 160px", width: "100%", maxWidth: 300, height: 46 }}>
+              <line x1="0" x2={W} y1={Y(cible)} y2={Y(cible)} stroke="#B9C2A8" strokeDasharray="4 4" />
+              <polyline points={pts} fill="none" stroke={etat} strokeWidth="2.5" strokeLinejoin="round" />
+            </svg>
+            <div style={{ flex: "0 0 74px", textAlign: "right", fontSize: 20, color: etat }}>
+              {Math.round(reel)} %
+            </div>
+          </div>
+        );
+      })}
+      <div className="note">
+        Pour 100 DH vendus, combien ont été dépensés en marchandise (viande, légumes, boissons…) depuis le 1er.
+        La ligne pointillée est ta cible. Une courbe qui monte au-dessus : on achète trop, ou des ventes
+        ne sont pas saisies.
+      </div>
+    </div>
+  );
+}
+
+function CalendrierSaisies({ jours, nbJours, M, config, ym }) {
+  const lignes = (M.keys || []).filter((k) => jours.some((x) => x.parK[k] && x.parK[k].saisi));
+  if (!lignes.length) return null;
+  const auj = new Date().toISOString().slice(0, 10);
+  const [an, mo] = ym.split("-").map(Number);
+  /* La semaine commence le lundi : on décale le 1er du mois d'autant de cases. */
+  const decalage = (new Date(an, mo - 1, 1).getDay() + 6) % 7;
+  const parJour = {};
+  jours.forEach((x) => { parJour[x.j] = x; });
+  const court = (v) => v >= 1000 ? (Math.round(v / 100) / 10).toString().replace(".", ",") + "k" : String(Math.round(v));
+  const manquants = jours.filter((x) => x.iso !== auj && lignes.some((k) => !x.parK[k].saisi));
+  const totRec = jours.reduce((s, x) => s + x.rec, 0);
+  const totAch = jours.reduce((s, x) => s + x.achats, 0);
+  const cases = [];
+  for (let i = 0; i < decalage; i++) cases.push(null);
+  for (let j = 1; j <= nbJours; j++) cases.push(j);
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <div className="eyebrow">Le mois, jour par jour</div>
+        <span className="mini" style={{ color: manquants.length ? "#C9503A" : "#5E8F1E" }}>
+          {manquants.length ? manquants.length + " jour" + (manquants.length > 1 ? "s" : "") + " avec une vente non saisie"
+                            : "toutes les ventes sont saisies"}
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        {["lun", "mar", "mer", "jeu", "ven", "sam", "dim"].map((n) => (
+          <div key={n} className="mini" style={{ textAlign: "center", fontSize: 12.5 }}>{n}</div>
+        ))}
+        {cases.map((j, i) => {
+          if (j === null) return <div key={"v" + i} />;
+          const x = parJour[j];
+          const iso = ym + "-" + String(j).padStart(2, "0");
+          const futur = !x;
+          const oubli = x && iso !== auj && lignes.some((k) => !x.parK[k].saisi);
+          return (
+            <div key={j} style={{ minHeight: 70, borderRadius: 8, padding: "5px 4px", minWidth: 0,
+                                  background: futur ? "#F4F6EC" : "#FFFFFF",
+                                  border: oubli ? "1.5px solid #C9503A" : iso === auj ? "1.5px solid #5E8F1E" : "1px solid #E4E9D6",
+                                  display: "flex", flexDirection: "column", gap: 2, textAlign: "center" }}>
+              <div style={{ fontSize: 12.5, color: "#8A9680", fontWeight: iso === auj ? 600 : 400 }}>{j}</div>
+              {x && x.rec > 0 && <div style={{ fontSize: 13.5, color: "#5E8F1E", lineHeight: 1.15 }}>{court(x.rec)}</div>}
+              {x && x.achats > 0 && <div style={{ fontSize: 13.5, color: "#C98A1E", lineHeight: 1.15 }}>−{court(x.achats)}</div>}
+              {x && (
+                <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: "auto" }}>
+                  {lignes.map((k) => (
+                    <span key={k} title={config.affaires[k].nom + (x.parK[k].ferme && !x.parK[k].vente ? " — fermé" : x.parK[k].saisi ? " — " + fmt(x.parK[k].vente) : " — rien saisi")}
+                          style={{ width: 9, height: 9, borderRadius: 5, boxSizing: "border-box",
+                                   background: x.parK[k].ferme && !x.parK[k].vente ? "#C8CDBE" : x.parK[k].saisi ? teinte(config.affaires[k]) : "transparent",
+                                   border: x.parK[k].saisi ? "none" : "1.5px solid #C9503A" }} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12 }}>
+        <span className="mini"><span style={{ color: "#5E8F1E" }}>■</span> encaissé du jour : {fmt(totRec)}</span>
+        <span className="mini"><span style={{ color: "#C98A1E" }}>■</span> achats du jour : {fmt(totAch)}</span>
+        {lignes.map((k) => (
+          <span key={k} className="mini" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="dot" style={{ background: teinte(config.affaires[k]), margin: 0 }} />{config.affaires[k].nom}
+          </span>
+        ))}
+      </div>
+      <div className="note">
+        Chaque case est un jour : en vert ce qui est rentré, en orange ce qui a été acheté. Les points
+        du bas disent, activité par activité, si la vente du jour a été saisie. Un point gris = fermé ce
+        jour-là (vente comptée à 0). Un point vide à bordure rouge (et la case entourée de rouge) = rien saisi.
+      </div>
+    </div>
+  );
+}
+const ym2 = (iso) => iso.slice(5, 7);
+
+function AchatsParFournisseur({ entries, ym, config }) {
+  const noms = {};
+  (config.fournisseurs || []).forEach((f) => { noms[f.id] = f.nom; });
+  const groupes = {};
+  (entries || []).filter((e) => e.type === "depense" && (e.date || "").slice(0, 7) === ym
+                              && e.affaire !== "foyer").forEach((e) => {
+    const nom = e.fournisseur && noms[e.fournisseur] ? noms[e.fournisseur]
+      : String(e.lbl || "Divers").split(/[—–-]/).pop().trim().slice(0, 28) || "Divers";
+    const g = groupes[nom] || (groupes[nom] = { nom, total: 0, du: 0 });
+    g.total += num(e.montant);
+    if (e.aPayer) g.du += num(e.montant) - dejaVerse(e);
+  });
+  const liste = Object.values(groupes).sort((a, b) => b.total - a.total).slice(0, 8);
+  if (!liste.length) return null;
+  const haut = Math.max(1, ...liste.map((g) => g.total));
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
+        <div className="eyebrow">Où vont les achats</div>
+        <span className="mini">partie claire : pas encore payé</span>
+      </div>
+      {liste.map((g) => (
+        <div key={g.nom} style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+            <span style={{ fontSize: 16 }}>{g.nom}</span>
+            <span className="affNum" style={{ fontSize: 16 }}>{fmt(g.total)}</span>
+          </div>
+          <div style={{ display: "flex", height: 11, width: Math.max(2, (g.total / haut) * 100) + "%" }}>
+            <div style={{ flex: g.total - g.du, background: "#C98A1E", borderRadius: "4px 0 0 4px" }} />
+            <div style={{ flex: g.du, background: "#C98A1E", opacity: .3, borderRadius: g.total === g.du ? 4 : "0 4px 4px 0" }} />
+          </div>
+        </div>
+      ))}
+      <div className="note">
+        Les huit plus gros postes d'achats du mois. Un poste qui grossit d'un mois sur l'autre, ou une grosse
+        partie claire (non payée), se repère d'un coup d'œil.
+      </div>
+    </div>
+  );
+}
+
+function Signaux({ M, config, ym, entries }) {
+  const { jours, nbJours } = parJourDuMois(entries, ym, M, M.keys, config.pointages);
+  return (
+    <>
+      <Rythme M={M} config={config} />
+      <MatiereDuJour jours={jours} M={M} config={config} />
+      <CalendrierSaisies jours={jours} nbJours={nbJours} M={M} config={config} ym={ym} />
+      <AchatsParFournisseur entries={entries} ym={ym} config={config} />
+    </>
+  );
+}
+
+function Dashboard({ M, config, ym, onAller, onRegler, entries, onAdd, onDel, onMaj, onSaveConfig, onChiffrer,
                     taches, onAddTache, onMajTache, onDelTache }) {
   const [detail, setDetail] = useState(false);
-  const couvert = M.caTotal >= M.seuil;
-  const reste = Math.max(0, M.seuil - M.caTotal);
-  const bonus = Math.max(0, M.caTotal - M.seuil);
-
-  /* Le ton suit la situation, sans jamais alarmer */
-  let phrase;
-  if (M.caTotal === 0) {
-    phrase = "Le mois commence. Saisis ton premier chiffre de caisse ce soir.";
-  } else if (couvert) {
-    phrase = "Le mois est couvert. À partir d'ici, tout ce qui rentre est pour toi.";
-  } else {
-    const attendu = (M.joursMois - M.joursRestants) / M.joursMois;
-    const ou = M.caTotal / (M.seuil || 1);
-    if (ou >= attendu * 0.95) phrase = "Tu es dans le rythme.";
-    else if (M.joursRestants > 7) phrase = "Il reste " + M.joursRestants + " jours pour y arriver.";
-    else phrase = "Dernière ligne droite.";
-  }
+  const enCours = ym >= thisMonth();
 
   return (
     <>
-      {/* Trois chiffres, pas un de plus, et tous les trois de l'argent réel.
-          Les versions précédentes mélangeaient de l'argent qui a bougé, des
-          engagements théoriques et des projections de fin de mois dans la même
-          rangée : illisible. Ici, ce qui est rentré, ce qui est sorti pour de
-          bon, ce qui doit encore sortir. Le reste est plus bas, à sa place. */}
       {(M.orphelines.n > 0 || M.orphelines.primes > 0 || M.orphelines.fixes > 0
         || M.orphelines.cleIncomplete) && (
         <div className="card" style={{ background: "#FDF4E7", borderColor: "#EBD7B4",
@@ -3573,75 +4702,64 @@ function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSa
         </div>
       )}
 
+      {/* Une seule question : combien il me reste ce mois-ci ? Le chiffre compte
+          TOUTES les charges du mois, cochées ou non : il ne bouge pas selon ce
+          qu'on a pensé à pointer. */}
       <div className="card bandeau" style={{ padding: "26px 24px" }}>
         <div className="heroLbl">{monthLabel(ym)}</div>
-
-        <div style={{ display: "grid", gap: 18, margin: "16px 0 4px",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
-          <div>
-            <div className="eyebrow">Ce que j'ai fait rentrer</div>
-            <div className="heroNum pos" style={{ fontSize: 33 }}>{fmt(M.encaisse)}</div>
-            <div className="mini">recettes encaissées, commissions déduites</div>
-          </div>
-          <div>
-            <div className="eyebrow">Ce que j'ai réellement payé</div>
-            <div className="heroNum neg" style={{ fontSize: 33 }}>{fmt(M.dejaPaye)}</div>
-            <div className="mini">sorti de la caisse — achats réglés, échéances pointées, avances, matériel</div>
-          </div>
-          <div>
-            <div className="eyebrow">Ce que je dois payer</div>
-            <div className="heroNum" style={{ fontSize: 33, color: "#B07C1E" }}>
-              {fmt(M.resteAPayer)}
-            </div>
-            <div className="mini">
-              {fmt(M.aCouvrir)} d'échéances non pointées
-              {M.dettes > 0 ? " + " + fmt(M.dettes) + " aux fournisseurs" : ""}
-            </div>
-          </div>
-        </div>
-
-        {/* La caisse du mois se lit en soustrayant le deuxième du premier. On
-            l'écrit plutôt que d'en faire un quatrième gros chiffre : elle se
-            déduit, elle ne s'ajoute pas. */}
-        <div className="mini" style={{ marginTop: 10 }}>
-          {(() => {
-            const caisse = M.encaisse - M.dejaPaye;
-            return "Sur le mois, " + (caisse >= 0 ? "il t'est resté " + fmt(caisse)
-                                                  : "tu as sorti " + fmt(-caisse) + " de plus que tu n'as encaissé")
-                 + (caisse >= 0 ? " en caisse." : ".");
-          })()}
-          {M.pretsEntreeMois > 0 && " Ce chiffre ne compte pas les " + fmt(M.pretsEntreeMois)
-            + " d'emprunt reçu ce mois-ci : c'est de l'argent à rendre, pas de l'argent gagné."}
-        </div>
-
-        <div style={{ height: 18, borderRadius: 9, background: "#EDF0E4",
-                      overflow: "hidden", margin: "20px 0 12px" }}>
-          <div style={{ width: M.avancement + "%", height: "100%", transition: "width .4s",
-                        background: couvert
-                          ? "linear-gradient(90deg,#6BA023,#A4BA31)"
-                          : "linear-gradient(90deg,#A4BA31,#C6D96B)" }} />
-        </div>
-
-        <div style={{ fontSize: 18, fontWeight: 500, color: "#38452F" }}>{phrase}</div>
-        <NoteDuMois config={config} ym={ym} onSave={onSaveConfig} />
-
-        <div className="mini" style={{ marginTop: 7 }}>
-          {fmt(M.caTotal)} de chiffre d'affaires encaissé.
-          {!couvert && M.caTotal > 0
-            ? " Encore " + fmt(reste) + " pour atteindre le seuil de rentabilité."
-            : couvert && bonus > 0
-              ? " " + fmt(bonus) + " au-dessus du seuil de rentabilité."
-              : ""}
-        </div>
-        {M.tresorerie < 0 && (
-          <div className="mini" style={{ marginTop: 5 }}>
-            Si tu honores tout ce qui reste à payer, le mois se termine à {fmt(M.tresorerie)}.
-            C'est une projection de fin de mois, pas ta caisse d'aujourd'hui : les charges
-            comptent dès le 1er, les recettes arrivent jour après jour.
-          </div>
+        {M.resteMois >= 0 ? (
+          <>
+            <div className="eyebrow" style={{ marginTop: 14 }}>Ce qu'il te reste ce mois-ci</div>
+            <div className="heroNum pos" style={{ fontSize: 46 }}>{fmt(M.resteMois)}</div>
+          </>
+        ) : enCours ? (
+          <>
+            <div className="eyebrow" style={{ marginTop: 14 }}>Encore à encaisser pour couvrir le mois</div>
+            <div className="heroNum" style={{ fontSize: 46, color: "#B07C1E" }}>{fmt(-M.resteMois)}</div>
+          </>
+        ) : (
+          <>
+            <div className="eyebrow" style={{ marginTop: 14 }}>Le mois s'est terminé en dessous des charges de</div>
+            <div className="heroNum neg" style={{ fontSize: 46 }}>{fmt(-M.resteMois)}</div>
+          </>
         )}
+        <div className="mini" style={{ marginTop: 6 }}>
+          {fmt(M.encaisse)} encaissés, moins {fmt(M.sortiesPures)} de charges du mois
+          (payées ou pas encore).
+          {M.resteMois < 0 && enCours
+            ? " Le mois n'est pas fini : les charges comptent dès le 1er, les ventes arrivent jour après jour."
+            : ""}
+        </div>
+        <NoteDuMois config={config} ym={ym} onSave={onSaveConfig} />
       </div>
 
+      <Controle entries={entries} config={config} ym={ym} onMaj={onMaj} onAller={onAller} />
+      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler} onChiffrer={onChiffrer}
+               entries={entries} onMaj={onMaj} />
+
+      <Signaux M={M} config={config} ym={ym} entries={entries} />
+
+      <div className="card">
+        <h2 className="h2">Où part l'argent</h2>
+        {M.detailSimple.map(([lbl, v]) => (
+          <div className="row" key={lbl}>
+            <span className="lbl">{lbl === "Reporté sur le mois suivant" ? "Dont repoussé au mois suivant" : lbl}</span>
+            <span className="val">{v < 0 ? "− " + fmt(-v) : fmt(v)}</span>
+          </div>
+        ))}
+        <div className="row rowTot">
+          <span className="lbl">Total des charges du mois</span>
+          <span className="val">{fmt(M.sortiesPures)}</span>
+        </div>
+      </div>
+
+      <button className="pill" onClick={() => setDetail(!detail)}
+              style={{ width: "100%", padding: "13px", margin: "14px 0" }}>
+        {detail ? "Masquer le détail" : "Voir le détail"}
+      </button>
+
+      {detail && (
+        <>
       {/* Le chiffre du mois d'abord, qui fait quoi juste après. */}
       <Taches taches={taches} config={config} onAdd={onAddTache}
               onMaj={onMajTache} onDel={onDelTache} />
@@ -3749,14 +4867,7 @@ function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSa
       <Coherence M={M} config={config} onAller={onAller} />
 
       {/* Ligne 2 — ce qui s'est passé, et qu'on peut encore corriger */}
-      <div className="board">
-        <div className="col">
-          <BarresCA M={M} config={config} onAller={onAller} />
-        </div>
-        <div className="col">
-          <Rythme M={M} config={config} />
-        </div>
-      </div>
+      <BarresCA M={M} config={config} onAller={onAller} />
 
       {/* Ligne 3 — ce qui arrive. En deux colonnes, la gauche se vidait et
           laissait une demi-page de creme sous le bloc le plus consulte : les
@@ -3772,56 +4883,7 @@ function Dashboard({ M, config, ym, onAller, onRegler, onAdd, onDel, onMaj, onSa
           </div>
         </div>
       )}
-      <Bientot M={M} config={config} onAller={onAller} onRegler={onRegler} />
-
-      <button className="pill" onClick={() => setDetail(!detail)}
-              style={{ width: "100%", padding: "13px", margin: "14px 0" }}>
-        {detail ? "Masquer les états financiers" : "Voir les états financiers"}
-      </button>
-
-      {detail && (
-        <div className="board">
-          <div className="card">
-            <h2 className="h2">Où va l'argent du mois</h2>
-            <div className="row"><span className="lbl">Ce qui rentre, commissions déduites</span>
-              <span className="val pos">{fmt(M.encaisse)}</span></div>
-            {M.empruntNet > 0 && (
-              <div className="row"><span className="lbl">Emprunté à un proche</span>
-                <span className="val pos">+ {fmt(M.empruntNet)}</span></div>
-            )}
-            {M.empruntNet < 0 && (
-              <div className="row"><span className="lbl">Prêté ou remboursé</span>
-                <span className="val neg">− {fmt(-M.empruntNet)}</span></div>
-            )}
-            {M.detailSorties.map(([lbl, v]) => (
-              <div className="row" key={lbl}>
-                <span className="lbl" style={{ paddingLeft: 14 }}>{lbl}</span>
-                <span className={"val " + (v < 0 ? "pos" : "neg")} style={{ fontSize: 16 }}>
-                  {v < 0 ? "+ " + fmt(-v) : "− " + fmt(v)}
-                </span>
-              </div>
-            ))}
-            <div className="row"><span className="lbl">Ce que le mois coûte en tout</span>
-              <span className="val neg">− {fmt(M.coutDuMois)}</span></div>
-            <div className="row rowTot"><span className="lbl">Ce qu'il reste</span>
-              <span className={"val " + (M.tresorerie >= 0 ? "pos" : "neg")}>{fmt(M.tresorerie)}</span></div>
-            {(M.avPerso > 0 || M.invests > 0) && (
-              <div className="note">
-                Dont {M.avPerso > 0 ? fmt(M.avPerso) + " de prélèvements" : ""}
-                {M.avPerso > 0 && M.invests > 0 ? " et " : ""}
-                {M.invests > 0 ? fmt(M.invests) + " de travaux et matériel" : ""} — des sorties
-                de caisse qui ne sont pas des charges du mois.
-              </div>
-            )}
-            <div className="note">
-              Ce que le mois doit sortir compte TOUTES ses charges, réglées ou non, factures
-              fournisseurs en attente comprises — sauf celles que tu as explicitement
-              reportées sur le mois suivant. C'est le solde de fin de mois si tout est
-              honoré, pas ta caisse d'aujourd'hui.
-              {M.dettes > 0 && " Dont " + fmt(M.dettes) + " encore dus à tes fournisseurs."}
-            </div>
-          </div>
-        </div>
+        </>
       )}
     </>
   );
@@ -3839,11 +4901,11 @@ const TAILLE_CREST = {
   dash:     { width: 53, height: 53 },
   reglages: { width: 56, height: 62 },
   sabich:  { width: 107, height: 27 },
-  tmsk:    { width: 93, height: 39 },
+  tmsk:    { width: 96, height: 47 },
   riad:    { width: 90, height: 61 },
   contenu: { width: 69, height: 57 },
   foyer:   { width: 53, height: 48 },
-  taam:    { width: 105, height: 27 },
+  taam:    { width: 96, height: 35 },
 };
 
 const HABIT_VUE = { dash: HABIT_DASH, foyer: HABIT_FOYER, reglages: HABIT_REGLAGES };
@@ -3894,10 +4956,10 @@ function Saisie({ config, ym, onAdd, entries }) {
         <div className="pos" style={{ fontSize: 16.5 }}>{ok}</div></div>}
 
       {type === "vente"   && <FVente   config={config} defDate={defDate} onAdd={onAdd} flash={flash} entries={entries} />}
-      {type === "resa"    && <FResa    config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
+      {type === "resa"    && <FResa    config={config} defDate={defDate} onAdd={onAdd} flash={flash} entries={entries} />}
       {type === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
       {type === "depense" && <FDepense config={config} defDate={defDate} onAdd={onAdd} flash={flash} deja={deja} entries={entries} />}
-      {type === "avance"  && <FAvance  defDate={defDate} onAdd={onAdd} flash={flash} config={config} />}
+      {type === "avance"  && <FAvance  defDate={defDate} onAdd={onAdd} flash={flash} config={config} entries={entries} />}
       {type === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={onAdd} flash={flash} />}
     </>
   );
@@ -4003,10 +5065,10 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
       <div className="eyebrow" style={{ marginTop: 4, marginBottom: 10 }}>Ce qui a été compté</div>
       <div className="grid2">
         <div><label className="f">Cash compté</label>
-          <input className="f" inputMode="decimal" placeholder="4700" value={espece}
+          <input className="f" inputMode="decimal" value={espece}
                  onChange={(e) => setEspece(e.target.value)} /></div>
         <div><label className="f">CB compté</label>
-          <input className="f" inputMode="decimal" placeholder="2000" value={carte}
+          <input className="f" inputMode="decimal" value={carte}
                  onChange={(e) => setCarte(e.target.value)} /></div>
       </div>
 
@@ -4025,11 +5087,11 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10 }}>
         <div style={{ flex: 1 }}>
           <label className="f">Numéro STAN</label>
-          <input className="f" inputMode="numeric" placeholder="004521" value={stan}
+          <input className="f" inputMode="numeric" value={stan}
                  onChange={(e) => setStan(e.target.value)} /></div>
         <div style={{ width: 130 }}>
           <label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="450" value={mtStan}
+          <input className="f" inputMode="decimal" value={mtStan}
                  onChange={(e) => setMtStan(e.target.value)}
                  onKeyDown={(e) => { if (e.key === "Enter") ajouterTicket(); }} /></div>
         <button className="pill" style={{ marginBottom: 1 }} onClick={ajouterTicket}>Ajouter</button>
@@ -4104,7 +5166,7 @@ function FVente({ config, defDate, onAdd, flash, fixe, entries }) {
   );
 }
 
-function FResa({ config, defDate, onAdd, flash, fixe }) {
+function FResa({ config, defDate, onAdd, flash, fixe, entries }) {
   const liste = hebergeurs(config);
   const [affaire, setAffaire] = useState(fixe || (liste[0] ? liste[0][0] : ""));
   const [date, setDate] = useState(defDate);
@@ -4122,6 +5184,18 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
   const valider = () => {
     if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
     if (num(nuits) <= 0)   { setErreur("Nombre de nuits manquant."); return; }
+    /* Un code de séjour appartient à une seule réservation : saisi deux fois
+       (par toi puis par SAIB), il gonflerait la recette. On refuse. */
+    const refSaisie = reference.trim().toLowerCase();
+    const dejaResa = refSaisie
+      ? (entries || []).find((x) => x.type === "resa" && (x.reference || "").trim().toLowerCase() === refSaisie)
+      : null;
+    if (dejaResa) {
+      setErreur("Code déjà enregistré : réservation du " + (dejaResa.date || "").slice(8, 10) + "/"
+        + (dejaResa.date || "").slice(5, 7) + " · " + fmt(num(dejaResa.montant))
+        + ". Pas enregistrée une seconde fois.");
+      return;
+    }
     setErreur("");
     onAdd({ type: "resa", date, affaire, source, nuits: num(nuits), montant: num(montant),
             reference: reference.trim(), aRecevoir });
@@ -4151,12 +5225,12 @@ function FResa({ config, defDate, onAdd, flash, fixe }) {
             <option value="direct">Réservation directe</option>
           </select></div>
         <div><label className="f">Nombre de nuits</label>
-          <input className="f" inputMode="decimal" placeholder="3" value={nuits}
+          <input className="f" inputMode="decimal" value={nuits}
                  onChange={(e) => setNuits(e.target.value)} /></div>
       </div>
       <div className="grid2">
         <div><label className="f">Prix du séjour</label>
-          <input className="f" inputMode="decimal" placeholder="6150" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => setMontant(e.target.value)} /></div>
         <div><label className="f">Référence de séjour</label>
           <input className="f" placeholder="Code Airbnb" value={reference}
@@ -4303,21 +5377,49 @@ function FRepas({ config, defDate, onAdd, flash, fixe }) {
   );
 }
 
+/* Les bons de livraison qu'une facture peut solder : ceux du même fournisseur,
+   de la même activité, encore « à régler ». La facture REMPLACE ces BL, elle ne
+   s'ajoute pas : on ne compte que l'écart entre son total et leur somme. */
+function rapprochementBL(entries, affaire, fournisseurId, totalFacture, exclus) {
+  const bls = fournisseurId
+    ? (entries || []).filter((e) => e.type === "depense" && e.aPayer && e.piece === "bl" && !e.facture
+        && e.affaire === affaire && e.fournisseur === fournisseurId)
+        .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+    : [];
+  const choisis = bls.filter((b) => !(exclus || []).includes(b.id));
+  const somme = choisis.reduce((s, b) => s + num(b.montant), 0);
+  const ecart = Math.round((num(totalFacture) - somme) * 100) / 100;
+  return { bls, choisis, somme, ecart };
+}
+
 function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   const [date, setDate] = useState(defDate);
   const [affaire, setAffaire] = useState(fixe || "sabich");
   const [choix, setChoix] = useState("");
   const [lbl, setLbl] = useState("");
   const [montant, setMontant] = useState("");
-  const [piece, setPiece] = useState("facture");
+  /* La norme, c'est la livraison : si on oublie de choisir, c'est un BL,
+     à payer plus tard avec la facture du fournisseur. */
+  const [piece, setPiece] = useState("bl");
   const [numero, setNumero] = useState("");
-  const [aPayer, setAPayer] = useState(false);
+  const [aPayer, setAPayer] = useState(true);
+  /* Pendant l'enregistrement, la pièce apparaît déjà dans la liste : sans ce
+     drapeau, l'app criait « numéro déjà enregistré » sur la pièce qu'elle
+     venait elle-même d'enregistrer, et un second clic était refusé. */
+  const [envoi, setEnvoi] = useState(false);
   const [poche, setPoche] = useState("");
   const [exceptionnel, setExceptionnel] = useState(false);
+  const [marchandise, setMarchandise] = useState(false);
   const [erreur, setErreur] = useState("");
 
   const liste = (config.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
   const courant = liste.find((f) => f.id === choix);
+
+  const [rapprocher, setRapprocher] = useState(true);
+  const [exclus, setExclus] = useState([]);
+  const rap = rapprochementBL(entries, affaire, piece === "facture" && courant ? courant.id : null,
+                              montant, exclus);
+  const actif = rap.bls.length > 0 && rapprocher && rap.choisis.length > 0;
 
   /* Un numéro de pièce appartient à une seule livraison. Le même numéro chez le
      même fournisseur, c'est la même marchandise : soit le bon de livraison et sa
@@ -4352,8 +5454,18 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
       && String(e.lbl || "").trim().toLowerCase() === nomTiers.trim().toLowerCase());
 
   const valider = async () => {
+    if (envoi) return;
     if (num(montant) <= 0) {
       setErreur("Montant manquant — écris le montant en chiffres avant d'enregistrer.");
+      return;
+    }
+    if (!courant && !lbl.trim()) {
+      setErreur("Intitulé manquant — écris ce qui a été acheté, sinon on ne le retrouvera pas.");
+      return;
+    }
+    if (courant && ["bl", "facture"].includes(piece) && !numero.trim()) {
+      setErreur("Numéro manquant — recopie le numéro " + (piece === "bl" ? "du bon de livraison" : "de la facture")
+        + ". S'il n'y en a pas, ajoute-le au stylo sur le papier (1, 2, 3…) et saisis-le ici.");
       return;
     }
     if (memeLigne.length > 0) {
@@ -4371,23 +5483,70 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
     }
     setErreur("");
     const nom = nomTiers;
-    const ok = await onAdd({ type: "depense", date, affaire,
-            categorie: courant ? "matiere" : "autre",
+    const pocheSortie = aPayer ? "" : (poche || caisseDe(config, affaire));
+    /* Une facture qui solde des BL : elle ne s'ajoute pas au coût, seul l'écart
+       compte. Les BL passent en réglés si la facture l'est, sinon ils restent dus. */
+    const ids = actif ? rap.choisis.map((b) => b.id) : [];
+    setEnvoi(true);
+    const ok = await onAdd(actif
+      ? { type: "depense", date, affaire, categorie: "matiere",
+          fournisseur: courant.id, piece, numero: numero.trim(), aPayer, exceptionnel,
+          poche: pocheSortie,
+          lbl: nom + " — facture solde " + ids.length + " BL",
+          montant: rap.ecart, totalFacture: num(montant), blsSoldes: ids,
+          solde: { ids, champs: { facture: numero.trim(), factureLe: date,
+                    ...(aPayer ? {} : { aPayer: false, regleLe: aujourdhui(), poche: pocheSortie }) } } }
+      : { type: "depense", date, affaire,
+            categorie: (courant || piece === "bl" || marchandise) ? "matiere" : "autre",
             fournisseur: courant ? courant.id : null,
             piece, numero: numero.trim(), aPayer, exceptionnel,
-            poche: aPayer ? "" : (poche || caisseDe(config, affaire)),
+            poche: pocheSortie,
             lbl: nom, montant: num(montant) });
     if (ok === false) {
+      setEnvoi(false);
       setErreur("Pas enregistré — ne quitte pas cette page, vérifie ta connexion et réessaie.");
       return;
     }
     flash(nom + " — enregistré.");
-    setMontant(""); setLbl(""); setNumero(""); setExceptionnel(false);
+    setNumero(""); setEnvoi(false);
+    setMontant(""); setLbl(""); setNumero(""); setExceptionnel(false); setMarchandise(false);
   };
 
   return (
     <div className="card">
       {!fixe && config.affaires[affaire] && <Crest k={affaire} c={config.affaires[affaire]} />}
+
+      <label className="f">Que veux-tu saisir ?</label>
+      <div style={{ display: "flex", gap: 9, marginBottom: 6, flexWrap: "wrap" }}>
+        <button className={"pill" + (piece === "bl" ? " on" : "")}
+                onClick={() => { setPiece("bl"); setAPayer(true); setErreur(""); }}>Une livraison</button>
+        <button className={"pill" + (piece === "facture" ? " on" : "")}
+                onClick={() => { setPiece("facture"); setAPayer(false); setErreur(""); }}>Une facture du fournisseur</button>
+        <button className={"pill" + (piece === "bon" ? " on" : "")}
+                onClick={() => { setPiece("bon"); setAPayer(false); setErreur(""); }}>Un achat payé sur place</button>
+      </div>
+      <div className="mini" style={{ marginBottom: 16 }}>
+        {piece === "bl" ? "Le bon de livraison que le fournisseur te laisse : rien à payer maintenant, tu règles sa facture en fin de mois."
+          : piece === "facture" ? "La facture que le fournisseur t'envoie (en fin de mois, en général). Elle remplace ses bons de livraison."
+          : "Un achat réglé tout de suite, avec un ticket ou sans papier (pain, courses, petite réparation)."}
+      </div>
+
+      {/* 07/10 : le numéro en premier — c'est ce qu'on lit en haut à droite
+          d'une facture ou d'un BL. */}
+      <div style={{ marginBottom: 14 }}>
+        <label className="f">{piece === "bl" ? "Numéro du bon de livraison (obligatoire)"
+          : piece === "facture" ? "Numéro de la facture (obligatoire)" : "Numéro du ticket (facultatif)"}</label>
+        <input className="f" placeholder={piece === "bl" ? "N° du BL — s'il n'y en a pas, numérote au stylo : 1, 2, 3…" : ""}
+               value={numero} onChange={(e) => { setNumero(e.target.value); setErreur(""); }} />
+      </div>
+      {dejaSaisi.length > 0 && !envoi && (
+        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
+                      padding: "10px 12px", marginBottom: 14, fontSize: 15.5 }}>
+          Ce numéro est déjà enregistré pour {nomTiers} : {dejaSaisi.map(rappel).join(" — ")}.
+          Cette pièce ne sera pas enregistrée une seconde fois.
+        </div>
+      )}
+
 
       <div className={fixe ? "" : "grid2"}>
         {!fixe && (
@@ -4395,7 +5554,7 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
             <select className="f" value={affaire}
                     onChange={(e) => { setAffaire(e.target.value); setChoix(""); }}>
               {Object.entries(config.affaires).map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
-              <option value="structure">Structure (comptable, impôts…)</option>
+              <option value="structure">Structure (société, impôts…)</option>
             </select></div>
         )}
         <div style={{ marginBottom: 12 }}><label className="f">Date de la pièce</label>
@@ -4407,14 +5566,10 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
           <label className="f">Fournisseur</label>
           <div className="navSimple" style={{ marginBottom: 14 }}>
             {liste.map((f) => {
-              const total = deja(affaire, f.id);
               return (
                 <button key={f.id} className={"pill" + (choix === f.id ? " on" : "")}
                         onClick={() => setChoix(f.id)}>
                   {f.nom}
-                  <span style={{ opacity: .65, fontSize: 14, marginLeft: 8 }}>
-                    {total > 0 ? fmt(total) : RYTHMES[f.rythme]}
-                  </span>
                 </button>
               );
             })}
@@ -4431,32 +5586,21 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
                  placeholder={courant ? "Ce que tu as acheté" : "Facture d'électricité, gaz, réparation…"}
                  value={lbl} onChange={(e) => { setLbl(e.target.value); setErreur(""); }} /></div>
         <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="1200" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
       </div>
 
-      <label className="f">Justificatif</label>
-      <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-        <button className={"pill" + (piece === "bl" ? " on" : "")}
-                onClick={() => { setPiece("bl"); setAPayer(true); }}>Bon de livraison</button>
-        <button className={"pill" + (piece === "facture" ? " on" : "")}
-                onClick={() => { setPiece("facture"); setAPayer(false); }}>Facture</button>
-        <button className={"pill" + (piece === "bon" ? " on" : "")}
-                onClick={() => { setPiece("bon"); setAPayer(false); }}>Bon de dépense</button>
-        <input className="f" style={{ width: 170 }}
-               placeholder={piece === "bl" ? "N° du BL" : piece === "facture" ? "N° de facture" : "N° du bon"}
-               value={numero} onChange={(e) => { setNumero(e.target.value); setErreur(""); }} />
-      </div>
-
-      {dejaSaisi.length > 0 && (
-        <div style={{ background: "#FDECEC", color: "#A4262C", borderRadius: 10,
-                      padding: "10px 12px", marginBottom: 14, fontSize: 15.5 }}>
-          Ce numéro est déjà enregistré pour {nomTiers} : {dejaSaisi.map(rappel).join(" — ")}.
-          Cette pièce ne sera pas enregistrée une seconde fois.
+      {!courant && piece !== "bl" && (
+        <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+          <button className={"pill" + (marchandise ? " on" : "")}
+                  onClick={() => setMarchandise(!marchandise)}>
+            {marchandise ? "✓ " : ""}Marchandise (nourriture, boissons, ingrédients)
+          </button>
+          <span className="mini">Non cochée = charge (nettoyage, réparation, électricité…)</span>
         </div>
       )}
 
-      {piece !== "bl" && (
+      {piece === "facture" && (
         <>
           <label className="f">Réglée ?</label>
           <div style={{ display: "flex", gap: 9, marginBottom: 14, flexWrap: "wrap" }}>
@@ -4479,10 +5623,74 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
           )}
         </>
       )}
+      {piece === "bon" && (
+        <>
+          <label className="f">Payé depuis</label>
+          <select className="f" style={{ marginBottom: 14 }}
+                  value={poche || caisseDe(config, affaire)}
+                  onChange={(e) => setPoche(e.target.value)}>
+            {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          </select>
+        </>
+      )}
       {piece === "bl" && (
         <div className="mini" style={{ marginBottom: 14, color: "#B07C1E" }}>
           Un bon de livraison part toujours en « à régler ». Tu solderas le fournisseur d'un
           seul geste le jour où tu paies sa facture.
+        </div>
+      )}
+
+      {piece === "bl" && !courant && liste.length > 0 && (
+        <div className="mini" style={{ marginBottom: 14, color: "#C9503A" }}>
+          Choisis le fournisseur dans la liste : sans lui, sa facture de fin de mois ne pourra
+          pas solder ce bon de livraison.
+        </div>
+      )}
+
+      {piece === "facture" && rap.bls.length > 0 && (
+        <div style={{ background: "#FDF6E7", border: "1px solid #E9D9AE", borderRadius: 12,
+                      padding: "12px 14px", marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 500, color: "#8A6A1C" }}>
+            {rap.bls.length} bon{rap.bls.length > 1 ? "s" : ""} de livraison non payé
+            {rap.bls.length > 1 ? "s" : ""} chez {courant.nom}
+          </div>
+          <div style={{ display: "flex", gap: 9, margin: "10px 0", flexWrap: "wrap" }}>
+            <button className={"pill" + (rapprocher ? " on" : "")}
+                    onClick={() => setRapprocher(true)}>Cette facture les solde</button>
+            <button className={"pill" + (!rapprocher ? " on" : "")}
+                    onClick={() => setRapprocher(false)}>Non, autre achat</button>
+          </div>
+          {rapprocher && (
+            <>
+              {rap.bls.map((b) => {
+                const pris = !exclus.includes(b.id);
+                return (
+                  <div className="row" key={b.id}>
+                    <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Coche paye={pris} onClick={() => setExclus(pris ? [...exclus, b.id]
+                                                                       : exclus.filter((x) => x !== b.id))} />
+                      <span>BL du {(b.date || "").slice(8, 10)}/{(b.date || "").slice(5, 7)}
+                        {b.numero ? " · n° " + b.numero : ""}</span>
+                    </span>
+                    <span className="val">{fmt(num(b.montant))}</span>
+                  </div>
+                );
+              })}
+              <div className="row rowTot">
+                <span className="lbl">Total des BL cochés</span>
+                <span className="val">{fmt(rap.somme)}</span>
+              </div>
+              {num(montant) > 0 && (
+                <div className="mini" style={{ marginTop: 8, color: "#8A6A1C" }}>
+                  {Math.abs(rap.ecart) < 1
+                    ? "La facture correspond exactement aux BL : aucun coût en plus."
+                    : rap.ecart > 0
+                      ? "La facture dépasse les BL de " + fmt(rap.ecart) + " : seul cet écart s'ajoute au coût. À vérifier avec le fournisseur."
+                      : "La facture est plus basse que les BL de " + fmt(-rap.ecart) + " : le coût du mois baisse d'autant."}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -4514,16 +5722,24 @@ function FDepense({ config, defDate, onAdd, flash, deja, fixe, entries }) {
   );
 }
 
-function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
+function FAvance({ defDate, onAdd, flash, config, natureFixe, entries }) {
   const [date, setDate] = useState(defDate);
   const [nature, setNature] = useState(natureFixe || "salaire");
   const [ref, setRef] = useState("");
   const [qui, setQui] = useState("");
   const [montant, setMontant] = useState("");
+  const [precision, setPrecision] = useState("");
   const [erreur, setErreur] = useState("");
 
   const salaries = (config.fixes || []).filter((f) => f.sal);
   const perso = salaries.find((s) => s.id === ref);
+
+  /* Chaque avance d'une personne porte un numéro dans le mois (n°1, n°2…) :
+     on voit tout de suite combien ont été données, et une saisie en double saute aux yeux. */
+  const duMois = (entries || []).filter((e) => e.type === "avance" && e.nature === nature
+    && (e.date || "").slice(0, 7) === (date || "").slice(0, 7)
+    && (nature === "salaire" ? e.ref === ref : String(e.qui || "").trim().toLowerCase() === qui.trim().toLowerCase()));
+  const prochain = duMois.length + 1;
 
   const valider = () => {
     if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
@@ -4532,14 +5748,24 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
       setErreur("Choisis la personne — sans elle, l'avance ne sera déduite d'aucun salaire.");
       return;
     }
+    /* Même personne, même jour, même montant, même précision : c'est deux fois la
+       même avance. L'app refuse ; pour une vraie seconde avance, ajoute un mot. */
+    const jumelle = duMois.find((e) => e.date === date && Math.abs(num(e.montant) - num(montant)) < 0.01
+      && String(e.precision || "").trim().toLowerCase() === precision.trim().toLowerCase());
+    if (jumelle) {
+      setErreur("Déjà saisi : avance n°" + (jumelle.numero || "?") + ", " + fmt(num(montant)) + ", le "
+        + date.slice(8, 10) + "/" + date.slice(5, 7)
+        + ". Si c'est bien une seconde avance identique, ajoute un mot dans « Précision » (ex. « le soir »).");
+      return;
+    }
     setErreur("");
-    onAdd({ type: "avance", date, nature,
+    onAdd({ type: "avance", date, nature, numero: prochain, precision: precision.trim(),
             affaire: nature === "perso" ? "foyer" : null,
             ref: nature === "salaire" ? ref : null,
             qui: nature === "salaire" ? (perso ? perso.lbl : "—") : (qui || "—"),
             montant: num(montant) });
-    flash("Avance enregistrée.");
-    setQui(""); setMontant("");
+    flash("Avance n°" + prochain + " enregistrée.");
+    setQui(""); setMontant(""); setPrecision("");
   };
 
   return (
@@ -4556,7 +5782,7 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
             </select></div>
         )}
         <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="800" value={montant} onChange={(e) => setMontant(e.target.value)} /></div>
+          <input className="f" inputMode="decimal" value={montant} onChange={(e) => setMontant(e.target.value)} /></div>
       </div>
       <div style={{ marginBottom: 12 }}>
         {nature === "salaire" ? (
@@ -4575,6 +5801,16 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
           </>
         )}
       </div>
+      <div style={{ marginBottom: 12 }}><label className="f">Précision (facultatif)</label>
+        <input className="f" placeholder="Pour distinguer deux avances identiques" value={precision}
+               onChange={(e) => { setPrecision(e.target.value); setErreur(""); }} /></div>
+      {duMois.length > 0 && (
+        <div className="mini" style={{ marginBottom: 12 }}>
+          Déjà ce mois-ci : {duMois.map((e) => "n°" + (e.numero || "?") + " " + fmt(num(e.montant))
+            + " (" + (e.date || "").slice(8, 10) + "/" + (e.date || "").slice(5, 7) + ")").join(" · ")}.
+          Celle-ci sera la n°{prochain}.
+        </div>
+      )}
       <Alerte>{erreur}</Alerte>
       <button className="btn" onClick={valider}>Enregistrer</button>
       <div className="note">
@@ -4582,6 +5818,45 @@ function FAvance({ defDate, onAdd, flash, config, natureFixe }) {
         l'avance du solde à lui verser en fin de mois. Une avance n'est jamais une charge de plus —
         le salaire complet l'est déjà.
       </div>
+    </div>
+  );
+}
+
+/* Une dépense de la maison au-delà des salaires, prise dans la caisse d'une affaire. */
+function FExtra({ config, defDate, onAdd, flash }) {
+  const affs = Object.keys(config.affaires).filter((k) => !config.affaires[k].archive)
+    .sort((a, b) => rangOnglet(a) - rangOnglet(b));
+  const [date, setDate] = useState(defDate);
+  const [source, setSource] = useState(affs[0] || "");
+  const [quoi, setQuoi] = useState("");
+  const [montant, setMontant] = useState("");
+  const [erreur, setErreur] = useState("");
+  const valider = () => {
+    if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
+    if (!quoi.trim()) { setErreur("Écris pour quoi — santé, cadeau, réparation…"); return; }
+    setErreur("");
+    onAdd({ type: "avance", nature: "perso", date, affaire: "foyer", source, qui: quoi.trim(),
+            poche: caisseDe(config, source) || undefined, montant: num(montant) });
+    flash("Dépense de " + fmt(num(montant)) + " enregistrée, prise sur " + config.affaires[source].nom + ".");
+  };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className="grid3">
+        <div><label className="f">Date</label>
+          <input className="f" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+        <div><label className="f">Pris sur</label>
+          <select className="f" value={source} onChange={(e) => setSource(e.target.value)}>
+            {affs.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
+          </select></div>
+        <div><label className="f">Montant</label>
+          <input className="f" inputMode="decimal" value={montant}
+                 onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
+      </div>
+      <div style={{ marginBottom: 12 }}><label className="f">Pour quoi</label>
+        <input className="f" placeholder="Santé, cadeau, réparation…" value={quoi}
+               onChange={(e) => { setQuoi(e.target.value); setErreur(""); }} /></div>
+      <Alerte>{erreur}</Alerte>
+      <button className="btn" onClick={valider}>Enregistrer</button>
     </div>
   );
 }
@@ -4624,7 +5899,7 @@ function FInvest({ config, defDate, onAdd, flash, fixe }) {
             {lesPoches(config).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
           </select></div>
         <div><label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="60000" value={montant} onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
+          <input className="f" inputMode="decimal" value={montant} onChange={(e) => { setMontant(e.target.value); setErreur(""); }} /></div>
       </div>
       <div style={{ marginBottom: 12 }}>
         <label className="f">Quoi</label>
@@ -4758,9 +6033,9 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
             /* Le bouton doit rester net sur le bandeau coloré de sa page :
                un fond nacré très clair, quelle que soit la marque, pour
                qu'il se détache toujours — jamais la couleur du fond derrière. */
-            const fond = c.bouton || melange(c.marque, "#FFFFFF", .88);
+            const fond = (BOUTON[k] && BOUTON[k].fond) || c.bouton || melange(c.marque, "#FFFFFF", .88);
             const clair = contraste(fond, "#FFFFFF") < 3;
-            const encreBtn = clair ? lisible(c.marque, 7) : "#FFFFFF";
+            const encreBtn = (BOUTON[k] && BOUTON[k].texte) || (clair ? lisible(c.marque, 7) : "#FFFFFF");
             return (
             <button key={id} className={"btnSaisie" + (actif ? " ouvert" : "")}
                     onClick={() => setForm(actif ? null : id)}
@@ -4782,7 +6057,7 @@ function SaisieActivite({ k, c, config, ym, onAdd, deja, entries }) {
         <div style={{ background: c.tint, borderRadius: 12, padding: "4px 16px 16px",
                       marginTop: 12 }}>
           {form === "vente"   && <FVente   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} entries={entries} />}
-          {form === "resa"    && <FResa    config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
+          {form === "resa"    && <FResa    config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} entries={entries} />}
           {form === "repas"   && <FRepas   config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
           {form === "depense" && <FDepense config={config} defDate={defDate} onAdd={ajouter} flash={flash} deja={deja} fixe={k} entries={entries} />}
           {form === "invest"  && <FInvest  config={config} defDate={defDate} onAdd={ajouter} flash={flash} fixe={k} />}
@@ -5008,7 +6283,7 @@ function ReserveCarte({ k, M, config, ym, onAdd }) {
         </div>
         <div style={{ flex: 1 }}>
           <label className="f">Montant</label>
-          <input className="f" inputMode="decimal" placeholder="2000" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => setMontant(e.target.value)}
                  onKeyDown={(e) => { if (e.key === "Enter") verser(); }} />
         </div>
@@ -5120,7 +6395,7 @@ function ReservesConsolide({ M, config, ym, onAdd }) {
               {keys.map((k) => <option key={k} value={k}>{config.affaires[k].nom}</option>)}
             </select></div>
           <div><label className="f">Montant</label>
-            <input className="f" inputMode="decimal" placeholder="15000" value={montant}
+            <input className="f" inputMode="decimal" value={montant}
                    onChange={(e) => setMontant(e.target.value)} /></div>
         </div>
         <div style={{ marginBottom: 12 }}>
@@ -5225,7 +6500,7 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
             <input className="f" placeholder="Prénom" value={qui}
                    onChange={(e) => setQui(e.target.value)} /></div>
           <div><label className="f">Montant</label>
-            <input className="f" inputMode="decimal" placeholder="5000" value={montant}
+            <input className="f" inputMode="decimal" value={montant}
                    onChange={(e) => setMontant(e.target.value)} /></div>
         </div>
         <div className="grid3">
@@ -5258,7 +6533,8 @@ function PretsPersoConsolide({ M, config, ym, onAdd }) {
 
 function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                         taches, onAddTache, onMajTache, onDelTache,
-                         onRegler, onReporter, onDater, onPocher, onChiffrer, onDel, onMaj }) {
+                         onRegler, onReporter, onDater, onPocher, onChiffrer, onDel, onMaj,
+                         onImporterNaps }) {
   const a = M.A[k], c = config.affaires[k];
   const [sous, setSous] = useState("resultat");
 
@@ -5280,7 +6556,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
           {sections.map(([id, lbl]) => (
             <button key={id} className={sous === id ? "on" : ""}
                     onClick={() => setSous(id)}
-                    style={sous === id ? { borderBottomColor: c.marque } : {}}>{lbl}</button>
+                    >{lbl}</button>
           ))}
         </div>
       </div>
@@ -5289,7 +6565,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                                         onReporter={onReporter} onDater={onDater} onPocher={onPocher}
                                         onChiffrer={onChiffrer} filtre={k} />}
       {sous === "paie"       && <Paie M={M} config={config} onRegler={onRegler}
-                                      onAdd={onAdd} ym={ym} filtre={k} />}
+                                      onAdd={onAdd} ym={ym} filtre={k} entries={entries} />}
       {sous === "achats"     && <Achats entries={entries} ym={ym} config={config}
                                         onDel={onDel} onMaj={onMaj} filtre={k} />}
       {sous === "journal"    && <Mouvements entries={entries} ym={ym} config={config}
@@ -5298,6 +6574,14 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 
       {sous === "resultat" && (
       <>
+      {/* Le Mi-Chui : le quotidien d'abord (CB des deux comptoirs, virements
+          Naps), la solidarité du mois, puis le résultat des prestations de
+          contenu, qui ne sert qu'une ou deux fois l'an. */}
+      {k === "contenu" && <>
+        <CbParPoint config={config} entries={entries} ym={ym} onMaj={onMaj} />
+        <CashCbCamembert config={config} entries={entries} ym={ym} />
+        <NapsExport config={config} entries={entries} ym={ym} onImporter={onImporterNaps} onDel={onDel} />
+      </>}
       <div className="card">
 
         <div style={{ display: "flex", justifyContent: "space-between",
@@ -5321,24 +6605,43 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
             <span className="val mut">{fmt(a.caAttente)}</span></div>
         )}
         {a.com > 0 && <div className="row"><span className="lbl">Commissions</span><span className="val neg">− {fmt(a.com)}</span></div>}
-        {a.matiere > 0 && (
-          <>
-            <div className="row">
-              <span className="lbl">Coût matière {a.estimee &&
-                <span className="tag" style={{ marginLeft: 6 }}>estimation, rien de saisi</span>}</span>
-              <span className="val neg">− {fmt(a.matiere)}</span>
-            </div>
-            {!a.estimee && a.matiereTheo > 0 && (
-              <div className="mini" style={{ margin: "-4px 0 8px" }}>
-                {a.matiere < a.matiereTheo * 0.75
-                  ? "Attention : " + fmt(a.matiereTheo) + " attendus à ce niveau de ventes. "
-                    + "Il manque probablement des factures ou des bons de livraison."
-                  : "Attendu à ce niveau de ventes : " + fmt(a.matiereTheo)
-                    + " (" + config.affaires[k].matierePct + " %)."}
-              </div>
-            )}
-          </>
+        {(a.matiere > 0 || (c.type !== "hebergement" && a.ca > 0)) && (
+          <div className="row">
+            <span className="lbl">Coût matière
+              {a.ca > 0 && <span className="mini"> · {Math.round(a.matiere / a.ca * 100)} % des ventes</span>}</span>
+            <span className="val neg">− {fmt(a.matiere)}</span>
+          </div>
         )}
+        {/* Le Mi-Chui facture des prestations, pas des ventes de comptoir :
+            pas de « ventes X/J jours » qui le dirait toujours incomplet. */}
+        {c.type !== "hebergement" && k !== "contenu" && (() => {
+          /* La complétude : combien de jours du mois ont leurs ventes et leurs
+             achats saisis. Un résultat n'est vrai que si les saisies le sont. */
+          const [an, mo] = ym.split("-").map(Number);
+          const auj = new Date();
+          const enCours = auj.getFullYear() === an && auj.getMonth() + 1 === mo;
+          const jours = enCours ? auj.getDate() - 1 : new Date(an, mo, 0).getDate();
+          if (jours <= 0) return null;
+          const jv = new Set(), ja = new Set();
+          entries.forEach((e) => {
+            if (e.affaire !== k || !(e.date || "").startsWith(ym)) return;
+            const d = Number(e.date.slice(8, 10));
+            if (d > jours) return;
+            if (e.type === "vente") jv.add(d);
+            if (e.type === "depense") ja.add(d);
+          });
+          Object.entries(config.pointages || {}).forEach(([iso, pt]) => {
+            if (!iso.startsWith(ym) || Number(iso.slice(8, 10)) > jours) return;
+            if (pt.aucunAchat === true || (pt.aucunAchat || {})[k]) ja.add(Number(iso.slice(8, 10)));
+          });
+          const complet = jv.size >= jours && ja.size >= jours;
+          return (
+            <div className="mini" style={{ margin: "-2px 0 8px", color: complet ? "#4F6B1F" : "#B07C1E" }}>
+              {complet ? "✓ " : ""}Saisies du mois : ventes {jv.size}/{jours} jours · achats {ja.size}/{jours} jours
+              {complet ? "" : " — le résultat sera juste quand tout sera saisi."}
+            </div>
+          );
+        })()}
         {a.variable > 0 && (
           <Detail titre="Charges variables" montant={a.variable}
                   lignes={(() => {
@@ -5357,7 +6660,7 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
         )}
         {a.fixes > 0 && (
           <Detail titre="Charges fixes" montant={a.fixes}
-                  lignes={config.fixes.filter((f) => f.affaire === k).map((f) => {
+                  lignes={config.fixes.filter((f) => f.affaire === k && !(f.depuis && ym < f.depuis)).map((f) => {
                     const pp = num(f.partagePct) || 0;
                     const propre = num(f.montant) * (100 - pp) / 100;
                     return [f.lbl + (pp > 0 ? " — sa part (" + (100 - pp) + " %)" : ""), propre];
@@ -5381,14 +6684,25 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
           <span className={"val " + (a.resultat >= 0 ? "pos" : "neg")}>{fmt(a.resultat)}</span>
         </div>
 
-        {a.estimee && (
-          <div className="note">
-            {num(c.matierePct) > 0
-              ? "Le coût matière est une provision à " + c.matierePct + " %."
-              : "Le coût matière est estimé sur les couverts servis."} Saisis tes achats réels
-            du mois et il sera remplacé par le vrai chiffre.
-          </div>
-        )}
+        {a.reinvestiMois > 0 && (() => {
+          const reste = a.resultat - a.reinvestiMois;
+          return (
+            <>
+              <Detail titre="Réinvesti dans les chantiers" montant={a.reinvestiMois}
+                      lignes={a.reinvestiLignes} />
+              <div className="row rowTot">
+                <span className="lbl">Reste après réinvestissement</span>
+                <span className={"val " + (reste >= 0 ? "pos" : "neg")}>{fmt(reste)}</span>
+              </div>
+              {reste < 0 && (
+                <div className="note" style={{ color: "#B3412E" }}>
+                  Tu as réinvesti {fmt(-reste)} de plus que le bénéfice du mois : cet argent
+                  vient de ce que {c.nom} avait gagné avant.
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {c.type === "hebergement" && M.heb[k] && M.heb[k].nuits > 0 && (
           <div style={{ marginTop: 20 }}>
@@ -5423,9 +6737,14 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
                 <span className="val">{fmt(M.naps.parAffaire[k].carte)}</span></div>
               <div className="row">
                 <span className="lbl">Commission Naps
-                  <span className="tag" style={{ marginLeft: 7 }}>
-                    {M.naps.parAffaire[k].taux.toFixed(1)} %</span></span>
+                  {M.naps.parAffaire[k].taux !== null && <span className="tag" style={{ marginLeft: 7 }}>
+                    {M.naps.parAffaire[k].taux.toFixed(2).replace(".", ",")} %</span>}</span>
                 <span className="val neg">− {fmt(M.naps.parAffaire[k].com)}</span></div>
+              {M.naps.parAffaire[k].carte - M.naps.parAffaire[k].carteVue >= 1 && (
+                <div className="mini" style={{ margin: "-4px 0 6px" }}>
+                  {fmt(M.naps.parAffaire[k].carte - M.naps.parAffaire[k].carteVue)} de CB pas encore
+                  dans un export Naps : leur commission comptera à l'import.</div>
+              )}
             </>}
             {M.naps.parAffaire[k].fonds > 0 && (
               <div className="row"><span className="lbl">Fonds de caisse immobilisé</span>
@@ -5451,6 +6770,27 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
               onAdd={onAddTache} onMaj={onMajTache} onDel={onDelTache} />
 
       <ARegler config={config} affaire={k} entries={entries} ym={ym} onSolder={onSolder} />
+      {(() => {
+        const pris = (entries || []).filter((e) => e.type === "avance" && e.nature === "perso"
+                                            && e.source === k && (e.date || "").startsWith(ym));
+        if (!pris.length) return null;
+        return (
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <h2 className="h2" style={{ margin: 0 }}>Pioché pour la maison ce mois</h2>
+              <span className="val neg">{fmt(pris.reduce((s, e) => s + num(e.montant), 0))}</span>
+            </div>
+            {pris.map((e) => (
+              <div className="row" key={e.id}><span className="lbl">{e.qui}
+                <span className="mini"> · {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}</span></span>
+                <span className="val">{fmt(num(e.montant))}</span></div>
+            ))}
+          </div>
+        );
+      })()}
+      {/* La solidarité, une fois par mois : tout en bas de Le Mi-Chui. */}
+      {k === "contenu" && <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd}
+                                           onRegler={onRegler} flash={() => {}} />}
       </>
       )}
     </>
@@ -5460,6 +6800,33 @@ function FicheActivite({ k, M, config, entries, ym, onSolder, onAdd, deja,
 /* ------------------------------------------------------------------ */
 /*  FOYER                                                              */
 /* ------------------------------------------------------------------ */
+
+/* Le rappel des factures variables : un bouton, et au clic la liste, chacune
+   avec son champ pour taper le vrai montant dès que la facture arrive. */
+function FacturesAttendues({ liste, onChiffrer }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [saisis, setSaisis] = useState({});
+  if (!liste || !liste.length || !onChiffrer) return null;
+  return (
+    <div style={{ margin: "14px 0 4px" }}>
+      <button className="pill" onClick={() => setOuvert(!ouvert)} style={{ width: "100%" }}>
+        {ouvert ? "Masquer les factures attendues" : "Factures attendues (" + liste.length + ") — eau, électricité, téléphone…"}
+      </button>
+      {ouvert && liste.map((f) => (
+        <div key={f.id} className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <span className="lbl">{f.lbl}<span className="mini"> · vers le {num(f.jour) || 5}</span></span>
+          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input className="f" inputMode="decimal" placeholder="Montant" style={{ width: 120 }}
+                   value={saisis[f.id] || ""} onChange={(e) => setSaisis({ ...saisis, [f.id]: e.target.value })} />
+            <button className="pill" onClick={() => { if (num(saisis[f.id]) > 0) { onChiffrer(f.id, saisis[f.id]);
+                                                      setSaisis({ ...saisis, [f.id]: "" }); } }}>
+              OK</button>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChiffrer, filtre }) {
   const [vue, setVue] = useState("date");
@@ -5473,6 +6840,14 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
   const aVenir = ech.filter((e) => !e.paye && !e.enRetard);
   const retard = ech.filter((e) => !e.paye && e.enRetard);
 
+  /* Sur la page d'une affaire, les totaux ne parlent que de cette affaire. */
+  const reglees = M.lignesReglees.filter((l) => !filtre || l.groupe === filtre);
+  const sortiCaisse = filtre ? reglees.filter((l) => !l.horsMois).reduce((s, l) => s + l.montant, 0)
+                             : M.dejaRegleCaisse;
+  const payeAvant = filtre ? reglees.filter((l) => l.horsMois).reduce((s, l) => s + l.montant, 0)
+                           : M.regleAvant;
+  const dettesVues = filtre ? ((M.dettesPar || {})[filtre] || 0) : M.dettes;
+
   return (
     <>
       <div className="card">
@@ -5484,6 +6859,8 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
           {aVenir.length + retard.length} échéances. Coche chaque ligne au moment où tu la paies,
           ou reporte-la sur le mois suivant avec la flèche.
         </div>
+        <FacturesAttendues liste={(M.facturesAttendues || []).filter((f) => !filtre || f.groupe === filtre)}
+                           onChiffrer={onChiffrer} />
       </div>
 
       <div className="navSimple" style={{ marginBottom: 14 }}>
@@ -5530,20 +6907,20 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
           {/* Les lignes pointées disparaissaient de l'écran : impossible de voir ce
               qu'on avait coché, de le décocher, ni de dire qu'une charge de ce
               mois a été payée le mois d'avant. Elles sont ici, avec leur date. */}
-          {M.lignesReglees.filter((l) => !filtre || l.groupe === filtre).length > 0 && (
+          {reglees.length > 0 && (
             <div className="card">
               <h2 className="h2">Déjà réglé</h2>
-              {M.lignesReglees.filter((l) => !filtre || l.groupe === filtre).map((l) => (
+              {reglees.map((l) => (
                 <LigneReglee key={l.id} l={l} nom={nomGroupe(l.groupe)}
                              couleur={couleurGroupe(l.groupe)}
                              onRegler={onRegler} onDater={onDater} onPocher={onPocher}
                              onChiffrer={onChiffrer} config={config} />
               ))}
               <div className="row rowTot"><span className="lbl">Sorti de la caisse ce mois-ci</span>
-                <span className="val pos">{fmt(M.dejaRegleCaisse)}</span></div>
-              {M.regleAvant > 0 && (
+                <span className="val pos">{fmt(sortiCaisse)}</span></div>
+              {payeAvant > 0 && (
                 <div className="note">
-                  {fmt(M.regleAvant)} de charges de {monthLabel(ym).toLowerCase()} ont été payées
+                  {fmt(payeAvant)} de charges de {monthLabel(ym).toLowerCase()} ont été payées
                   avant le 1er. Elles soldent bien le mois, mais l'argent est sorti avant :
                   elles ne comptent pas dans « ce que j'ai réellement payé » de ce mois-ci.
                 </div>
@@ -5553,11 +6930,11 @@ function Avenir({ M, config, ym, onRegler, onReporter, onDater, onPocher, onChif
         </>
       )}
 
-      {M.dettes > 0 && (
+      {dettesVues > 0 && (
         <div className="card">
           <h2 className="h2">Dettes fournisseurs</h2>
           <div className="row rowTot"><span className="lbl">Solde fournisseurs</span>
-            <span className="val">{fmt(M.dettes)}</span></div>
+            <span className="val">{fmt(dettesVues)}</span></div>
           <div className="note">
             Toutes les pièces non encore réglées, quel que soit le mois où tu les as saisies —
             une livraison de fin de mois reste due le mois suivant. Tu les soldes fournisseur
@@ -5986,7 +7363,7 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
           </div>
           <div className="grid2">
             <div><label className="f">Montant reçu</label>
-              <input className="f" inputMode="decimal" placeholder="4 320" value={mtN}
+              <input className="f" inputMode="decimal" value={mtN}
                      onChange={(e) => setMtN(e.target.value)} /></div>
             <div><label className="f">Date du virement</label>
               <input className="f" type="date" value={dateN}
@@ -6019,7 +7396,7 @@ function Poches({ M, config, entries, onTransfert, onCompter, onDel }) {
               {M.poches.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
             </select></div>
           <div><label className="f">Montant</label>
-            <input className="f" inputMode="decimal" placeholder="5000" value={mt}
+            <input className="f" inputMode="decimal" value={mt}
                    onChange={(e) => setMt(e.target.value)} /></div>
           <div><label className="f">Date</label>
             <input className="f" type="date" value={dateT}
@@ -6191,7 +7568,7 @@ function LigneEcheance({ e, nom, couleur, jourActuel, onRegler, onReporter, onCh
   );
 }
 
-function Paie({ M, config, onRegler, onAdd, ym, filtre }) {
+function Paie({ M, config, onRegler, onAdd, ym, filtre, entries }) {
   const [prime, setPrime] = useState("");
   const [mtPrime, setMtPrime] = useState("");
   const [erreurPrime, setErreurPrime] = useState("");
@@ -6240,7 +7617,7 @@ function Paie({ M, config, onRegler, onAdd, ym, filtre }) {
       </div>
 
       <div className="card">
-        <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="salaire" />
+        <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="salaire" entries={entries} />
       </div>
 
       <div className="card">
@@ -6468,7 +7845,7 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
             ))}
           </div>
         </div>
-        {sous === "resultat"   && <Foyer M={M} config={config} onAdd={onAdd} ym={ym}
+        {sous === "resultat"   && <Foyer M={M} config={config} onAdd={onAdd} ym={ym} onChiffrer={onChiffrer}
                                          onRegler={onRegler} deja={deja} entries={entries} />}
         {sous === "taches"     && <Taches taches={taches} config={config} onAdd={onAddTache}
                                           onMaj={onMajTache} onDel={onDelTache} affaireFixe="foyer" />}
@@ -6486,6 +7863,534 @@ function FoyerComplet({ M, config, onAdd, ym, entries, onRegler, onReporter, onD
 
 /* La solidarité n'est ni une facture ni un salaire : elle se décide chaque mois.
    Elle sort de la trésorerie sans peser sur le résultat des commerces. */
+/* ------------------------------------------------------------------ */
+/*  NAPS — l'export Excel de l'espace Naps fait foi                     */
+/* ------------------------------------------------------------------ */
+/* Amal : « je ne veux pas que l'app estime quoi que ce soit ». Naps n'envoie
+   aucun relevé, mais son espace en ligne exporte un Excel : une ligne par
+   télécollecte (la clôture de la borne, une par jour), avec les ventes, la
+   commission TTC, les ajustements, le montant versé et la date du virement.
+   L'export ne dit pas de quel jour est la télécollecte : on la rattache au
+   jour dont le CB saisi par SAIB (Sabich + TMSK, même borne) est EXACTEMENT
+   le même montant, dans les 15 jours avant le virement. Si aucun jour ne
+   colle au dirham près, LIFE le dit — c'est un écart de saisie ou de borne,
+   pas une supposition. La commission réelle est ensuite partagée entre Sabich
+   et TMSK au prorata de leurs tickets CB du jour. */
+const POINTS_NAPS = ["sabich", "tmsk"];
+const jourDecale = (iso, n) => {
+  const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const jjmm = (iso) => (iso || "").slice(8, 10) + "/" + (iso || "").slice(5, 7);
+const dateFR = (iso) => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "—";
+/* Un tableau sur une seule ligne par rangée : rien ne passe à la ligne, et
+   sur un petit écran il défile sur le côté plutôt que d'écraser les colonnes.
+   cols = [{ t: "Titre", w: "1fr", g: true (aligné à gauche) }], rows = [{ k, c: [cellules], s: style }] */
+function Tableau({ cols, rows, pied, min = 560 }) {
+  const grille = { display: "grid", gridTemplateColumns: cols.map((c) => c.w || "1fr").join(" "),
+                   gap: 12, alignItems: "center", padding: "10px 0", whiteSpace: "nowrap",
+                   fontSize: 16, borderBottom: "1px solid rgba(0,0,0,.06)" };
+  const al = (i) => ({ textAlign: cols[i].g ? "left" : "right" });
+  return (
+    <div style={{ overflowX: "auto" }}><div style={{ minWidth: min }}>
+      <div style={{ ...grille, fontSize: 14, fontWeight: 600, letterSpacing: ".08em",
+                    textTransform: "uppercase", color: "var(--u-titre)" }}>
+        {cols.map((c, i) => <span key={i} style={al(i)}>{c.t}</span>)}
+      </div>
+      {rows.map((r) => (
+        <div key={r.k} style={{ ...grille, ...(r.s || {}) }}>
+          {r.c.map((x, i) => <span key={i} style={al(i)}>{x}</span>)}
+        </div>
+      ))}
+      {pied && <div style={{ ...grille, borderBottom: "none", fontWeight: 600 }}>
+        {pied.map((x, i) => <span key={i} style={al(i)}>{x}</span>)}</div>}
+    </div></div>
+  );
+}
+const carteDe = (v) => v.carte !== undefined ? num(v.carte) : num(v.napsMa) + num(v.napsEtr);
+/* Ancien export : le statut « Versé » le dit. Relevé par ticket : Naps donne la
+   date de règlement ; le virement compte à partir de ce jour-là, pas avant. */
+const napsVerse = (t) => /vers/i.test(String(t.statut || ""))
+  || (t.source === "tickets" && !!t.dateVir && t.dateVir <= aujourdhui());
+const napsStatut = (t) => napsVerse(t) ? "Versé"
+  : t.source === "tickets" && t.dateVir ? "prévu le " + jjmm(t.dateVir) : (t.statut || "—");
+function rapprocherNaps(entries) {
+  const jours = {};
+  (entries || []).forEach((v) => {
+    if (v.type !== "vente" || !v.date || !POINTS_NAPS.includes(v.affaire)) return;
+    const c = carteDe(v);
+    const j = jours[v.date] || (jours[v.date] = { total: 0, par: {} });
+    j.total += c; j.par[v.affaire] = (j.par[v.affaire] || 0) + c;
+  });
+  const tcs = (entries || []).filter((e) => e.type === "napsTc")
+    .sort((a, b) => (a.dateVir || "").localeCompare(b.dateVir || "")
+                    || String(a.tc).localeCompare(String(b.tc)));
+  const parJour = {};
+  const res = new Map();
+  /* 1) Le relevé par ticket dit lui-même de quel jour sont les tickets : on
+        le croit, et si le CB saisi ce jour-là diffère, LIFE montre l'écart. */
+  tcs.filter((t) => t.jourTx).forEach((t) => {
+    const jour = jours[t.jourTx] && !parJour[t.jourTx] ? t.jourTx : null;
+    const r = { ...t, jour, cout: num(t.ventes) - num(t.verse),
+                ecartSaisie: jour ? Math.round((num(t.ventes) - jours[jour].total) * 100) / 100 : 0 };
+    if (jour) parJour[jour] = r;
+    res.set(t, r);
+  });
+  /* 2) Ancien export (sans jour) : le jour dont le CB colle au dirham près */
+  tcs.filter((t) => !t.jourTx).forEach((t) => {
+    const min = jourDecale(t.dateVir, -15);
+    const cands = Object.keys(jours).filter((d) => !parJour[d] && d < t.dateVir && d >= min
+      && Math.abs(jours[d].total - num(t.ventes)) < 0.5).sort();
+    const jour = cands.length ? cands[cands.length - 1] : null;
+    const r = { ...t, jour, cout: num(t.ventes) - num(t.verse), ecartSaisie: 0 };
+    if (jour) parJour[jour] = r;
+    res.set(t, r);
+  });
+  return { tcs: tcs.map((t) => res.get(t)), parJour, jours };
+}
+
+/* Lecture de l'Excel Naps, dans le navigateur. On repère les colonnes par
+   leur nom, pas par leur place : si Naps les réordonne, rien ne casse. */
+const sansAccent = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/\s+/g, " ").trim();
+const dateNaps = (v) => {
+  if (typeof v === "number") {            // date Excel
+    const d = new Date(Math.round((v - 25569) * 864e5));
+    return d.toISOString().slice(0, 10);
+  }
+  const m = String(v || "").trim().match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+  if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+  const m2 = String(v || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m2 ? m2[0] : "";
+};
+const r2 = (v) => Math.round(num(v) * 100) / 100;
+async function lireExportNaps(fichier) {
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(await fichier.arrayBuffer(), { type: "array" });
+  const lignes = [];
+  wb.SheetNames.forEach((nomFeuille) => {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nomFeuille], { header: 1, raw: true, defval: "" });
+    const iH = rows.findIndex((r) => r.some((c) => sansAccent(c).includes("telecollecte")));
+    if (iH < 0) return;
+    const H = rows[iH].map(sansAccent);
+    const col = (test) => H.findIndex(test);
+    const C = {
+      tc: col((h) => h.includes("telecollecte")),
+      nb: col((h) => h.includes("transaction")),
+      ventes: col((h) => h === "ventes" || h.startsWith("vente")),
+      commission: col((h) => h.startsWith("commission")),
+      ajust: col((h) => h.startsWith("ajustement")),
+      verse: col((h) => h.includes("verse")),
+      statut: col((h) => h === "statut"),
+      dateVir: col((h) => h.includes("date") && h.includes("virement")),
+      pdv: col((h) => h.includes("point de vente")),
+    };
+    /* Le relevé « MON RELEVÉ NAPSPRO » (octobre 2026) : une ligne par TICKET
+       (Montant, Commission HT, TVA, Date de transaction, Date de règlement).
+       On regroupe les tickets par télécollecte. La commission se calcule comme
+       Naps la vire : HT de chaque ticket arrondi au centime, puis TVA dessus —
+       c'est ce qui retombe au centime près sur les virements déjà reçus. */
+    const T = {
+      tc: col((h) => h.includes("telecollecte") && !h.startsWith("date")),
+      montant: col((h) => h === "montant"),
+      ht: col((h) => h.startsWith("commission")),
+      tva: col((h) => h === "tva"),
+      reg: col((h) => h.includes("reglement")),
+      jour: col((h) => h.includes("date de transaction")),
+      pdv: col((h) => h === "pdv" || h.includes("point de vente")),
+    };
+    if (C.ventes < 0 && [T.tc, T.montant, T.ht, T.reg].every((i) => i >= 0)) {
+      const G = {};
+      rows.slice(iH + 1).forEach((r) => {
+        const tc = String(r[T.tc] ?? "").trim();
+        if (!tc || String(r[T.montant] ?? "").trim() === "") return;
+        const g = G[tc] || (G[tc] = { tc, nb: 0, ventes: 0, ht: 0, htBrut: 0, tva: 0,
+                                       dateVir: "", jours: {}, pdv: "" });
+        const m = num(r[T.montant]);
+        g.nb += 1; g.ventes += m;
+        g.ht += r2(r[T.ht]); g.htBrut += num(r[T.ht]);
+        g.tva += T.tva >= 0 ? num(r[T.tva]) : 0;
+        const dv = dateNaps(r[T.reg]); if (dv > g.dateVir) g.dateVir = dv;
+        const dj = T.jour >= 0 ? dateNaps(r[T.jour]) : "";
+        if (dj) g.jours[dj] = (g.jours[dj] || 0) + m;
+        if (T.pdv >= 0 && !g.pdv) g.pdv = String(r[T.pdv] ?? "").trim();
+      });
+      Object.values(G).forEach((g) => {
+        const tauxTva = g.htBrut > 0 ? g.tva / g.htBrut : 0;
+        const commission = Math.round(g.ht * (1 + tauxTva) * 100) / 100;
+        const ventes = r2(g.ventes);
+        /* Le jour des tickets, tel que Naps le donne (celui qui pèse le plus) */
+        const jourTx = Object.keys(g.jours).sort((a, b) => g.jours[b] - g.jours[a])[0] || "";
+        lignes.push({ tc: g.tc, nb: g.nb, ventes, commission, ajust: 0,
+                      verse: r2(ventes - commission), statut: "", dateVir: g.dateVir,
+                      pdv: g.pdv, jourTx, source: "tickets" });
+      });
+      return;
+    }
+    if ([C.tc, C.ventes, C.verse, C.dateVir].some((i) => i < 0)) return;
+    rows.slice(iH + 1).forEach((r) => {
+      const tc = String(r[C.tc] ?? "").trim();
+      if (!tc) return;
+      lignes.push({
+        tc, nb: C.nb >= 0 ? num(r[C.nb]) : 0,
+        ventes: r2(r[C.ventes]), commission: C.commission >= 0 ? r2(r[C.commission]) : 0,
+        ajust: C.ajust >= 0 ? r2(r[C.ajust]) : 0, verse: r2(r[C.verse]),
+        statut: C.statut >= 0 ? String(r[C.statut] || "").trim() : "",
+        dateVir: dateNaps(r[C.dateVir]),
+        pdv: C.pdv >= 0 ? String(r[C.pdv] || "").trim() : "",
+      });
+    });
+  });
+  return lignes.filter((l) => l.dateVir);
+}
+
+/* Espèces ou carte ? La part de chaque mode de paiement sur Sabich + TMSK,
+   pour le mois affiché. Un camembert, deux parts, et le détail par comptoir. */
+function CashCbCamembert({ config, entries, ym }) {
+  const points = ["sabich", "tmsk"];
+  const nom = (k) => (config.affaires[k] || {}).nom || k;
+  const par = {};
+  points.forEach((k) => { par[k] = { esp: 0, cb: 0 }; });
+  entries.forEach((e) => {
+    if (e.type !== "vente" || !par[e.affaire] || !(e.date || "").startsWith(ym)) return;
+    const cb = carteDe(e);
+    const esp = e.espece !== undefined ? num(e.espece) : num(e.montant) - cb;
+    par[e.affaire].esp += Math.max(0, esp); par[e.affaire].cb += Math.max(0, cb);
+  });
+  const esp = points.reduce((s, k) => s + par[k].esp, 0);
+  const cb = points.reduce((s, k) => s + par[k].cb, 0);
+  const tot = esp + cb;
+  const COL_ESP = "#A7748C", COL_CB = "#E3CCD7";
+  const p = (a, b) => b > 0 ? Math.round(a / b * 100) : 0;
+
+  return (
+    <div className="card">
+      <h2 className="h2">Espèces ou carte</h2>
+      {tot <= 0 ? <div className="mini">Aucune recette saisie ce mois-ci.</div> : (
+        <div style={{ display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
+          <div role="img" aria-label={"Espèces " + p(esp, tot) + " %, carte " + p(cb, tot) + " %"}
+               style={{ width: 170, height: 170, borderRadius: "50%", flex: "0 0 auto",
+                        background: `conic-gradient(${COL_ESP} 0 ${esp / tot * 360}deg, ${COL_CB} 0 360deg)`,
+                        boxShadow: "0 0 0 3px #fff inset" }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            {[["Espèces", esp, COL_ESP], ["Carte (CB)", cb, COL_CB]].map(([lbl, v, col]) => (
+              <div className="row" key={lbl}>
+                <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 4, background: col, display: "inline-block" }} />
+                  {lbl}</span>
+                <span className="val"><b style={{ fontWeight: 600 }}>{p(v, tot)} %</b>
+                  <span className="mini"> · {fmt(v)}</span></span>
+              </div>
+            ))}
+            {points.map((k) => {
+              const t = par[k].esp + par[k].cb;
+              if (t <= 0) return null;
+              return (
+                <div className="mini" key={k} style={{ marginTop: 8 }}>
+                  {nom(k)} : {p(par[k].esp, t)} % espèces · {p(par[k].cb, t)} % carte
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CelluleCB({ ventes, onMaj }) {
+  const [edit, setEdit] = useState(false);
+  const [v, setV] = useState("");
+  const total = ventes.reduce((s, e) => s + carteDe(e), 0);
+  if (!ventes.length) return <span className="mini" style={{ textAlign: "right" }}>—</span>;
+  const unique = ventes.length === 1 ? ventes[0] : null;
+  const valider = () => {
+    setEdit(false);
+    if (!unique || !montantLisible(v) || String(v).trim() === "") return;
+    const c = num(v);
+    if (Math.abs(c - total) < 0.5) return;
+    const esp = unique.espece !== undefined ? num(unique.espece) : num(unique.montant) - total;
+    onMaj(unique.id, { carte: c, espece: esp, montant: esp + c, napsMa: undefined, napsEtr: undefined });
+  };
+  if (edit) return (
+    <input className="f" inputMode="decimal" autoFocus value={v}
+           style={{ padding: "6px 8px", textAlign: "right", minWidth: 0 }}
+           onChange={(e) => setV(e.target.value)} onBlur={valider}
+           onKeyDown={(e) => { if (e.key === "Enter") valider(); if (e.key === "Escape") setEdit(false); }} />
+  );
+  return (
+    <button onClick={() => { if (unique) { setV(String(total)); setEdit(true); } }}
+            title={unique ? "Corriger" : ""}
+            style={{ background: "none", border: "none", padding: 0, textAlign: "right",
+                     font: "inherit", color: "inherit", cursor: unique ? "pointer" : "default" }}>
+      {fmt(total)}</button>
+  );
+}
+
+function CbParPoint({ config, entries, ym, onMaj }) {
+  const gauche = "sabich", droite = "tmsk";
+  const nom = (k) => (config.affaires[k] || {}).nom || k;
+  const R = rapprocherNaps(entries);
+  const ventes = entries.filter((e) => e.type === "vente" && (e.date || "").startsWith(ym)
+                                    && (e.affaire === gauche || e.affaire === droite));
+  const jours = [...new Set(ventes.filter(() => true).map((e) => e.date))].sort();
+  const de = (iso, k) => ventes.filter((e) => e.date === iso && e.affaire === k);
+  const somme = (l) => l.reduce((s, e) => s + carteDe(e), 0);
+  const totG = somme(ventes.filter((e) => e.affaire === gauche));
+  const totD = somme(ventes.filter((e) => e.affaire === droite));
+  /* Ce que Naps a réellement versé pour les jours du mois (net de commission) */
+  const totRecu = jours.reduce((s, iso) => s + (R.parJour[iso] && napsVerse(R.parJour[iso])
+    ? num(R.parJour[iso].verse) : 0), 0);
+  const totCom = jours.reduce((s, iso) => s + (R.parJour[iso] && napsVerse(R.parJour[iso])
+    ? R.parJour[iso].cout : 0), 0);
+  const fmt2 = (n) => (Math.round(n * 100) / 100).toLocaleString("fr-FR",
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " DH";
+  const grille = { display: "grid", gridTemplateColumns: "minmax(110px, 1fr) 1fr 1fr 1fr 1fr 1.15fr minmax(110px, 1fr)",
+                   gap: 10, alignItems: "center", padding: "10px 0", whiteSpace: "nowrap",
+                   fontSize: 16, borderBottom: "1px solid rgba(0,0,0,.06)" };
+  const d = { textAlign: "right" };
+
+  return (
+    <div className="card">
+      <h2 className="h2">CB par point de vente</h2>
+      {!jours.length ? <div className="mini">Aucune recette saisie ce mois-ci.</div> : (
+        <>
+          <div style={{ overflowX: "auto" }}><div style={{ minWidth: 820 }}>
+          <div style={{ ...grille, fontSize: 14, fontWeight: 600, letterSpacing: ".08em",
+                        textTransform: "uppercase", color: "var(--u-titre)" }}>
+            <span>Jour</span><span style={d}>{nom(gauche)}</span><span style={d}>{nom(droite)}</span>
+            <span style={d}>Total CB</span><span style={d}>Commission</span><span style={d}>Reçu</span><span style={d}>Viré le</span>
+          </div>
+          {jours.map((iso) => {
+            const g = de(iso, gauche), dr = de(iso, droite);
+            const vir = R.parJour[iso] && napsVerse(R.parJour[iso])
+              ? { date: R.parJour[iso].dateVir, verse: num(R.parJour[iso].verse),
+                  com: R.parJour[iso].cout } : null;
+            return (
+              <div key={iso} style={grille}>
+                <span>{dateFR(iso)}</span>
+                <span style={d}><CelluleCB ventes={g} onMaj={onMaj} /></span>
+                <span style={d}><CelluleCB ventes={dr} onMaj={onMaj} /></span>
+                <span style={{ ...d, fontWeight: 500 }}>{fmt(somme(g) + somme(dr))}</span>
+                <span style={{ ...d, color: vir ? "#9B1B22" : undefined }}>{vir ? "− " + fmt2(vir.com) : "—"}</span>
+                <span style={{ ...d, color: vir ? "#4F6B1F" : undefined }}>{vir ? fmt2(vir.verse) : "—"}</span>
+                <span style={d}>{vir ? dateFR(vir.date) : "—"}</span>
+              </div>
+            );
+          })}
+          <div style={{ ...grille, borderBottom: "none", fontWeight: 600 }}>
+            <span>Mois</span><span style={d}>{fmt(totG)}</span><span style={d}>{fmt(totD)}</span>
+            <span style={d}>{fmt(totG + totD)}</span>
+            <span style={{ ...d, color: "#9B1B22" }}>{totCom > 0 ? "− " + fmt2(totCom) : "—"}</span>
+            <span style={{ ...d, color: "#4F6B1F" }}>{totRecu > 0 ? fmt2(totRecu) : "—"}</span><span />
+          </div>
+          </div></div>
+          <div className="mini" style={{ marginTop: 6 }}>
+            Total CB = tickets saisis par SAIB (clique un montant pour le corriger). Commission et Reçu :
+            ce que Naps a vraiment pris et versé sur Le Mi-Chui, d'après son export.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function NapsExport({ config, entries, ym, onImporter, onDel }) {
+  const [msg, setMsg] = useState("");
+  const [erreur, setErreur] = useState("");
+  const [enCours, setEnCours] = useState(false);
+  const R = rapprocherNaps(entries);
+  const pct = (a, b) => b > 0 ? (a / b * 100).toFixed(2).replace(".", ",") + " %" : "—";
+
+  const choisir = async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    setErreur(""); setMsg(""); setEnCours(true);
+    try {
+      const lignes = await lireExportNaps(f);
+      if (!lignes.length) {
+        setErreur("Ce fichier ne ressemble pas à l'export des virements Naps (colonne « N° télécollecte » introuvable).");
+      } else {
+        const connus = new Set(entries.filter((e) => e.type === "napsTc").map((e) => String(e.tc)));
+        const nouveaux = lignes.filter((l) => !connus.has(l.tc)).length;
+        onImporter(lignes);
+        setMsg(nouveaux + " télécollecte" + (nouveaux > 1 ? "s" : "") + " ajoutée" + (nouveaux > 1 ? "s" : "")
+          + (lignes.length - nouveaux > 0 ? ", " + (lignes.length - nouveaux) + " déjà connue"
+             + (lignes.length - nouveaux > 1 ? "s" : "") + " (mise à jour)" : "") + ".");
+      }
+    } catch (e) {
+      setErreur("Impossible de lire ce fichier. Vérifie que c'est bien l'Excel téléchargé depuis l'espace Naps.");
+    }
+    setEnCours(false);
+  };
+
+  /* Le mois affiché = les jours de CB de ce mois */
+  const duMois = R.tcs.filter((t) => t.jour && t.jour.startsWith(ym))
+    .sort((a, b) => b.jour.localeCompare(a.jour));
+  const T = duMois.reduce((s, t) => ({ ventes: s.ventes + num(t.ventes), cout: s.cout + t.cout,
+    verse: s.verse + (napsVerse(t) ? num(t.verse) : 0) }), { ventes: 0, cout: 0, verse: 0 });
+  const orphelins = R.tcs.filter((t) => !t.jour && (t.dateVir || "") >= jourDecale(ym + "-01", 0)
+                                         && (t.dateVir || "") <= jourDecale(ym + "-01", 45));
+  const auj = aujourdhui();
+  const pasVus = Object.keys(R.jours).filter((d) => d.startsWith(ym) && d < auj
+    && R.jours[d].total > 0 && !R.parJour[d]).sort();
+  const totPasVus = pasVus.reduce((s, d) => s + R.jours[d].total, 0);
+  const dernierImport = entries.filter((e) => e.type === "napsTc")
+    .map((e) => e.importeLe || "").sort().pop();
+
+  return (
+    <div className="card">
+      <h2 className="h2">Naps</h2>
+
+      <label className="btn" style={{ display: "inline-block", cursor: enCours ? "wait" : "pointer", margin: 0 }}>
+        {enCours ? "LECTURE…" : "IMPORTER L'EXPORT NAPS"}
+        <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
+               onChange={choisir} disabled={enCours} />
+      </label>
+      <div className="mini" style={{ marginTop: 8 }}>
+        L'Excel téléchargé depuis l'espace Naps (relevé des virements ou relevé par ticket). Le recharger ne crée jamais de doublon.
+        {dernierImport ? " Dernier import : " + dateFR(dernierImport) + "." : ""}
+      </div>
+      <Alerte>{erreur}</Alerte>
+      {msg && <div className="mini" style={{ marginTop: 8, color: "#4F6B1F" }}>{msg}</div>}
+
+      {duMois.length > 0 && (() => {
+        /* Le contrôle du mois : ce que Naps a pris, face à ce que dit le
+           contrat (3 % HT + TVA). L'écart est ce qu'Amal leur réclame. */
+        const N = config.naps || { tauxHT: 3, tva: 10 };
+        const tauxTTC = num(N.tauxHT) * (1 + num(N.tva) / 100);
+        const lignes = duMois.map((t) => {
+          const du = Math.round(num(t.ventes) * tauxTTC) / 100;
+          return { ...t, du, ecart: Math.round((t.cout - du) * 100) / 100 };
+        }).sort((a, b) => a.jour.localeCompare(b.jour));
+        const pris = lignes.reduce((s, l) => s + l.cout, 0);
+        const du = lignes.reduce((s, l) => s + l.du, 0);
+        const trop = Math.round((pris - du) * 100) / 100;
+        const aReclamer = lignes.filter((l) => Math.abs(l.ecart) >= 0.5);
+        const f2 = (n) => (Math.round(n * 100) / 100).toLocaleString("fr-FR",
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " DH";
+        const tx = String(Math.round(tauxTTC * 100) / 100).replace(".", ",");
+        return (
+          <div style={{ marginTop: 20, border: "2px solid #9B1B22", borderRadius: 14,
+                        background: "#FBF1F2", padding: "18px 18px 14px" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: ".12em",
+                          textTransform: "uppercase", color: "#7A0E14" }}>
+              Contrôle Naps du mois</div>
+            <div className="mini" style={{ margin: "4px 0 12px" }}>
+              Contrat : {String(N.tauxHT).replace(".", ",")} % HT + TVA {N.tva} % = {tx} % TTC
+            </div>
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div>
+                <div className="eyebrow">{trop > 0.5 ? "Pris en trop" : "Écart"}</div>
+                <div style={{ fontSize: 34, fontWeight: 300, lineHeight: 1.1,
+                              color: trop > 0.5 ? "#9B1B22" : "#4F6B1F" }}>
+                  {Math.abs(trop) < 0.5 ? "0 DH" : f2(trop)}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div className="row"><span className="lbl">Prélevé par Naps</span>
+                  <span className="val">{f2(pris)}</span></div>
+                <div className="row"><span className="lbl">Dû selon le contrat</span>
+                  <span className="val">{f2(du)}</span></div>
+              </div>
+            </div>
+            {aReclamer.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>À leur signaler</div>
+                <Tableau min={640}
+                  cols={[{ t: "CB du", g: true, w: "minmax(110px, 1fr)" }, { t: "Télécollecte", w: "1fr" },
+                         { t: "Ventes", w: "1fr" }, { t: "Prélevé", w: "1fr" }, { t: "Dû", w: "1fr" },
+                         { t: "Écart", w: "1fr" }]}
+                  rows={aReclamer.map((l) => ({ k: l.id, c: [dateFR(l.jour), l.tc, fmt(num(l.ventes)),
+                    f2(l.cout), f2(l.du),
+                    <span style={{ color: l.ecart > 0 ? "#9B1B22" : "#4F6B1F", fontWeight: 600 }}>
+                      {l.ecart > 0 ? "+ " : "− "}{f2(Math.abs(l.ecart))}</span>] }))} />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {duMois.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div className="row rowTot">
+            <span className="lbl">Commission réelle Naps</span>
+            <span className="val neg">− {fmt(T.cout)} <span className="mini">· {pct(T.cout, T.ventes)}</span></span>
+          </div>
+          <div className="row">
+            <span className="lbl">CB vu par Naps <span className="mini">· {duMois.length} jour{duMois.length > 1 ? "s" : ""}</span></span>
+            <span className="val">{fmt(T.ventes)}</span>
+          </div>
+          <div className="row">
+            <span className="lbl">Versé sur Le Mi-Chui</span>
+            <span className="val">{fmt(T.verse)}</span>
+          </div>
+          <div className="eyebrow" style={{ margin: "18px 0 6px" }}>Jour par jour</div>
+          <Tableau min={680}
+            cols={[{ t: "CB du", g: true, w: "minmax(110px, 1fr)" }, { t: "Ventes", w: "1fr" },
+                   { t: "Commission", w: "1.1fr" }, { t: "Versé", w: "1.1fr" },
+                   { t: "Viré le", w: "minmax(110px, 1fr)" }, { t: "", w: "28px" }]}
+            rows={[...duMois].sort((a, b) => a.jour.localeCompare(b.jour)).map((t) => ({ k: t.id, c: [
+              dateFR(t.jour), fmt(num(t.ventes)),
+              <span className="neg">{fmt(t.cout)} <span className="mini">({pct(t.cout, num(t.ventes))})</span></span>,
+              napsVerse(t) ? <span style={{ color: "#4F6B1F" }}>{fmt(num(t.verse))}</span> : napsStatut(t),
+              napsVerse(t) ? dateFR(t.dateVir) : "—",
+              <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>] }))} />
+        </div>
+      )}
+
+      {pasVus.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div className="row">
+            <span className="lbl">CB saisi, pas encore chez Naps
+              <span className="mini"> · {pasVus.map(dateFR).join(", ")}</span></span>
+            <span className="val" style={{ color: "#8A7440" }}>{fmt(totPasVus)}</span>
+          </div>
+          {pasVus.some((d) => d < jourDecale(auj, -15)) && (
+            <div className="mini" style={{ color: "#9B1B22" }}>
+              Plus de 15 jours sans virement pour {pasVus.filter((d) => d < jourDecale(auj, -15)).map(dateFR).join(", ")} :
+              importe un export récent, ou vérifie le CB saisi ce jour-là.
+            </div>
+          )}
+        </div>
+      )}
+
+      {duMois.some((t) => Math.abs(t.ecartSaisie || 0) >= 0.5) && (
+        <div style={{ marginTop: 16 }}>
+          <div className="eyebrow" style={{ marginBottom: 6, color: "#9B1B22" }}>
+            CB saisi ≠ CB vu par Naps</div>
+          {duMois.filter((t) => Math.abs(t.ecartSaisie || 0) >= 0.5)
+            .sort((a, b) => a.jour.localeCompare(b.jour)).map((t) => (
+            <div className="row" key={t.id}>
+              <span className="lbl" style={{ color: "#9B1B22" }}>
+                {dateFR(t.jour)} : saisi {fmt(num(t.ventes) - t.ecartSaisie)} · Naps {fmt(num(t.ventes))}
+                <span className="mini"> · corrige le CB de ce jour dans « CB par point de vente »</span></span>
+              <span className="val neg">{t.ecartSaisie > 0 ? "+ " : "− "}{fmt(Math.abs(t.ecartSaisie))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {orphelins.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          {orphelins.map((t) => (
+            <div className="row" key={t.id}>
+              <span className="lbl" style={{ color: "#9B1B22" }}>
+                {t.jourTx
+                  ? <>Naps : {fmt(num(t.ventes))} de CB le {dateFR(t.jourTx)} — rien n'est saisi ce jour-là
+                      <span className="mini"> · télécollecte {t.tc}.</span></>
+                  : <>Naps : {fmt(num(t.ventes))} versé le {dateFR(t.dateVir)} — aucun jour saisi ne correspond
+                      <span className="mini"> · télécollecte {t.tc}. Vérifie le CB saisi les jours précédents.</span></>}
+                </span>
+              <button className="del" aria-label="Supprimer" onClick={() => onDel(t.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SolidariteCarte({ M, config, ym, onAdd, onRegler, flash }) {
   const [saisi, setSaisi] = useState("");
   const [erreur, setErreur] = useState("");
@@ -6533,117 +8438,82 @@ function SolidariteCarte({ M, config, ym, onAdd, onRegler, flash }) {
   );
 }
 
-function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
+function Foyer({ M, config, onAdd, ym, onRegler, onChiffrer, entries }) {
   const [ok, setOk] = useState("");
   const [formOuvert, setFormOuvert] = useState(false);
   const flash = (m) => { setOk(m); setTimeout(() => setOk(""), 2600); };
   const defDate = ym === thisMonth() ? today() : ym + "-01";
+  const nomA = (k) => (config.affaires[k] && config.affaires[k].nom) || k;
+  const ligneCochee = (id) => { const l = M.lignesAPayer.find((x) => x.id === id); return l ? l.paye : false; };
+  /* Ce qui se coche : tout ce qui est fixe. Les factures variables (eau,
+     électricité, téléphone) attendent leur vrai montant, plus bas. */
+  const fixes = config.foyer.fixes.filter((f) => !f.variable);
+  const extras = (entries || []).filter((e) => e.type === "avance" && e.nature === "perso"
+                                         && (e.date || "").startsWith(ym));
+  const totalExtras = extras.reduce((s, e) => s + num(e.montant), 0);
+
+  const ligne = (id, lbl, jour, montant, tag) => {
+    const paye = ligneCochee(id);
+    return (
+      <div className="row" key={id}>
+        <span style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+          <Coche paye={paye} onClick={() => onRegler(id, !paye)} />
+          <span style={{ color: paye ? "#9AA487" : "#5F6E4C", textDecoration: paye ? "line-through" : "none" }}>
+            {lbl} <span className="mini">— le {jour}</span>{tag}
+          </span>
+        </span>
+        <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>{fmt(montant)}</span>
+      </div>
+    );
+  };
 
   return (
     <>
-      <div className="card">
-
-        <div className="heroLbl">Ce que la maison reçoit</div>
-        <div className="heroNum">{fmt(M.enveloppe)}</div>
-        <div className="heroNote">
-          {fmt(M.foyerFixes)} de charges fixes réglées directement, plus {fmt(M.poche)} de salaires.
-        </div>
-
-        <div style={{ marginTop: 20 }}>
-          <FAvance defDate={defDate} onAdd={onAdd} flash={flash} config={config} natureFixe="perso" />
-        </div>
-      </div>
+      {ok && <div className="note" style={{ color: "#4F6B1F" }}>{ok}</div>}
 
       <div className="card">
-        <h2 className="h2">Les trois postes du mois</h2>
-        <div className="row">
-          <span className="lbl">Dépenses fixes du foyer</span>
-          <span className="val">{fmt(M.foyerFixes)}</span>
-        </div>
-        {M.remus.map((r) => {
-          const l = M.lignesAPayer.find((x) => x.id === r.id);
-          const paye = l ? l.paye : false;
-          return (
-            <div className="row" key={r.id}>
-              <span style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-                <Coche paye={paye} onClick={() => onRegler(r.id, !paye)} />
-                <span style={{ color: paye ? "#9AA487" : "#5F6E4C",
-                               textDecoration: paye ? "line-through" : "none" }}>
-                  {r.nom} <span className="mini">— le {r.jour}</span>
-                </span>
-              </span>
-              <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>
-                {fmt(r.montant)}
-              </span>
-            </div>
-          );
-        })}
-        <div className="row rowTot"><span className="lbl">Total versé par les activités</span>
-          <span className="val">{fmt(M.enveloppe)}</span></div>
-        <div className="note">
-          Les dépenses fixes sont payées directement, vous ne les voyez pas passer.
-          Seuls les deux salaires arrivent entre vos mains — c'est eux que la jauge du haut suit.
-        </div>
-      </div>
-
-      <div className="card">
-        <h2 className="h2">Charges fixes personnelles</h2>
-        {config.foyer.fixes.map((f) => {
-          const l = M.lignesAPayer.find((x) => x.id === f.id);
-          const paye = l ? l.paye : false;
-          return (
-            <div className="row" key={f.id}>
-              <span style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-                <Coche paye={paye} onClick={() => onRegler(f.id, !paye)} />
-                <span style={{ color: paye ? "#9AA487" : "#5F6E4C",
-                               textDecoration: paye ? "line-through" : "none" }}>
-                  {f.lbl} <span className="mini">— le {f.jour}</span>
-                  {f.transitoire && <span className="tag" style={{ marginLeft: 8 }}>temporaire</span>}
-                </span>
-              </span>
-              <span className="val" style={{ color: paye ? "#9AA487" : undefined }}>
-                {fmt(f.montant)}
-              </span>
-            </div>
-          );
-        })}
+        <h2 className="h2">Traites et charges fixes</h2>
+        {fixes.map((f) => ligne(f.id, f.lbl, f.jour, num(f.montant),
+          f.transitoire ? <span className="tag" style={{ marginLeft: 8 }}>temporaire</span> : null))}
         <div className="row rowTot"><span className="lbl">Reste à payer</span>
-          <span className="val">
-            {fmt(config.foyer.fixes.filter((f) => {
-              const l = M.lignesAPayer.find((x) => x.id === f.id);
-              return !(l && l.paye);
-            }).reduce((s, f) => s + num(f.montant), 0))}
-          </span>
+          <span className="val">{fmt(fixes.filter((f) => !ligneCochee(f.id)).reduce((s, f) => s + num(f.montant), 0))}</span>
         </div>
+        <FacturesAttendues liste={(M.facturesAttendues || []).filter((f) => f.groupe === "foyer")}
+                           onChiffrer={onChiffrer} />
+      </div>
+
+      <div className="card">
+        <h2 className="h2">Vos salaires — le 1er du mois</h2>
+        {M.remus.map((r) => ligne(r.id, r.nom, r.jour, num(r.montant)))}
         <div className="note">
-          Coche dès que c'est payé, quel que soit celui de vous deux qui règle. Le même pointage
-          se reflète dans l'Échéancier — inutile de le refaire ailleurs.
+          Ils couvrent les courses, l'épicerie, Glovo, l'essence et l'argent de poche de chacun :
+          LIFE ne les suit pas, c'est à chacun de gérer son salaire.
         </div>
       </div>
 
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h2 className="h2" style={{ margin: 0 }}>Dépenses libres de la maison</h2>
-          <span className="val">{fmt(M.foyerDepenseMois || 0)}</span>
+          <h2 className="h2" style={{ margin: 0 }}>Dépenses en plus</h2>
+          <span className="val">{fmt(totalExtras)}</span>
         </div>
-        <button className="pill" style={{ marginTop: 10 }} onClick={() => setFormOuvert(!formOuvert)}>
-          {formOuvert ? "×" : "+"} Dépense
-        </button>
-        {formOuvert && (
-          <div style={{ marginTop: 14 }}>
-            <FDepense config={config} defDate={defDate}
-                      onAdd={(e) => { onAdd(e); setFormOuvert(false); }}
-                      flash={flash} deja={deja} fixe="foyer" />
+        {extras.map((e) => (
+          <div className="row" key={e.id}>
+            <span className="lbl">{e.qui && e.qui !== "—" ? e.qui : "Dépense"}
+              <span className="mini"> · {(e.date || "").slice(8, 10)}/{(e.date || "").slice(5, 7)}
+                {e.source ? " · pris sur " + nomA(e.source) : ""}</span></span>
+            <span className="val">{fmt(num(e.montant))}</span>
           </div>
-        )}
+        ))}
+        <button className="pill" style={{ marginTop: 10 }} onClick={() => setFormOuvert(!formOuvert)}>
+          {formOuvert ? "× Fermer" : "+ Dépense en plus"}
+        </button>
+        {formOuvert && <FExtra config={config} defDate={defDate} flash={flash}
+                               onAdd={(e) => { onAdd(e); setFormOuvert(false); }} />}
         <div className="note">
-          Pour tout ce qui n'est ni un salaire ni une charge fixe — une sortie, un achat, un
-          imprévu — avec sa raison. Ça vient de l'enveloppe déjà reçue des affaires, ça ne
-          s'ajoute donc à aucune charge d'affaire.
+          La santé, un cadeau, un imprévu : ce qui dépasse vos salaires. Choisis l'affaire dans
+          laquelle tu pioches — c'est sa caisse qui baisse, et elle le voit sur sa fiche.
         </div>
       </div>
-
-      <SolidariteCarte M={M} config={config} ym={ym} onAdd={onAdd} onRegler={onRegler} flash={flash} />
 
       {M.doubleLog > 0 && (
         <div className="card" style={{ background: "#FDF6E7", borderColor: "#E9D9AE" }}>
@@ -6661,20 +8531,6 @@ function Foyer({ M, config, onAdd, ym, onRegler, deja, entries }) {
         </div>
       )}
 
-      {M.depensesPerso > 0 && (
-        <div className="card">
-          <h2 className="h2">Prélèvements exceptionnels du mois</h2>
-          <div className="row rowTot">
-            <span className="lbl">Sorti de la caisse en plus des salaires</span>
-            <span className="val neg">{fmt(M.depensesPerso)}</span>
-          </div>
-          <div className="note">
-            Ce que vous avez pris au-delà des salaires. S'il y en a trois mois de suite,
-            c'est que les salaires sont sous-évalués — mieux vaut les corriger que puiser
-            dans la trésorerie sans le voir.
-          </div>
-        </div>
-      )}
     </>
   );
 }
@@ -6831,7 +8687,7 @@ function Achats({ entries, ym, config, onDel, onMaj, filtre }) {
 
 function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
   const list = entries.filter((e) => (e.date || "").startsWith(ym)
-                                     && e.type !== "paye" && e.type !== "reporte"
+                                     && e.type !== "paye" && e.type !== "reporte" && e.type !== "impaye"
                                      && (!filtre || e.affaire === filtre))
                       .sort((a, b) => (a.date < b.date ? 1 : -1));
 
@@ -6864,7 +8720,9 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
     if (e.type === "prime")   return e.lbl || "Prime";
     if (e.type === "solidarite") return "Solidarité";
     if (e.type === "chantier") return "Mis de côté — " + ((config.chantiers || [])
-      .find((c) => c.id === e.chantier) || {}).nom;
+      .find((c) => c.id === e.chantier) || {}).nom
+      + (e.origine ? " · pris sur " + nom(e.origine) : "")
+      + (e.lbl ? " · " + e.lbl : "");
     if (e.type === "depense") return e.lbl + " — " + (e.affaire === "structure" ? "structure" : nom(e.affaire));
     if (e.type === "avance")  return (e.nature === "salaire" ? "Avance salaire — " : "Prélèvement — ") + e.qui;
     if (e.type === "invest")  return e.lbl + " — " + nom(e.affaire);
@@ -6877,6 +8735,22 @@ function Mouvements({ entries, ym, config, onDel, onMaj, filtre }) {
       + (e.qui || "?") + " · " + (e.sens === "emprunte" ? "reçu par " : "sorti de ") + nom(e.affaire)
       + (e.motif ? " · " + e.motif : "") + (e.echeance ? " · échéance " + e.echeance : "");
     if (e.type === "remboursement-pret") return "Remboursement de prêt personnel";
+    if (e.type === "napsTc") return "Naps — télécollecte " + e.tc + " · ventes " + fmt(num(e.ventes))
+      + " · versé " + fmt(num(e.verse)) + " le " + (e.dateVir || "").slice(8, 10) + "/" + (e.dateVir || "").slice(5, 7);
+    if (e.type === "transfert" && e.naps) return "Virement Naps reçu — cartes du "
+      + (e.du || "").slice(8, 10) + "/" + (e.du || "").slice(5, 7) + " au "
+      + (e.au || "").slice(8, 10) + "/" + (e.au || "").slice(5, 7);
+    if (e.type === "reglementAnterieur") {
+      const fo = (config.fournisseurs || []).find((f) => f.id === e.fournisseur);
+      const m = (e.mois || "").slice(5, 7);
+      return "Paiement factures " + (m ? MOIS[parseInt(m, 10) - 1] : "d'un mois précédent")
+        + " — " + (fo ? fo.nom : (e.lbl || "fournisseur"))
+        + " · payé depuis " + ((pocheParId(config, e.poche) || {}).nom || "la caisse")
+        + " · hors résultat du mois";
+    }
+    if (e.type === "transfert") return (e.motif || "Dépôt / déplacement d'argent")
+      + " — " + ((pocheParId(config, e.de) || {}).nom || e.de)
+      + " → " + ((pocheParId(config, e.vers) || {}).nom || e.vers);
     if (e.type === "treso") return "Trésorerie comptée — LIFE disait " + fmt(num(e.theorique))
       + " · écart " + fmt(num(e.montant) - num(e.theorique));
     return e.type;
@@ -6927,6 +8801,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
   const [piece, setPiece] = useState(e.piece || "facture");
   const [aPayer, setAPayer] = useState(!!e.aPayer);
   const [affaire, setAffaire] = useState(e.affaire || "");
+  const [fourn, setFourn] = useState(e.fournisseur || "");
   const [espece, setEspece] = useState(String(e.espece ?? ""));
   const [carte, setCarte] = useState(String(e.carte ?? ""));
   const [fondSuppose, setFondSuppose] = useState(String(e.fondSuppose ?? ""));
@@ -6945,6 +8820,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
   const [aRecevoir, setARecevoir] = useState(!!e.aRecevoir);
   const [erreur, setErreur] = useState("");
 
+  const fourns = (config?.fournisseurs || []).filter((f) => (f.affaires || []).includes(affaire));
   const entrant = e.type === "vente" || e.type === "resa" || e.type === "repas"
                 || (e.type === "pret-perso" && e.sens === "emprunte");
   const fermer = () => { setOuvert(false); if (onFerme) onFerme(); };
@@ -6972,8 +8848,17 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
                 montant: statut === "offert" ? 0 : num(montant) };
     } else if (e.type === "depense") {
       if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
-      patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl,
-                numero: numero.trim(), piece, aPayer, affaire };
+      /* Le fournisseur se choisit aussi à la correction : une pièce saisie en
+         « Autre dépense » doit pouvoir retrouver son fournisseur (et son ardoise). */
+      const fo = fourns.find((f) => f.id === fourn);
+      let titre = lbl.trim() || e.lbl || "";
+      const ancien = (config?.fournisseurs || []).find((f) => f.id === e.fournisseur);
+      if (ancien && titre.startsWith(ancien.nom)) titre = titre.slice(ancien.nom.length).replace(/^\s*—\s*/, "");
+      if (fo) titre = titre ? fo.nom + " — " + titre : fo.nom;
+      patch = { ...patch, montant: num(montant), lbl: titre || e.lbl,
+                numero: numero.trim(), piece, aPayer, affaire,
+                fournisseur: fo ? fo.id : null,
+                ...(fo ? { categorie: "matiere" } : {}) };
     } else if (e.type === "invest") {
       if (num(montant) <= 0) { setErreur(MSG_MONTANT); return; }
       patch = { ...patch, montant: num(montant), lbl: lbl.trim() || e.lbl, affaire };
@@ -7130,7 +9015,7 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
         <div style={{ marginBottom: 12 }}>
           <label className="f">Activité</label>
           <select className="f" value={affaire} onChange={(x) => setAffaire(x.target.value)}>
-            {e.type === "depense" && <option value="structure">Structure (comptable, impôts…)</option>}
+            {e.type === "depense" && <option value="structure">Structure (société, impôts…)</option>}
             <option value="foyer">La maison</option>
             {Object.entries(config.affaires).map(([k, a]) => <option key={k} value={k}>{a.nom}</option>)}
           </select>
@@ -7139,6 +9024,15 @@ function MvtLigne({ e, libelle, couleur, sous, onDel, onMaj, config, ouvrir, onF
 
       {e.type === "depense" && (
         <>
+          <label className="f">Fournisseur</label>
+          <div className="navSimple" style={{ marginBottom: 14 }}>
+            {fourns.map((f) => (
+              <button key={f.id} className={"pill" + (fourn === f.id ? " on" : "")}
+                      onClick={() => setFourn(f.id)}>{f.nom}</button>
+            ))}
+            <button className={"pill" + (!fourns.some((f) => f.id === fourn) ? " on" : "")}
+                    onClick={() => setFourn("")}>Autre dépense</button>
+          </div>
           <label className="f">Justificatif</label>
           <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
             <button className={"pill" + (piece === "bl" ? " on" : "")}
@@ -7390,10 +9284,6 @@ function ActiviteReglage({ k, a, c, maj }) {
             <div><label className="f">Fond de caisse théorique</label>
               <input className="f" inputMode="decimal" value={a.fonds ?? 0}
                      onChange={(e) => majA({ fonds: num(e.target.value) })} /></div>
-            <div><label className="f">Part de cartes étrangères</label>
-              <input className="f" inputMode="decimal"
-                     value={a.partEtr !== undefined ? a.partEtr : c.naps.partEtr}
-                     onChange={(e) => majA({ partEtr: num(e.target.value) })} /></div>
             <div><label className="f">Part du labo partagé</label>
               <input className="f" inputMode="decimal" value={c.cle[k] ?? 0}
                      onChange={(e) => maj({ ...c, cle: { ...c.cle, [k]: num(e.target.value) } })} /></div>
@@ -7659,7 +9549,7 @@ function NouvelleCharge({ affaires, onAdd }) {
           <input className="f" placeholder="Loyer coffee shop" value={lbl}
                  onChange={(e) => setLbl(e.target.value)} /></div>
         <div><label className="f">Montant mensuel</label>
-          <input className="f" inputMode="decimal" placeholder="4000" value={montant}
+          <input className="f" inputMode="decimal" value={montant}
                  onChange={(e) => setMontant(e.target.value)} /></div>
       </div>
       <div className="grid2">
@@ -7762,6 +9652,8 @@ function NouvelleActivite({ existantes, onAdd }) {
 
 function Reglages({ config, onSave, session, onLogout }) {
   const [c, setC] = useState(config);
+  const assietteLabo = (c.fixes || []).reduce((t, f) => t + (f.affaire === "partage"
+    ? num(f.montant) : num(f.montant) * (num(f.partagePct) || 0) / 100), 0);
   const [ok, setOk] = useState(false);
   const [erreur, setErreur] = useState("");
   /* Tant qu'Amal n'a rien touché, l'écran suit les réglages du serveur : sans
@@ -7817,10 +9709,9 @@ function Reglages({ config, onSave, session, onLogout }) {
         ))}
         <NouvelleCharge affaires={c.affaires} onAdd={(f) => maj({ ...c, fixes: [...c.fixes, f] })} />
         <div className="note">
-          <strong>Dont labo</strong> : la part d'une ligne qui sert à plusieurs activités. Le loyer
-          de Guéliz se règle en une fois, mais la mezzanine est le labo qui produit aussi pour la
-          médina — 50 % rejoignent donc le pot commun et se répartissent selon ta clé. À 0 %,
-          la charge est portée en entier par son activité.
+          <strong>Dont labo</strong> : la part d'une ligne qui sert à plusieurs activités, répartie
+          selon une clé. À 0 %, la charge est portée en entier par son activité — c'est le cas
+          de toutes tes charges aujourd'hui.
           <br /><br />
           Une charge fixe, c'est un montant qui tombe tous les mois, connu d'avance : un loyer,
           un salaire, une traite. Tout ce qui varie selon le mois — un coursier payé à la tâche,
@@ -7828,37 +9719,36 @@ function Reglages({ config, onSave, session, onLogout }) {
         </div>
       </div>
 
-      <div className="card">
-        <h2 className="h2">Clé de répartition du labo</h2>
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 14 }}>
-          <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 80, tmsk: 20, taam: 0 } })}>
-            Ta'âm pas encore ouverte — 80 / 20 / 0
-          </button>
-          <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 50, tmsk: 10, taam: 40 } })}>
-            Ta'âm en activité — 50 / 10 / 40
-          </button>
+      {/* Rien à partager : la carte n'a rien à dire, elle ne s'affiche pas. */}
+      {assietteLabo > 0 && (
+        <div className="card">
+          <h2 className="h2">Clé de répartition du labo</h2>
+          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 14 }}>
+            <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 80, tmsk: 20, taam: 0 } })}>
+              Ta'âm pas encore ouverte — 80 / 20 / 0
+            </button>
+            <button className="pill" onClick={() => maj({ ...c, cle: { sabich: 50, tmsk: 10, taam: 40 } })}>
+              Ta'âm en activité — 50 / 10 / 40
+            </button>
+          </div>
+          {Object.entries(c.cle).map(([k, pct]) => (
+            <Ligne key={k} lbl={c.affaires[k]?.nom || k} value={pct} suffix="%"
+                   onChange={(v) => maj({ ...c, cle: { ...c.cle, [k]: num(v) } })} />
+          ))}
+          <div className="mini" style={{ marginTop: 10 }}>
+            Total : {Object.values(c.cle).reduce((s, v) => s + num(v), 0)} % — il doit faire 100.
+          </div>
+          <div className="row rowTot" style={{ marginTop: 10 }}>
+            <span className="lbl">Assiette à répartir</span>
+            <span className="val">
+              {fmt(assietteLabo)}
+            </span>
+          </div>
+          <div className="note">
+            Ne sert que si une charge a une part « labo ». Sinon cette carte disparaît.
+          </div>
         </div>
-        {Object.entries(c.cle).map(([k, pct]) => (
-          <Ligne key={k} lbl={c.affaires[k]?.nom || k} value={pct} suffix="%"
-                 onChange={(v) => maj({ ...c, cle: { ...c.cle, [k]: num(v) } })} />
-        ))}
-        <div className="mini" style={{ marginTop: 10 }}>
-          Total : {Object.values(c.cle).reduce((s, v) => s + num(v), 0)} % — il doit faire 100.
-        </div>
-        <div className="row rowTot" style={{ marginTop: 10 }}>
-          <span className="lbl">Assiette à répartir</span>
-          <span className="val">
-            {fmt(c.fixes.reduce((s, f) => s + (f.affaire === "partage"
-                   ? num(f.montant)
-                   : num(f.montant) * (num(f.partagePct) || 0) / 100), 0))}
-          </span>
-        </div>
-        <div className="note">
-          Tant que Ta'âm n'accueille pas de clients, lui faire porter la moitié du local la fait
-          paraître catastrophique et rend Sabich trop belle. Bascule sur la clé transitoire, et
-          reviens à 40 / 10 / 50 le jour de l'ouverture.
-        </div>
-      </div>
+      )}
 
       <div className="card">
         <h2 className="h2">Taux de coût matière</h2>
@@ -7866,7 +9756,8 @@ function Reglages({ config, onSave, session, onLogout }) {
           <Ligne key={k} lbl={a.nom} value={a.matierePct} suffix="%"
                  onChange={(v) => maj({ ...c, affaires: { ...c.affaires, [k]: { ...a, matierePct: num(v) } } })} />
         ))}
-        <div className="note">Utilisé seulement tant que tu n'as pas saisi tes achats réels du mois.</div>
+        <div className="note">Ne sert qu'à estimer le seuil d'une activité qui n'a encore rien vendu.
+          Le coût matière affiché ailleurs est toujours celui de tes achats réels.</div>
       </div>
 
       <div className="card">
@@ -7883,21 +9774,28 @@ function Reglages({ config, onSave, session, onLogout }) {
                   <input className="f" value={s.nom}
                          onChange={(e) => maj({ ...c, societes: c.societes.map((x) =>
                            x.id === s.id ? { ...x, nom: e.target.value } : x) })} /></div>
-                <div><label className="f">CNSS mensuelle</label>
-                  <input className="f" inputMode="decimal" value={cn.montant}
-                         onChange={(e) => majCnss({ montant: num(e.target.value) })} /></div>
+                {cn.actif ? (
+                  <div><label className="f">CNSS mensuelle</label>
+                    <input className="f" inputMode="decimal" value={cn.montant}
+                           onChange={(e) => majCnss({ montant: num(e.target.value) })} /></div>
+                ) : (
+                  <div><label className="f">CNSS</label>
+                    <div className="mini" style={{ padding: "12px 0" }}>
+                      Pas déclarée — rien n'est compté.
+                    </div></div>
+                )}
               </div>
               <div className="row" style={{ borderBottom: "none" }}>
                 <span className="lbl">
-                  Déclaration active
-                  <span className="tag" style={{ marginLeft: 8 }}>
-                    {fmt(masse)} de salaires
+                  Salariés déclarés à la CNSS ?
+                  <span className="mini" style={{ marginLeft: 8 }}>
+                    {fmt(masse)} de salaires dans cette société
                   </span>
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <button className={"pill" + (cn.actif ? " on" : "")}
                           onClick={() => majCnss({ actif: !cn.actif })}>
-                    {cn.actif ? "Oui" : "Pas encore"}
+                    {cn.actif ? "Oui" : "Non"}
                   </button>
                   {c.societes.length > 1 && (
                     <button className="del" aria-label={"Retirer " + s.nom}
@@ -7914,7 +9812,8 @@ function Reglages({ config, onSave, session, onLogout }) {
         <div className="note">
           Chaque salarié et chaque activité relèvent d'une société. La CNSS se déclare société
           par société : elle n'est répartie que sur les activités qui portent les salaires de
-          cette société-là. Le riad est chez Gourmet Souk, le reste chez Le Mi-Chui.
+          cette société-là. Le riad est chez Gourmet Souk, le reste chez Le Mi-Chui. Tant que la
+          réponse est « Non », aucune CNSS n'entre dans les calculs.
         </div>
       </div>
 
@@ -7936,23 +9835,17 @@ function Reglages({ config, onSave, session, onLogout }) {
         </div>
       </div>
 
+
+
       <div className="card">
-        <h2 className="h2">Naps</h2>
-        <div className="grid2">
-          <div><label className="f">Cartes marocaines</label>
-            <input className="f" inputMode="decimal" value={c.naps.ma}
-                   onChange={(e) => maj({ ...c, naps: { ...c.naps, ma: num(e.target.value) } })} /></div>
-          <div><label className="f">Cartes étrangères</label>
-            <input className="f" inputMode="decimal" value={c.naps.etr}
-                   onChange={(e) => maj({ ...c, naps: { ...c.naps, etr: num(e.target.value) } })} /></div>
-        </div>
-        <Ligne lbl="Part estimée de cartes étrangères" value={c.naps.partEtr} suffix="%"
-               onChange={(v) => maj({ ...c, naps: { ...c.naps, partEtr: num(v) } })} />
+        <h2 className="h2">Contrat Naps</h2>
+        <Ligne lbl="Commission HT" value={c.naps.tauxHT} suffix="%"
+               onChange={(v) => maj({ ...c, naps: { ...c.naps, tauxHT: num(v) } })} />
+        <Ligne lbl="TVA sur la commission" value={c.naps.tva} suffix="%"
+               onChange={(v) => maj({ ...c, naps: { ...c.naps, tva: num(v) } })} />
         <div className="note">
-          Ces taux ne servent pas encore : ta caisse ne distingue pas l'origine des cartes, donc
-          l'app ne calcule aucune commission au jour le jour. C'est le virement réel, saisi en fin
-          de mois sur le tableau de bord, qui fait foi — il est réparti entre tes activités au
-          prorata de ce que chacune a encaissé par carte, et compte comme charge variable.
+          Sert uniquement au contrôle Naps sur Le Mi-Chui : ce que Naps prélève vraiment
+          (d'après son export) face à ce que dit ton contrat.
         </div>
       </div>
 
@@ -8030,12 +9923,14 @@ function Reglages({ config, onSave, session, onLogout }) {
           maj({ ...c, fournisseurs: [...(c.fournisseurs || []), f] })} />
       </div>
 
+      {c.structures.length > 0 && (
       <div className="card">
         <h2 className="h2">Charges de structure</h2>
         {c.structures.map((s) => (
           <Ligne key={s.id} lbl={s.lbl} value={s.montant} onChange={(v) => majStruct(s.id, v)} />
         ))}
       </div>
+      )}
 
       {hebergeurs(c).map(([hk, ha]) => {
         const H = ha.hebergement || { extras: {} };
