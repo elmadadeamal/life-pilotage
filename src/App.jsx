@@ -3913,10 +3913,15 @@ function manquesDuJour(entries, config, iso) {
     && !L.some((e) => e.type === "depense" && e.affaire === k && e.date === iso));
   return { ventes, achats, actives };
 }
-/* Deux sections dans l'alarme : les ventes, que saisit SAIB, puis les achats,
-   que saisit Amal — chacun voit d'un coup d'œil ce qui le regarde. */
-const SOUS_TITRE_ALARME = { fontSize: 13, fontWeight: 600, letterSpacing: ".12em",
-                            textTransform: "uppercase", opacity: .85, margin: "8px 0 2px" };
+/* Novembre 2026 : les alertes tiennent chacune sur une ligne fine, en jaune
+   #FFDE59 (fichier « JAUNE » d'Amal), encre brune — plus de grande bande
+   rouge, qui se confondait avec la feuille de TMK. */
+const LIGNE_ALARME = { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+                       background: "#FFDE59", color: "#3A2F1E", padding: "5px 6px 5px 14px",
+                       borderRadius: 10, marginBottom: 5, fontSize: 14.5, lineHeight: 1.3,
+                       minHeight: 38 };
+const BTN_ALARME = { minHeight: 28, padding: "4px 12px", fontSize: 12, borderRadius: 8,
+                     border: "none", background: "#FFFFFF", color: "#3A2F1E" };
 /* BL dont la facture n'est pas (ou plus) dans LIFE, d'un mois déjà terminé :
    la facture de fin de mois doit être réclamée. Groupés par fournisseur et mois. */
 function facturesAReclamer(entries, config) {
@@ -3948,42 +3953,31 @@ function Alarme({ entries, config, onPointer, onAller }) {
   const blocs = [];
   if (soir) blocs.push({ iso: auj, titre: "Il est tard et la journée n'est pas saisie", fort: true });
   blocs.push({ iso: hier, titre: "Hier n'est pas saisi", fort: false });
-  const rendu = blocs.map((b) => {
+  const rendu = [];
+  blocs.forEach((b) => {
     const m = manquesDuJour(entries, config, b.iso);
-    if (!m.ventes.length && !m.achats.length) return null;
     const jour = b.iso.slice(8, 10) + "/" + b.iso.slice(5, 7);
-    return (
-      <div key={b.iso} role="alert" style={{ background: b.fort ? "#7A0E14" : "#9B1B22", color: "#fff",
-          padding: "14px 16px", borderRadius: 14, marginBottom: 10,
-          boxShadow: b.fort ? "0 0 0 3px #E8B4B8" : "none" }}>
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
-          {b.titre} ({jour})
-        </div>
-        {m.ventes.length > 0 && <div style={SOUS_TITRE_ALARME}>Ventes — SAIB</div>}
-        {m.ventes.map((k) => (
-          <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
-            <span style={{ flex: 1, minWidth: 160 }}>Vente non saisie : <strong>{nomA(k)}</strong></span>
-            <button className="pill" onClick={() => onAller(k)}>Saisir la vente</button>
-            <button className="pill" onClick={() => onPointer(b.iso, { ferme: { ...(((config.pointages || {})[b.iso] || {}).ferme || {}), [k]: true } })}>
-              FERMÉ CE JOUR-LÀ</button>
-          </div>
-        ))}
-        {m.achats.length > 0 && <div style={{ ...SOUS_TITRE_ALARME,
-            ...(m.ventes.length > 0 ? { borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 10, marginTop: 10 } : {}) }}>
-          Achats — Amal</div>}
-        {m.achats.map((k) => (
-          <div key={"a" + k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
-            <span style={{ flex: 1, minWidth: 160 }}>Achat non saisi : <strong>{nomA(k)}</strong></span>
-            <button className="pill" onClick={() => onAller(k)}>Saisir un achat</button>
-            <button className="pill" onClick={() => onPointer(b.iso, { aucunAchat: { ...(typeof ((config.pointages || {})[b.iso] || {}).aucunAchat === "object" ? ((config.pointages || {})[b.iso] || {}).aucunAchat : {}), [k]: true } })}>
-              Aucun achat ce jour-là</button>
-          </div>
-        ))}
+    const quand = (b.fort ? "Ce soir" : "Hier") + " (" + jour + ")";
+    const gras = b.fort ? { fontWeight: 600 } : {};
+    m.ventes.forEach((k) => rendu.push(
+      <div key={b.iso + "v" + k} role="alert" style={{ ...LIGNE_ALARME, ...gras }}>
+        <span style={{ flex: 1, minWidth: 160 }}>{quand} · vente non saisie · <strong>{nomA(k)}</strong></span>
+        <button className="pill" style={BTN_ALARME} onClick={() => onAller(k)}>Saisir</button>
+        <button className="pill" style={BTN_ALARME} onClick={() => onPointer(b.iso, { ferme: { ...(((config.pointages || {})[b.iso] || {}).ferme || {}), [k]: true } })}>
+          Fermé</button>
       </div>
-    );
-  }).filter(Boolean);
-  /* Le rappel du lundi : à partir de 9h, SAIB ramène l'export Naps de la
-     semaine. La bande reste jusqu'à ce que ce soit fait (même les jours
+    ));
+    m.achats.forEach((k) => rendu.push(
+      <div key={b.iso + "a" + k} role="alert" style={{ ...LIGNE_ALARME, ...gras }}>
+        <span style={{ flex: 1, minWidth: 160 }}>{quand} · achat non saisi · <strong>{nomA(k)}</strong></span>
+        <button className="pill" style={BTN_ALARME} onClick={() => onAller(k)}>Saisir</button>
+        <button className="pill" style={BTN_ALARME} onClick={() => onPointer(b.iso, { aucunAchat: { ...(typeof ((config.pointages || {})[b.iso] || {}).aucunAchat === "object" ? ((config.pointages || {})[b.iso] || {}).aucunAchat : {}), [k]: true } })}>
+          Aucun achat</button>
+      </div>
+    ));
+  });
+  /* Le rappel du lundi : à partir de 9h, l'export Naps de la semaine est à
+     ramener. La ligne reste jusqu'à ce que ce soit fait (même les jours
      suivants), puis disparaît jusqu'au lundi d'après. */
   const lundi = isoLocal(new Date(maintenant.getTime() - ((maintenant.getDay() + 6) % 7) * 864e5));
   const lundiPasse = maintenant.getDay() !== 1 || maintenant.getHours() >= 9;
@@ -3991,35 +3985,20 @@ function Alarme({ entries, config, onPointer, onAller }) {
     || (entries || []).some((e) => e.type === "napsTc" && (e.importeLe || e.majLe || "") >= lundi);
   if (lundi >= "2026-10-12" && lundiPasse && !napsFait) {
     rendu.push(
-      <div key="naps" role="alert" style={{ background: "#9B1B22", color: "#fff",
-          padding: "14px 16px", borderRadius: 14, marginBottom: 10 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
-          Export Naps de la semaine</div>
-        <div style={SOUS_TITRE_ALARME}>SAIB</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
-          <span style={{ flex: 1, minWidth: 160 }}>Télécharge l'export Excel depuis l'espace Naps et ramène-le dans LIFE.</span>
-          <button className="pill" onClick={() => onPointer(lundi, { napsExport: true })}>C'EST FAIT</button>
-        </div>
+      <div key="naps" role="alert" style={LIGNE_ALARME}>
+        <span style={{ flex: 1, minWidth: 160 }}>Export Naps de la semaine · à ramener dans LIFE</span>
+        <button className="pill" style={BTN_ALARME} onClick={() => onPointer(lundi, { napsExport: true })}>C'est fait</button>
       </div>
     );
   }
-  const aReclamer = facturesAReclamer(entries, config);
-  if (aReclamer.length) {
-    rendu.push(
-      <div key="reclamer" role="alert" style={{ background: "#9B1B22", color: "#fff",
-          padding: "14px 16px", borderRadius: 14, marginBottom: 10 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
-          Factures à réclamer</div>
-        {aReclamer.map((r) => (
-          <div key={r.cle} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
-            <span style={{ flex: 1, minWidth: 160 }}><strong>{r.nom}</strong> · {monthLabel(r.ym)} · {r.nb} BL · {fmt(r.total)}</span>
-          </div>
-        ))}
-        <div style={{ fontSize: 14.5, opacity: .9, marginTop: 4 }}>
-          Dès que tu saisis la facture, elle reprend ses BL et l'alerte disparaît.</div>
-      </div>
-    );
-  }
+  /* Une ligne par facture à réclamer ; elle disparaît dès que la facture est
+     saisie (elle reprend alors ses BL). */
+  facturesAReclamer(entries, config).forEach((r) => rendu.push(
+    <div key={"r" + r.cle} role="alert" style={LIGNE_ALARME}
+         title="Dès que tu saisis la facture, elle reprend ses BL et l'alerte disparaît.">
+      <span style={{ flex: 1, minWidth: 160 }}>Facture à réclamer · <strong>{r.nom}</strong> · {monthLabel(r.ym)} · {r.nb} BL · {fmt(r.total)}</span>
+    </div>
+  ));
   if (!rendu.length) return null;
   return <div style={{ position: "sticky", top: 0, zIndex: 50, marginBottom: 6 }}>{rendu}</div>;
 }
