@@ -3976,18 +3976,21 @@ function Alarme({ entries, config, onPointer, onAller }) {
       </div>
     ));
   });
-  /* Le rappel du lundi : à partir de 9h, l'export Naps de la semaine est à
-     ramener. La ligne reste jusqu'à ce que ce soit fait (même les jours
-     suivants), puis disparaît jusqu'au lundi d'après. */
-  const lundi = isoLocal(new Date(maintenant.getTime() - ((maintenant.getDay() + 6) % 7) * 864e5));
-  const lundiPasse = maintenant.getDay() !== 1 || maintenant.getHours() >= 9;
-  const napsFait = !!(((config.pointages || {})[lundi] || {}).napsExport)
-    || (entries || []).some((e) => e.type === "napsTc" && (e.importeLe || e.majLe || "") >= lundi);
-  if (lundi >= "2026-10-12" && lundiPasse && !napsFait) {
+  /* Le rappel de fin de mois : le dernier jour du mois, à partir de 9h,
+     l'export Naps du mois est à ramener. La ligne reste jusqu'à ce que ce soit
+     fait (même les premiers jours du mois suivant), puis disparaît jusqu'à la
+     fin du mois d'après. Premier rappel : 30/11/2026. */
+  const finDeMois = (a, m) => isoLocal(new Date(a, m + 1, 0));
+  const finCeMois = finDeMois(maintenant.getFullYear(), maintenant.getMonth());
+  const ceMoisArrive = isoLocal(maintenant) === finCeMois && maintenant.getHours() >= 9;
+  const finNaps = ceMoisArrive ? finCeMois : finDeMois(maintenant.getFullYear(), maintenant.getMonth() - 1);
+  const napsFait = !!(((config.pointages || {})[finNaps] || {}).napsExport)
+    || (entries || []).some((e) => e.type === "napsTc" && (e.importeLe || e.majLe || "") >= finNaps);
+  if (finNaps >= "2026-11-30" && !napsFait) {
     rendu.push(
       <div key="naps" role="alert" style={LIGNE_ALARME}>
-        <span style={{ flex: 1, minWidth: 160 }}>Export Naps de la semaine · à ramener dans LIFE</span>
-        <button className="pill" style={BTN_ALARME} onClick={() => onPointer(lundi, { napsExport: true })}>C'est fait</button>
+        <span style={{ flex: 1, minWidth: 160 }}>Export Naps du mois · à ramener dans LIFE</span>
+        <button className="pill" style={BTN_ALARME} onClick={() => onPointer(finNaps, { napsExport: true })}>C'est fait</button>
       </div>
     );
   }
